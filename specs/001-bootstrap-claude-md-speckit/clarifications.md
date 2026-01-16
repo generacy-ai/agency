@@ -12,13 +12,13 @@ Questions and answers to clarify the feature specification.
 - B: GitHub repo (provide org/repo URL)
 - C: Use built-in speckit templates instead
 
-**Answer**: *Pending*
+**Answer**: The claude-plugins repo is cloned under /workspaces/claude-plugins.
 
 ### Q2: Repository Purpose
 **Context**: CLAUDE.md needs to document project overview and purpose, but the repo's intended domain isn't specified
 **Question**: What is the primary purpose of the 'agency' repository? What kind of software/services will it contain?
 
-**Answer**: *Pending*
+**Answer**: Reference /workspaces/triad-development/docs for understanding the project purpose and documentation.
 
 ### Q3: MCP Server Selection
 **Context**: The spec lists Context7 and Playwright as recommended, but mentions 'domain-relevant' servers without defining the domain
@@ -28,7 +28,23 @@ Questions and answers to clarify the feature specification.
 - B: Add specific servers (please list)
 - C: Skip MCP configuration for now
 
-**Answer**: *Pending*
+**Answer**: Use Context7 and Playwright for now. Working example config provided:
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    },
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest", "--headless"]
+    }
+  }
+}
+```
 
 ### Q4: Monorepo Structure
 **Context**: The spec mentions adapting for 'this monorepo's structure' but the structure isn't defined yet
@@ -38,5 +54,5 @@ Questions and answers to clarify the feature specification.
 - B: Multi-package monorepo (please describe planned packages)
 - C: Define structure during implementation based on needs
 
-**Answer**: *Pending*
+**Answer**: Review the docs at /workspaces/triad-development/docs to understand the packages. Planning to use turborepo/pnpm for monorepo management.
 
