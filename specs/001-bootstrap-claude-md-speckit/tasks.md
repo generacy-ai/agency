@@ -10,33 +10,33 @@
 
 ## Phase 1: Directory Setup
 
-- [ ] T001 [US1] Create `.specify/templates/` directory structure
+- [X] T001 [US1] Create `.specify/templates/` directory structure
 
 ## Phase 2: Template Files
 
-- [ ] T002 [P] [US1] Copy `spec-template.md` from `/workspaces/claude-plugins/.specify/templates/spec-template.md` to `.specify/templates/`
-- [ ] T003 [P] [US1] Copy `plan-template.md` from `/workspaces/claude-plugins/.specify/templates/plan-template.md` to `.specify/templates/`
-- [ ] T004 [P] [US1] Copy `tasks-template.md` from `/workspaces/claude-plugins/.specify/templates/tasks-template.md` to `.specify/templates/`
-- [ ] T005 [P] [US1] Copy `checklist-template.md` from `/workspaces/claude-plugins/.specify/templates/checklist-template.md` to `.specify/templates/`
-- [ ] T006 [P] [US1] Copy `agent-file-template.md` from `/workspaces/claude-plugins/.specify/templates/agent-file-template.md` to `.specify/templates/`
+- [X] T002 [P] [US1] Copy `spec-template.md` from `/workspaces/claude-plugins/.specify/templates/spec-template.md` to `.specify/templates/`
+- [X] T003 [P] [US1] Copy `plan-template.md` from `/workspaces/claude-plugins/.specify/templates/plan-template.md` to `.specify/templates/`
+- [X] T004 [P] [US1] Copy `tasks-template.md` from `/workspaces/claude-plugins/.specify/templates/tasks-template.md` to `.specify/templates/`
+- [X] T005 [P] [US1] Copy `checklist-template.md` from `/workspaces/claude-plugins/.specify/templates/checklist-template.md` to `.specify/templates/`
+- [X] T006 [P] [US1] Copy `agent-file-template.md` from `/workspaces/claude-plugins/.specify/templates/agent-file-template.md` to `.specify/templates/`
 
 ## Phase 3: Configuration Files
 
-- [ ] T007 [P] [US1] [US2] Create `CLAUDE.md` at repository root with Generacy/Agency documentation
+- [X] T007 [P] [US1] [US2] Create `CLAUDE.md` at repository root with Generacy/Agency documentation
   - Project overview: Agency - agent-optimized IDE and MCP tools
   - Technologies: TypeScript 5.x, Node.js 20+, pnpm, turborepo
   - Monorepo structure with packages/ layout
   - Build/test commands (pnpm build, pnpm test)
   - Code style guidelines
 
-- [ ] T008 [P] [US1] Create `.mcp.json` at repository root with MCP server configuration
+- [X] T008 [P] [US1] Create `.mcp.json` at repository root with MCP server configuration
   - Context7 server: `npx -y @upstash/context7-mcp@latest`
   - Playwright server: `npx -y @playwright/mcp@latest --headless`
 
 ## Phase 4: Validation
 
-- [ ] T009 [US1] Run `/speckit:specify` with a test feature to validate templates work correctly
-- [ ] T010 [US2] Verify CLAUDE.md is readable and accurate for human developers
+- [X] T009 [US1] Run `/speckit:specify` with a test feature to validate templates work correctly
+- [X] T010 [US2] Verify CLAUDE.md is readable and accurate for human developers
 
 ## Dependencies & Execution Order
 
