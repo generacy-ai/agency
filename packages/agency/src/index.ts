@@ -40,3 +40,6 @@ export { ModeManager } from './modes/index.js';
 
 // Errors
 export { AgencyError, ErrorCodes, type ErrorCode } from './errors/index.js';
+
+// Telemetry - Tool call interception and event capture
+export * from './telemetry/index.js';

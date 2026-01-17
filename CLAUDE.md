@@ -110,6 +110,8 @@ This repository uses spec-driven development:
 
 - 007-mcp-server-foundation: Added configuration
 
+- 003-core-telemetry-capture: Added configuration
+
 - 020-bootstrap-monorepo-structure-turbo: Added configuration
 
 - 001-bootstrap-claude-md-speckit: Bootstrap development infrastructure
