@@ -12,63 +12,63 @@
 
 ## Phase 1: Root Configuration
 
-- [ ] T001 Create `pnpm-workspace.yaml` with `packages/*` glob
-- [ ] T002 [P] Create root `package.json` with workspace scripts and devDependencies
-- [ ] T003 [P] Create `tsconfig.base.json` with shared TypeScript compiler options
-- [ ] T004 [P] Create `eslint.config.mjs` with flat config for TypeScript
+- [x] T001 Create `pnpm-workspace.yaml` with `packages/*` glob
+- [x] T002 [P] Create root `package.json` with workspace scripts and devDependencies
+- [x] T003 [P] Create `tsconfig.base.json` with shared TypeScript compiler options
+- [x] T004 [P] Create `eslint.config.mjs` with flat config for TypeScript
 
 ---
 
 ## Phase 2: Build Orchestration
 
-- [ ] T005 Create `turbo.json` with build/test/lint/typecheck/clean pipelines
+- [x] T005 Create `turbo.json` with build/test/lint/typecheck/clean pipelines
 
 ---
 
 ## Phase 3: Core Package Scaffold
 
-- [ ] T006 Create `packages/agency/` directory structure
-- [ ] T007 Create `packages/agency/package.json` with name, exports, dependencies
-- [ ] T008 [P] Create `packages/agency/tsconfig.json` extending base
-- [ ] T009 [P] Create `packages/agency/src/index.ts` (empty export placeholder)
+- [x] T006 Create `packages/agency/` directory structure
+- [x] T007 Create `packages/agency/package.json` with name, exports, dependencies
+- [x] T008 [P] Create `packages/agency/tsconfig.json` extending base
+- [x] T009 [P] Create `packages/agency/src/index.ts` (empty export placeholder)
 
 ---
 
 ## Phase 4: Plugin Package Scaffolds
 
-- [ ] T010 [P] Create `packages/agency-plugin-git/` scaffold (package.json, tsconfig.json, src/index.ts)
-- [ ] T011 [P] Create `packages/agency-plugin-docker/` scaffold (package.json, tsconfig.json, src/index.ts)
-- [ ] T012 [P] Create `packages/agency-plugin-firebase/` scaffold (package.json, tsconfig.json, src/index.ts)
-- [ ] T013 [P] Create `packages/agency-plugin-npm/` scaffold (package.json, tsconfig.json, src/index.ts)
-- [ ] T014 [P] Create `packages/agency-plugin-humancy/` scaffold (package.json, tsconfig.json, src/index.ts)
+- [x] T010 [P] Create `packages/agency-plugin-git/` scaffold (package.json, tsconfig.json, src/index.ts)
+- [x] T011 [P] Create `packages/agency-plugin-docker/` scaffold (package.json, tsconfig.json, src/index.ts)
+- [x] T012 [P] Create `packages/agency-plugin-firebase/` scaffold (package.json, tsconfig.json, src/index.ts)
+- [x] T013 [P] Create `packages/agency-plugin-npm/` scaffold (package.json, tsconfig.json, src/index.ts)
+- [x] T014 [P] Create `packages/agency-plugin-humancy/` scaffold (package.json, tsconfig.json, src/index.ts)
 
 ---
 
 ## Phase 5: Testing Infrastructure
 
-- [ ] T015 Create root `vitest.config.ts` with workspace mode configuration
+- [x] T015 Create root `vitest.config.ts` with workspace mode configuration
 
 ---
 
 ## Phase 6: Version Management
 
-- [ ] T016 Create `.changeset/config.json` for changesets initialization
+- [x] T016 Create `.changeset/config.json` for changesets initialization
 
 ---
 
 ## Phase 7: CI/CD
 
-- [ ] T017 Create `.github/workflows/ci.yml` for build/test/lint workflow
+- [x] T017 Create `.github/workflows/ci.yml` for build/test/lint workflow
 
 ---
 
 ## Phase 8: Verification
 
-- [ ] T018 Run `pnpm install` and verify no errors
-- [ ] T019 Run `pnpm build` and verify all packages compile
-- [ ] T020 Run `pnpm test` and verify test runner works
-- [ ] T021 Run `pnpm lint` and verify linting passes
-- [ ] T022 Run `pnpm typecheck` and verify type checking passes
+- [x] T018 Run `pnpm install` and verify no errors
+- [x] T019 Run `pnpm build` and verify all packages compile
+- [x] T020 Run `pnpm test` and verify test runner works
+- [x] T021 Run `pnpm lint` and verify linting passes
+- [x] T022 Run `pnpm typecheck` and verify type checking passes
 
 ---
 
