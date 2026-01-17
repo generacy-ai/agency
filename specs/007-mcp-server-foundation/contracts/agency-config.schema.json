@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://generacy.ai/schemas/agency-config.json",
+  "title": "AgencyConfig",
+  "description": "Configuration for the Agency server",
+  "type": "object",
+  "required": ["name"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Server name for MCP identification"
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "List of plugin package names to load"
+    },
+    "modes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "default": {
+        "default": ["*"]
+      },
+      "description": "Mode definitions mapping mode name to tool patterns"
+    },
+    "defaultMode": {
+      "type": "string",
+      "description": "Default mode to use on startup"
+    }
+  },
+  "examples": [
+    {
+      "name": "my-project-agency",
+      "plugins": ["@generacy-ai/agency-plugin-git"],
+      "modes": {
+        "default": ["source_control.*", "build.*"],
+        "minimal": ["source_control.status"]
+      },
+      "defaultMode": "default"
+    }
+  ]
+}

@@ -1,0 +1,220 @@
+# Data Model: MCP Server Foundation
+
+## Core Entities
+
+### AgencyConfig
+
+Configuration for the Agency server.
+
+```typescript
+interface AgencyConfig {
+  /** Server name for MCP identification */
+  name: string;
+
+  /** List of plugin package names or instances to load */
+  plugins: string[];
+
+  /** Mode definitions mapping mode name to tool patterns */
+  modes: Record<string, string[]>;
+
+  /** Default mode to use on startup */
+  defaultMode?: string;
+}
+```
+
+**Zod Schema**:
+```typescript
+const AgencyConfigSchema = z.object({
+  name: z.string().min(1),
+  plugins: z.array(z.string()).default([]),
+  modes: z.record(z.array(z.string())).default({ default: ['*'] }),
+  defaultMode: z.string().optional()
+});
+```
+
+### AgencyTool
+
+Tool definition with Agency-specific metadata.
+
+```typescript
+interface AgencyTool {
+  /** Namespaced tool name: "namespace.action" */
+  name: string;
+
+  /** Human-readable description */
+  description: string;
+
+  /** JSON Schema for input parameters */
+  inputSchema: JsonSchema;
+
+  /** Tool category for grouping */
+  namespace: string;
+
+  /** Output verbosity pattern */
+  outputPattern: 'terse';
+
+  /** Explicit mode list (optional, derived from namespace if not set) */
+  modes?: string[];
+
+  /** Execute the tool with validated parameters */
+  execute(params: unknown): Promise<ToolResult>;
+}
+```
+
+### ToolResult
+
+Result of tool execution.
+
+```typescript
+interface ToolResult {
+  /** Content blocks for MCP response */
+  content: ToolContent[];
+
+  /** Whether the tool execution was successful */
+  isError?: boolean;
+}
+
+type ToolContent =
+  | { type: 'text'; text: string }
+  | { type: 'image'; data: string; mimeType: string }
+  | { type: 'resource'; resource: { uri: string; text?: string; blob?: string } };
+```
+
+### AgencyPlugin
+
+Plugin interface for extending the server.
+
+```typescript
+interface AgencyPlugin {
+  /** Unique plugin identifier */
+  name: string;
+
+  /** Semantic version */
+  version: string;
+
+  /** Tools provided by this plugin */
+  tools: AgencyTool[];
+
+  /** Called when plugin is loaded */
+  initialize?(): Promise<void>;
+
+  /** Called when plugin is unloaded or server shuts down */
+  shutdown?(): Promise<void>;
+}
+```
+
+### AgencyError
+
+Structured error type for consistent error handling.
+
+```typescript
+class AgencyError extends Error {
+  /** Error code for programmatic handling */
+  readonly code: string;
+
+  /** Additional context data */
+  readonly context?: Record<string, unknown>;
+
+  constructor(code: string, message: string, context?: Record<string, unknown>) {
+    super(message);
+    this.code = code;
+    this.context = context;
+    this.name = 'AgencyError';
+  }
+}
+```
+
+**Error Codes**:
+| Code | Description |
+|------|-------------|
+| `CONFIG_NOT_FOUND` | No configuration file found |
+| `CONFIG_INVALID` | Configuration validation failed |
+| `PLUGIN_NOT_FOUND` | Plugin package not found |
+| `PLUGIN_INIT_FAILED` | Plugin initialization error |
+| `TOOL_NOT_FOUND` | Tool not found in registry |
+| `TOOL_EXEC_FAILED` | Tool execution error |
+| `MODE_NOT_FOUND` | Mode not defined in config |
+
+## Type Definitions
+
+### JsonSchema
+
+JSON Schema subset used for tool input schemas.
+
+```typescript
+interface JsonSchema {
+  type: 'object' | 'string' | 'number' | 'boolean' | 'array';
+  properties?: Record<string, JsonSchema>;
+  items?: JsonSchema;
+  required?: string[];
+  description?: string;
+  default?: unknown;
+  enum?: unknown[];
+}
+```
+
+### ConfigSource
+
+Represents a configuration source with priority.
+
+```typescript
+interface ConfigSource {
+  /** Priority (lower = higher priority) */
+  priority: number;
+
+  /** Source identifier for debugging */
+  name: string;
+
+  /** Partial config from this source */
+  config: Partial<AgencyConfig>;
+}
+```
+
+## Validation Rules
+
+### Tool Name Format
+- Must be namespaced: `namespace.action`
+- Namespace is alphabetic, lowercase
+- Action is alphabetic, lowercase, may contain underscores
+- Pattern: `/^[a-z]+\.[a-z_]+$/`
+
+### Mode Pattern Format
+- Valid minimatch glob pattern
+- Common patterns: `*`, `namespace.*`, `namespace.specific`
+
+### Config Validation
+- `name` must be non-empty
+- `plugins` must be array of strings
+- `modes` must have at least one mode defined
+- `defaultMode` must reference an existing mode
+
+## Relationships
+
+```
+┌─────────────────┐
+│  AgencyServer   │
+└────────┬────────┘
+         │ uses
+         ▼
+┌─────────────────┐    loads    ┌─────────────────┐
+│  ConfigLoader   │◄───────────►│  AgencyConfig   │
+└─────────────────┘             └─────────────────┘
+
+┌─────────────────┐
+│  AgencyServer   │
+└────────┬────────┘
+         │ has
+         ▼
+┌─────────────────┐   manages   ┌─────────────────┐
+│  ToolRegistry   │◄───────────►│   AgencyTool    │
+└─────────────────┘             └─────────────────┘
+         ▲
+         │ registers
+┌────────┴────────┐   provides  ┌─────────────────┐
+│  PluginLoader   │◄───────────►│  AgencyPlugin   │
+└─────────────────┘             └─────────────────┘
+```
+
+---
+
+*Generated by speckit*
