@@ -4,8 +4,6 @@
 
 ## Summary
 
-## Summary
-
 Implement the core MCP (Model Context Protocol) server that serves as the foundation for Agency.
 
 ## Parent Epic
@@ -14,7 +12,7 @@ Implement the core MCP (Model Context Protocol) server that serves as the founda
 
 ## Dependencies
 
-- generacy-ai/contracts#7 - Common contracts (for error types)
+- generacy-ai/contracts#7 - Common contracts (for error types, AgencyPlugin interface)
 
 ## Requirements
 
@@ -42,21 +40,47 @@ class AgencyServer {
 }
 ```
 
+### Tool Definition Format
+
+Tools use a wrapper type that preserves MCP compatibility while adding Agency-specific metadata:
+
+```typescript
+interface AgencyTool {
+  // MCP-compatible base
+  name: string;           // Namespaced: "source_control.commit", "build.run"
+  description: string;
+  inputSchema: JsonSchema;
+
+  // Agency-specific metadata
+  namespace: string;      // Tool category for mode filtering
+  outputPattern: 'terse'; // Minimal success, detailed failure
+  modes?: string[];       // Modes where this tool is active
+
+  // Execution
+  execute(params: unknown): Promise<ToolResult>;
+}
+```
+
 ### MCP Protocol Support
 
 - `tools/list` - Return available tools (filtered by mode)
 - `tools/call` - Execute a tool with parameters
 - `ping` - Health check
-- Custom notifications for telemetry events
+- Telemetry: Pluggable via `@generacy-ai/agency-plugin-telemetry` (not baked into core)
 
 ### Connection Handling
 
-- stdio transport (primary)
-- SSE transport (for web-based agents)
+- stdio transport (primary, implemented in this issue)
+- SSE transport (deferred to follow-up issue)
 - Connection lifecycle events
 - Graceful shutdown with cleanup
 
 ### Configuration
+
+Configuration is loaded from multiple locations in priority order:
+1. `.agency/config.json` in project root (created by Humancy wizard)
+2. `package.json` "agency" field (for CLI users)
+3. Environment variables (for CI/containers)
 
 ```json
 {
@@ -65,9 +89,6 @@ class AgencyServer {
     "plugins": ["@generacy-ai/agency-plugin-git", "..."],
     "modes": {
       "default": ["source_control.*", "build.*"]
-    },
-    "telemetry": {
-      "enabled": true
     }
   }
 }
@@ -84,35 +105,59 @@ class AgencyServer {
 
 ## User Stories
 
-### US1: [Primary User Story]
+### US1: Agent Connects to MCP Server
 
-**As a** [user type],
-**I want** [capability],
-**So that** [benefit].
+**As an** AI agent,
+**I want** to connect to an MCP server via stdio,
+**So that** I can discover and invoke tools to perform development tasks.
 
 **Acceptance Criteria**:
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
+- [ ] Server accepts stdio connections
+- [ ] `tools/list` returns available tools filtered by current mode
+- [ ] `tools/call` executes tools and returns structured results
+
+### US2: Plugin Developer Extends Server
+
+**As a** plugin developer,
+**I want** to register custom tools with the server,
+**So that** agents can use my plugin's capabilities.
+
+**Acceptance Criteria**:
+- [ ] Plugin can register tools via `loadPlugin()`
+- [ ] Tools follow AgencyTool interface with namespace and metadata
+- [ ] Plugin can be unloaded cleanly
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | [Description] | P1 | |
+| FR-001 | Server starts and accepts stdio MCP connections | P1 | Primary transport |
+| FR-002 | `tools/list` returns tools filtered by current mode | P1 | Mode filtering |
+| FR-003 | `tools/call` executes tool and returns result | P1 | Core functionality |
+| FR-004 | Configuration loaded from multiple sources | P1 | See priority order |
+| FR-005 | Plugins can register/unregister tools | P1 | Plugin interface from contracts |
+| FR-006 | Graceful shutdown with cleanup | P1 | Resource management |
+| FR-007 | Error handling follows contract schemas | P1 | Consistent error format |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | [Metric] | [Target] | [How to measure] |
+| SC-001 | Server startup time | < 500ms | Time from start() to accepting connections |
+| SC-002 | Tool execution overhead | < 10ms | Time added by server layer |
 
 ## Assumptions
 
-- [Assumption 1]
+- AgencyPlugin interface will be defined in contracts repo (or use Rich interface as fallback)
+- MCP SDK provides stable stdio transport implementation
+- Node.js 20+ runtime environment
 
 ## Out of Scope
 
-- [Exclusion 1]
+- SSE transport (deferred to follow-up issue)
+- Built-in telemetry events (telemetry is plugin-based)
+- Authentication/authorization (handled at transport layer)
+- Tool implementation (plugins provide tools)
 
 ---
 
