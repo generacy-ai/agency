@@ -36,3 +36,10 @@ export { wrapToolHandler, createHandlerWrapper } from './interceptor.js';
 
 // Built-in providers
 export { MemoryStorageProvider } from './providers/index.js';
+export {
+  FileStorageProvider,
+  FileProviderOptionsSchema,
+  RotationResultSchema,
+  type FileProviderOptions,
+  type RotationResult,
+} from './providers/index.js';

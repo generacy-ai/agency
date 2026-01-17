@@ -10,53 +10,53 @@
 
 ## Phase 1: Setup & Types
 
-- [ ] T001 Create file provider module at `packages/agency/src/telemetry/providers/file.ts` with FileProviderOptions schema and type exports
-- [ ] T002 [P] Add RotationResult schema to `packages/agency/src/telemetry/providers/file.ts`
-- [ ] T003 Export FileStorageProvider from `packages/agency/src/telemetry/providers/index.ts`
+- [x] T001 Create file provider module at `packages/agency/src/telemetry/providers/file.ts` with FileProviderOptions schema and type exports
+- [x] T002 [P] Add RotationResult schema to `packages/agency/src/telemetry/providers/file.ts`
+- [x] T003 Export FileStorageProvider from `packages/agency/src/telemetry/providers/index.ts`
 
 ## Phase 2: Core Implementation
 
-- [ ] T010 [US1] Implement FileStorageProvider class skeleton with constructor, name property, and option validation
-- [ ] T011 [US1] Implement `initialize()` method to create directory structure (daily mode: directory, session mode: directory + sessions/)
-- [ ] T012 [US1] Implement `shutdown()` method (no-op for now, placeholder for future handle cleanup)
-- [ ] T013 [US1] Implement `record(event)` method with JSONL append and best-effort error handling (warn, don't throw)
-- [ ] T014 [US1] Implement `getCurrentFilePath()` helper returning path based on mode (daily: YYYY-MM-DD.jsonl, session: sessions/{sessionId}.jsonl)
+- [x] T010 [US1] Implement FileStorageProvider class skeleton with constructor, name property, and option validation
+- [x] T011 [US1] Implement `initialize()` method to create directory structure (daily mode: directory, session mode: directory + sessions/)
+- [x] T012 [US1] Implement `shutdown()` method (no-op for now, placeholder for future handle cleanup)
+- [x] T013 [US1] Implement `record(event)` method with JSONL append and best-effort error handling (warn, don't throw)
+- [x] T014 [US1] Implement `getCurrentFilePath()` helper returning path based on mode (daily: YYYY-MM-DD.jsonl, session: sessions/{sessionId}.jsonl)
 
 ## Phase 3: Query Implementation
 
-- [ ] T020 [US1] Implement `readJsonlFile()` async generator for streaming file reads with corrupted line handling
-- [ ] T021 [US1] Implement `extractDateFromFilename()` helper to parse date from daily filenames
-- [ ] T022 [US1] Implement `getRelevantFiles()` to list and filter files by date range for daily mode
-- [ ] T023 [US1] Implement `query(filter)` method scanning relevant files and applying filters
+- [x] T020 [US1] Implement `readJsonlFile()` async generator for streaming file reads with corrupted line handling
+- [x] T021 [US1] Implement `extractDateFromFilename()` helper to parse date from daily filenames
+- [x] T022 [US1] Implement `getRelevantFiles()` to list and filter files by date range for daily mode
+- [x] T023 [US1] Implement `query(filter)` method scanning relevant files and applying filters
 
 ## Phase 4: File Management
 
-- [ ] T030 [US3] Implement `getLogFiles()` method returning all .jsonl files in directory
-- [ ] T031 [US3] Implement `compressFile()` helper using zlib to gzip a file
-- [ ] T032 [US3] Implement `rotateOldLogs(maxAgeDays)` method with deletion and optional compression
+- [x] T030 [US3] Implement `getLogFiles()` method returning all .jsonl files in directory
+- [x] T031 [US3] Implement `compressFile()` helper using zlib to gzip a file
+- [x] T032 [US3] Implement `rotateOldLogs(maxAgeDays)` method with deletion and optional compression
 
 ## Phase 5: Session Mode
 
-- [ ] T040 [US2] Add session mode validation in constructor (require sessionId when mode="session")
-- [ ] T041 [US2] Update `getCurrentFilePath()` to handle session mode path generation
-- [ ] T042 [US2] Update `initialize()` to create sessions/ subdirectory when in session mode
+- [x] T040 [US2] Add session mode validation in constructor (require sessionId when mode="session")
+- [x] T041 [US2] Update `getCurrentFilePath()` to handle session mode path generation
+- [x] T042 [US2] Update `initialize()` to create sessions/ subdirectory when in session mode
 
 ## Phase 6: Integration & Export
 
-- [ ] T050 Export FileStorageProvider, FileProviderOptions, and RotationResult from telemetry index
-- [ ] T051 Add JSDoc comments to all public methods and interfaces
+- [x] T050 Export FileStorageProvider, FileProviderOptions, and RotationResult from telemetry index
+- [x] T051 Add JSDoc comments to all public methods and interfaces
 
 ## Phase 7: Testing
 
-- [ ] T060 [P] Create test file `packages/agency/src/__tests__/telemetry/file-provider.test.ts`
-- [ ] T061 [P] Write unit tests for FileProviderOptions schema validation
-- [ ] T062 [P] Write unit tests for daily mode file path generation
-- [ ] T063 [P] Write unit tests for session mode file path generation
-- [ ] T064 Write integration tests for record() and query() round-trip
-- [ ] T065 Write unit tests for corrupted JSONL line handling (skip and continue)
-- [ ] T066 Write unit tests for rotateOldLogs() deletion behavior
-- [ ] T067 Write unit tests for rotateOldLogs() compression behavior
-- [ ] T068 Write unit tests for best-effort error handling (write failures logged, not thrown)
+- [x] T060 [P] Create test file `packages/agency/src/__tests__/telemetry/file-provider.test.ts`
+- [x] T061 [P] Write unit tests for FileProviderOptions schema validation
+- [x] T062 [P] Write unit tests for daily mode file path generation
+- [x] T063 [P] Write unit tests for session mode file path generation
+- [x] T064 Write integration tests for record() and query() round-trip
+- [x] T065 Write unit tests for corrupted JSONL line handling (skip and continue)
+- [x] T066 Write unit tests for rotateOldLogs() deletion behavior
+- [x] T067 Write unit tests for rotateOldLogs() compression behavior
+- [x] T068 Write unit tests for best-effort error handling (write failures logged, not thrown)
 
 ## Dependencies & Execution Order
 
