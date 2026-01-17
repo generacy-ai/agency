@@ -66,6 +66,9 @@ export const TelemetryFilterSchema = z.object({
 
   /** Offset for pagination */
   offset: z.number().int().nonnegative().optional(),
+
+  /** Filter events with duration >= this threshold (in milliseconds) */
+  durationThresholdMs: z.number().nonnegative().optional(),
 });
 
 export type TelemetryFilter = z.infer<typeof TelemetryFilterSchema>;

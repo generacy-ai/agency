@@ -207,6 +207,28 @@ describe('MemoryStorageProvider', () => {
       });
       expect(results).toHaveLength(2);
     });
+
+    it('should filter by durationThresholdMs', async () => {
+      const results = await provider.query({ durationThresholdMs: 100 });
+      expect(results).toHaveLength(2);
+      expect(results.every((e) => e.durationMs >= 100)).toBe(true);
+    });
+
+    it('should filter by durationThresholdMs with exact match', async () => {
+      const results = await provider.query({ durationThresholdMs: 150 });
+      expect(results).toHaveLength(1);
+      expect(results[0]?.durationMs).toBe(150);
+    });
+
+    it('should combine durationThresholdMs with other filters', async () => {
+      const results = await provider.query({
+        durationThresholdMs: 100,
+        success: true,
+      });
+      expect(results).toHaveLength(1);
+      expect(results[0]?.durationMs).toBe(150);
+      expect(results[0]?.success).toBe(true);
+    });
   });
 
   describe('getStats', () => {
@@ -318,6 +340,98 @@ describe('MemoryStorageProvider', () => {
       events.pop();
 
       expect(provider.getEventCount()).toBe(1);
+    });
+
+    it('should return buffer size via getBufferSize()', async () => {
+      expect(provider.getBufferSize()).toBe(0);
+
+      await provider.record(createTestEvent());
+      await provider.record(createTestEvent());
+      await provider.record(createTestEvent());
+
+      expect(provider.getBufferSize()).toBe(3);
+      expect(provider.getBufferSize()).toBe(provider.getEventCount());
+    });
+  });
+
+  describe('subscribe', () => {
+    it('should notify subscriber when event is recorded', async () => {
+      const receivedEvents: ToolCallEvent[] = [];
+      provider.subscribe((event) => {
+        receivedEvents.push(event);
+      });
+
+      const event = createTestEvent();
+      await provider.record(event);
+
+      expect(receivedEvents).toHaveLength(1);
+      expect(receivedEvents[0]).toEqual(event);
+    });
+
+    it('should notify multiple subscribers', async () => {
+      const received1: ToolCallEvent[] = [];
+      const received2: ToolCallEvent[] = [];
+
+      provider.subscribe((event) => received1.push(event));
+      provider.subscribe((event) => received2.push(event));
+
+      await provider.record(createTestEvent());
+      await provider.record(createTestEvent());
+
+      expect(received1).toHaveLength(2);
+      expect(received2).toHaveLength(2);
+    });
+
+    it('should allow unsubscribing', async () => {
+      const receivedEvents: ToolCallEvent[] = [];
+      const unsubscribe = provider.subscribe((event) => {
+        receivedEvents.push(event);
+      });
+
+      await provider.record(createTestEvent());
+      expect(receivedEvents).toHaveLength(1);
+
+      unsubscribe();
+
+      await provider.record(createTestEvent());
+      expect(receivedEvents).toHaveLength(1); // Should not receive second event
+    });
+
+    it('should isolate subscriber errors', async () => {
+      const receivedEvents: ToolCallEvent[] = [];
+
+      // First subscriber throws an error
+      provider.subscribe(() => {
+        throw new Error('Subscriber error');
+      });
+
+      // Second subscriber should still receive events
+      provider.subscribe((event) => {
+        receivedEvents.push(event);
+      });
+
+      // Should not throw and second subscriber should receive event
+      await provider.record(createTestEvent());
+      expect(receivedEvents).toHaveLength(1);
+    });
+
+    it('should clear subscribers on shutdown', async () => {
+      const receivedEvents: ToolCallEvent[] = [];
+      provider.subscribe((event) => {
+        receivedEvents.push(event);
+      });
+
+      await provider.record(createTestEvent());
+      expect(receivedEvents).toHaveLength(1);
+
+      await provider.shutdown();
+
+      // Re-initialize to test that subscribers were cleared
+      await provider.initialize();
+      await provider.record(createTestEvent());
+
+      // Should still be 1 because subscriber was cleared on shutdown
+      expect(receivedEvents).toHaveLength(1);
     });
   });
 });
