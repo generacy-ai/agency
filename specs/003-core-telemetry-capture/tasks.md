@@ -10,49 +10,49 @@
 
 ## Phase 1: Core Schema & Types
 
-- [ ] T001 [US1] Create `packages/agency/src/telemetry/schemas.ts` with ToolCallEventV1 Zod schema using `.passthrough()` for forward compatibility
-- [ ] T002 [P] [US1] Create `packages/agency/src/telemetry/types.ts` with TelemetryStorageProvider interface, TelemetryFilter, StatsFilter, and ToolStats types
-- [ ] T003 [P] [US2] Create `packages/agency/src/telemetry/config.ts` with TelemetryConfigSchema and DEFAULT_TELEMETRY_CONFIG
-- [ ] T004 Create `packages/agency/src/__tests__/telemetry/schemas.test.ts` with validation tests for ToolCallEventV1 schema
+- [x] T001 [US1] Create `packages/agency/src/telemetry/schemas.ts` with ToolCallEventV1 Zod schema using `.passthrough()` for forward compatibility
+- [x] T002 [P] [US1] Create `packages/agency/src/telemetry/types.ts` with TelemetryStorageProvider interface, TelemetryFilter, StatsFilter, and ToolStats types
+- [x] T003 [P] [US2] Create `packages/agency/src/telemetry/config.ts` with TelemetryConfigSchema and DEFAULT_TELEMETRY_CONFIG
+- [x] T004 Create `packages/agency/src/__tests__/telemetry/schemas.test.ts` with validation tests for ToolCallEventV1 schema
 
 ## Phase 2: Event Bus
 
-- [ ] T005 [US1] Create `packages/agency/src/telemetry/bus.ts` with TelemetryBus class using Node.js EventEmitter
-- [ ] T006 Implement fire-and-forget emit() method that catches and logs provider errors
-- [ ] T007 Create `packages/agency/src/__tests__/telemetry/bus.test.ts` with event emission and error isolation tests
+- [x] T005 [US1] Create `packages/agency/src/telemetry/bus.ts` with TelemetryBus class using Node.js EventEmitter
+- [x] T006 Implement fire-and-forget emit() method that catches and logs provider errors
+- [x] T007 Create `packages/agency/src/__tests__/telemetry/bus.test.ts` with event emission and error isolation tests
 
 ## Phase 3: Tool Call Interceptor
 
-- [ ] T008 [US1] Create `packages/agency/src/telemetry/interceptor.ts` with wrapToolHandler() function
-- [ ] T009 [US2] Implement privacy-aware data capture (conditional inputs/outputs based on config)
-- [ ] T010 Add timing measurement using performance.now() and UUID generation with crypto.randomUUID()
-- [ ] T011 Create `packages/agency/src/__tests__/telemetry/interceptor.test.ts` with success/error handling tests
+- [x] T008 [US1] Create `packages/agency/src/telemetry/interceptor.ts` with wrapToolHandler() function
+- [x] T009 [US2] Implement privacy-aware data capture (conditional inputs/outputs based on config)
+- [x] T010 Add timing measurement using performance.now() and UUID generation with crypto.randomUUID()
+- [x] T011 Create `packages/agency/src/__tests__/telemetry/interceptor.test.ts` with success/error handling tests
 
 ## Phase 4: Memory Provider
 
-- [ ] T012 [US1] Create `packages/agency/src/telemetry/providers/memory.ts` implementing TelemetryStorageProvider
-- [ ] T013 Implement configurable maxEvents with FIFO eviction when limit reached
-- [ ] T014 [P] Implement optional query() method for event filtering
-- [ ] T015 [P] Implement getStats() method for basic statistics calculation
-- [ ] T016 Create `packages/agency/src/__tests__/telemetry/memory-provider.test.ts` with storage and query tests
+- [x] T012 [US1] Create `packages/agency/src/telemetry/providers/memory.ts` implementing TelemetryStorageProvider
+- [x] T013 Implement configurable maxEvents with FIFO eviction when limit reached
+- [x] T014 [P] Implement optional query() method for event filtering
+- [x] T015 [P] Implement getStats() method for basic statistics calculation
+- [x] T016 Create `packages/agency/src/__tests__/telemetry/memory-provider.test.ts` with storage and query tests
 
 ## Phase 5: Telemetry Manager
 
-- [ ] T017 [US1] Create `packages/agency/src/telemetry/manager.ts` with TelemetryManager class
-- [ ] T018 Implement registerProvider() and unregisterProvider() methods with lifecycle management
-- [ ] T019 Implement wrapServer() method to instrument MCP servers with telemetry
-- [ ] T020 Create `packages/agency/src/__tests__/telemetry/manager.test.ts` with integration tests
+- [x] T017 [US1] Create `packages/agency/src/telemetry/manager.ts` with TelemetryManager class
+- [x] T018 Implement registerProvider() and unregisterProvider() methods with lifecycle management
+- [x] T019 Implement wrapServer() method to instrument MCP servers with telemetry
+- [x] T020 Create `packages/agency/src/__tests__/telemetry/manager.test.ts` with integration tests
 
 ## Phase 6: Integration & Exports
 
-- [ ] T021 Create `packages/agency/src/telemetry/index.ts` exporting all public types and classes
-- [ ] T022 Create `packages/agency/src/telemetry/providers/index.ts` exporting MemoryStorageProvider
-- [ ] T023 Update `packages/agency/src/index.ts` to export telemetry module
+- [x] T021 Create `packages/agency/src/telemetry/index.ts` exporting all public types and classes
+- [x] T022 Create `packages/agency/src/telemetry/providers/index.ts` exporting MemoryStorageProvider
+- [x] T023 Update `packages/agency/src/index.ts` to export telemetry module
 
 ## Phase 7: Performance & Documentation
 
-- [ ] T024 Create performance benchmark test verifying <5ms overhead requirement
-- [ ] T025 Add JSDoc comments to all public APIs in telemetry module
+- [x] T024 Create performance benchmark test verifying <5ms overhead requirement
+- [x] T025 Add JSDoc comments to all public APIs in telemetry module
 
 ## Dependencies & Execution Order
 
