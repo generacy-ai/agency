@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { ToolRegistry } from './registry.js';
 import type { AgencyTool, ToolResult } from './types.js';
 import { AgencyError, ErrorCodes } from '../errors/index.js';
@@ -59,6 +59,23 @@ describe('ToolRegistry', () => {
 
       expect(registry.size).toBe(1);
       expect(registry.get('test.tool')?.description).toBe('Second');
+    });
+
+    it('should warn when registering duplicate tool', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const tool1 = createTestTool({ description: 'First' });
+      const tool2 = createTestTool({ description: 'Second' });
+
+      registry.register(tool1);
+      registry.register(tool2);
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('test.tool')
+      );
+
+      warnSpy.mockRestore();
     });
   });
 
@@ -209,6 +226,106 @@ describe('ToolRegistry', () => {
 
       expect(registry.size).toBe(0);
       expect(registry.getAll()).toEqual([]);
+    });
+  });
+
+  describe('getByPrefix', () => {
+    it('should return tools matching the prefix', () => {
+      registry.register(createTestTool({ name: 'source_control.commit' }));
+      registry.register(createTestTool({ name: 'source_control.push' }));
+      registry.register(createTestTool({ name: 'build.compile' }));
+
+      const sourceTools = registry.getByPrefix('source_control');
+
+      expect(sourceTools).toHaveLength(2);
+      expect(sourceTools.map((t) => t.name).sort()).toEqual([
+        'source_control.commit',
+        'source_control.push',
+      ]);
+    });
+
+    it('should return empty array for non-existent prefix', () => {
+      registry.register(createTestTool({ name: 'build.compile' }));
+
+      const tools = registry.getByPrefix('nonexistent');
+
+      expect(tools).toEqual([]);
+    });
+
+    it('should not match partial prefix', () => {
+      registry.register(createTestTool({ name: 'source_control.commit' }));
+
+      const tools = registry.getByPrefix('source');
+
+      expect(tools).toEqual([]);
+    });
+  });
+
+  describe('validateName', () => {
+    it('should validate standard prefix names', () => {
+      const result = registry.validateName('source_control.commit');
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should warn on custom prefix in permissive mode', () => {
+      const result = registry.validateName('custom.action');
+
+      expect(result.valid).toBe(true);
+      expect(result.warnings.length).toBeGreaterThan(0);
+      expect(result.warnings[0]).toContain('custom prefix');
+    });
+
+    it('should reject custom prefix in strict mode', () => {
+      const result = registry.validateName('custom.action', { strict: true });
+
+      expect(result.valid).toBe(false);
+      expect(result.errors[0]).toContain('strict mode');
+    });
+
+    it('should reject invalid format', () => {
+      const result = registry.validateName('no-dot-here');
+
+      expect(result.valid).toBe(false);
+      expect(result.errors[0]).toContain('exactly one dot');
+    });
+  });
+
+  describe('getCatalog', () => {
+    it('should return all tools in catalog', () => {
+      registry.register(createTestTool({ name: 'build.compile' }));
+      registry.register(createTestTool({ name: 'test.run' }));
+
+      const catalog = registry.getCatalog();
+
+      expect(catalog.tools).toHaveLength(2);
+    });
+
+    it('should group tools by prefix', () => {
+      registry.register(createTestTool({ name: 'source_control.commit' }));
+      registry.register(createTestTool({ name: 'source_control.push' }));
+      registry.register(createTestTool({ name: 'build.compile' }));
+
+      const catalog = registry.getCatalog();
+
+      expect(Object.keys(catalog.byPrefix).sort()).toEqual(['build', 'source_control']);
+      expect(catalog.byPrefix['source_control']).toHaveLength(2);
+      expect(catalog.byPrefix['build']).toHaveLength(1);
+    });
+
+    it('should include generatedAt timestamp', () => {
+      const catalog = registry.getCatalog();
+
+      expect(catalog.generatedAt).toBeDefined();
+      expect(new Date(catalog.generatedAt).getTime()).not.toBeNaN();
+    });
+
+    it('should return empty catalog when no tools registered', () => {
+      const catalog = registry.getCatalog();
+
+      expect(catalog.tools).toHaveLength(0);
+      expect(Object.keys(catalog.byPrefix)).toHaveLength(0);
     });
   });
 });

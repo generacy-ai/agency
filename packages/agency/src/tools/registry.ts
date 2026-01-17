@@ -7,8 +7,15 @@
 
 import { minimatch } from 'minimatch';
 import { AgencyError, ErrorCodes } from '../errors/index.js';
-import type { AgencyTool, McpTool } from './types.js';
+import type {
+  AgencyTool,
+  McpTool,
+  ValidationOptions,
+  ValidationResult,
+  ToolCatalog,
+} from './types.js';
 import { toMcpTool } from './types.js';
+import { validateToolName } from './validation.js';
 
 /**
  * Tool registry for managing and filtering tools
@@ -29,8 +36,15 @@ export class ToolRegistry {
 
   /**
    * Register a tool
+   *
+   * Logs a warning if a tool with the same name is already registered.
    */
   register(tool: AgencyTool): void {
+    if (this.tools.has(tool.name)) {
+      console.warn(
+        `Tool "${tool.name}" is already registered. Overwriting with new definition.`
+      );
+    }
     this.tools.set(tool.name, tool);
   }
 
@@ -127,6 +141,57 @@ export class ToolRegistry {
    */
   get size(): number {
     return this.tools.size;
+  }
+
+  /**
+   * Validate a tool name against the naming convention
+   *
+   * @param name - The tool name to validate
+   * @param options - Validation options (strict mode rejects custom prefixes)
+   * @returns ValidationResult with valid flag, errors, and warnings
+   */
+  validateName(name: string, options?: ValidationOptions): ValidationResult {
+    return validateToolName(name, options);
+  }
+
+  /**
+   * Get all tools with a specific prefix
+   *
+   * @param prefix - The prefix to filter by (e.g., "source_control")
+   * @returns Array of tools matching the prefix
+   */
+  getByPrefix(prefix: string): AgencyTool[] {
+    return [...this.tools.values()].filter((tool) => {
+      const dotIndex = tool.name.indexOf('.');
+      if (dotIndex === -1) return false;
+      return tool.name.substring(0, dotIndex) === prefix;
+    });
+  }
+
+  /**
+   * Generate a catalog of all registered tools grouped by prefix
+   *
+   * @returns ToolCatalog with all tools and prefix groupings
+   */
+  getCatalog(): ToolCatalog {
+    const tools = this.getAll();
+    const byPrefix: Record<string, AgencyTool[]> = {};
+
+    for (const tool of tools) {
+      const dotIndex = tool.name.indexOf('.');
+      const prefix = dotIndex === -1 ? '' : tool.name.substring(0, dotIndex);
+
+      if (!byPrefix[prefix]) {
+        byPrefix[prefix] = [];
+      }
+      byPrefix[prefix].push(tool);
+    }
+
+    return {
+      tools,
+      byPrefix,
+      generatedAt: new Date().toISOString(),
+    };
   }
 
   /**

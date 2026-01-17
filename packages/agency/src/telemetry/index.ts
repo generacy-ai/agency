@@ -16,6 +16,7 @@ export type {
   MemoryProviderOptions,
   ToolCallHandler,
   WrapHandlerOptions,
+  SubscriberCallback,
 } from './types.js';
 
 // Configuration
@@ -43,3 +44,6 @@ export {
   type FileProviderOptions,
   type RotationResult,
 } from './providers/index.js';
+
+// Factory function
+export { createTelemetryManager, type CreateTelemetryManagerOptions } from './factory.js';

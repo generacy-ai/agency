@@ -4,7 +4,7 @@ import type {
   StatsFilter,
   ToolStats,
 } from '../schemas.js';
-import type { TelemetryStorageProvider, MemoryProviderOptions } from '../types.js';
+import type { TelemetryStorageProvider, MemoryProviderOptions, SubscriberCallback } from '../types.js';
 
 /**
  * Default maximum number of events to store in memory.
@@ -21,6 +21,7 @@ export class MemoryStorageProvider implements TelemetryStorageProvider {
   private events: ToolCallEvent[] = [];
   private maxEvents: number;
   private initialized = false;
+  private subscribers = new Map<string, SubscriberCallback>();
 
   constructor(options: MemoryProviderOptions = {}) {
     this.maxEvents = options.maxEvents ?? DEFAULT_MAX_EVENTS;
@@ -32,6 +33,7 @@ export class MemoryStorageProvider implements TelemetryStorageProvider {
 
   async shutdown(): Promise<void> {
     this.events = [];
+    this.subscribers.clear();
     this.initialized = false;
   }
 
@@ -41,6 +43,16 @@ export class MemoryStorageProvider implements TelemetryStorageProvider {
     // FIFO eviction when limit reached
     if (this.maxEvents > 0 && this.events.length > this.maxEvents) {
       this.events.shift();
+    }
+
+    // Notify subscribers with error isolation
+    for (const [, callback] of this.subscribers) {
+      try {
+        callback(event);
+      } catch {
+        // Ignore subscriber errors - error isolation ensures
+        // one failing subscriber doesn't affect others or recording
+      }
     }
   }
 
@@ -77,6 +89,10 @@ export class MemoryStorageProvider implements TelemetryStorageProvider {
     if (filter.endTime !== undefined) {
       const endDate = new Date(filter.endTime);
       results = results.filter((e) => new Date(e.timestamp) <= endDate);
+    }
+
+    if (filter.durationThresholdMs !== undefined) {
+      results = results.filter((e) => e.durationMs >= filter.durationThresholdMs!);
     }
 
     // Apply pagination
@@ -183,6 +199,29 @@ export class MemoryStorageProvider implements TelemetryStorageProvider {
    */
   clear(): void {
     this.events = [];
+  }
+
+  /**
+   * Subscribe to real-time event notifications.
+   * Callbacks are invoked synchronously when events are recorded.
+   * Errors in callbacks are isolated and won't affect other subscribers or recording.
+   * @param callback Function to call when an event is recorded
+   * @returns Unsubscribe function
+   */
+  subscribe(callback: SubscriberCallback): () => void {
+    const id = globalThis.crypto.randomUUID();
+    this.subscribers.set(id, callback);
+    return () => {
+      this.subscribers.delete(id);
+    };
+  }
+
+  /**
+   * Get the current buffer size (alias for getEventCount).
+   * @returns Number of stored events
+   */
+  getBufferSize(): number {
+    return this.events.length;
   }
 
   /**

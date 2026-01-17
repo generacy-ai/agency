@@ -112,6 +112,10 @@ This repository uses spec-driven development:
 
 - 005-file-telemetry-storage-provider: Added configuration
 
+- 004-memory-telemetry-storage-provider: Added configuration
+
+- 010-tool-registry-naming-convention: Added configuration
+
 - 007-mcp-server-foundation: Added configuration
 
 - 003-core-telemetry-capture: Added configuration

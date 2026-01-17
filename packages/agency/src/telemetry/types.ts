@@ -1,6 +1,12 @@
 import type { ToolCallEvent, TelemetryFilter, StatsFilter, ToolStats } from './schemas.js';
 
 /**
+ * Callback function type for real-time event subscriptions.
+ * Subscribers receive events as they are recorded.
+ */
+export type SubscriberCallback = (event: ToolCallEvent) => void;
+
+/**
  * Storage provider interface for telemetry events.
  * Providers receive events and store them for later retrieval or analysis.
  */
