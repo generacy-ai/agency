@@ -1,0 +1,33 @@
+{
+  "name": "@generacy-ai/agency-plugin-firebase",
+  "version": "0.0.0",
+  "description": "Firebase operations plugin for Agency",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["mcp", "agent", "generacy", "firebase"],
+  "author": "Generacy AI",
+  "license": "MIT",
+  "peerDependencies": {
+    "@generacy-ai/agency": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.4"
+  }
+}
