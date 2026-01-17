@@ -1,6 +1,6 @@
 # Agency Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-01-16
+Auto-generated from all feature plans. Last updated: 2026-01-17
 
 ## Project Overview
 
@@ -11,6 +11,8 @@ The `agency` repository contains agent-optimized MCP tooling:
 - **@generacy-ai/agency-plugin-***: Official plugins for agent capabilities
 
 ## Active Technologies
+
+
 
 - TypeScript 5.x (Node.js 20+)
 - pnpm workspaces
@@ -103,6 +105,8 @@ This repository uses spec-driven development:
 - **generacy**: Orchestration services + plugins - workflow engine
 
 ## Recent Changes
+
+- 020-bootstrap-monorepo-structure-turbo: Added configuration
 
 - 001-bootstrap-claude-md-speckit: Bootstrap development infrastructure
 
