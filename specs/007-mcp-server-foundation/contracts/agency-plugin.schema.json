@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://generacy.ai/schemas/agency-plugin.json",
+  "title": "AgencyPlugin",
+  "description": "Plugin interface for extending the Agency server",
+  "type": "object",
+  "required": ["name", "version", "tools"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique plugin identifier"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+",
+      "description": "Semantic version"
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "$ref": "agency-tool.schema.json"
+      },
+      "description": "Tools provided by this plugin"
+    }
+  },
+  "examples": [
+    {
+      "name": "my-plugin",
+      "version": "1.0.0",
+      "tools": [
+        {
+          "name": "myns.action",
+          "description": "Do something",
+          "namespace": "myns",
+          "outputPattern": "terse",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "param": { "type": "string" }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

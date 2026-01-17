@@ -108,6 +108,8 @@ This repository uses spec-driven development:
 
 ## Recent Changes
 
+- 007-mcp-server-foundation: Added configuration
+
 - 003-core-telemetry-capture: Added configuration
 
 - 020-bootstrap-monorepo-structure-turbo: Added configuration
