@@ -2,7 +2,7 @@
 
 **Input**: Design documents from `/specs/010-tool-registry-naming-convention/`
 **Prerequisites**: plan.md (required), spec.md (required), data-model.md, research.md, quickstart.md
-**Status**: Complete
+**Status**: Implementation Complete
 
 ## Format: `[ID] [P?] [Story] Description`
 - **[P]**: Can run in parallel (different files, no dependencies)
@@ -10,17 +10,17 @@
 
 ## Phase 1: Types and Constants
 
-- [ ] T001 [P] Add ValidationResult, ValidationOptions, ToolCatalog types to `packages/agency/src/tools/types.ts`
-- [ ] T002 [P] Create `packages/agency/src/tools/prefixes.ts` with STANDARD_PREFIXES and LENGTH_THRESHOLDS constants
+- [X] T001 [P] Add ValidationResult, ValidationOptions, ToolCatalog types to `packages/agency/src/tools/types.ts`
+- [X] T002 [P] Create `packages/agency/src/tools/prefixes.ts` with STANDARD_PREFIXES and LENGTH_THRESHOLDS constants
 
 ## Phase 2: Validation Logic
 
-- [ ] T003 [US1] Create `packages/agency/src/tools/validation.ts` with validateToolName() function
+- [X] T003 [US1] Create `packages/agency/src/tools/validation.ts` with validateToolName() function
   - Implement dot separator check (exactly one dot)
   - Implement snake_case validation for prefix and action
   - Implement custom prefix detection with strict/permissive mode
   - Implement length threshold warnings
-- [ ] T004 [US1] Create `packages/agency/src/tools/validation.test.ts` with unit tests
+- [X] T004 [US1] Create `packages/agency/src/tools/validation.test.ts` with unit tests
   - Test valid standard prefix names
   - Test custom prefix warning (permissive mode)
   - Test custom prefix error (strict mode)
@@ -30,24 +30,24 @@
 
 ## Phase 3: Registry Extensions
 
-- [ ] T005 [US1] Add validateName() method to ToolRegistry in `packages/agency/src/tools/registry.ts`
-- [ ] T006 [US2] Add getByPrefix() method to ToolRegistry in `packages/agency/src/tools/registry.ts`
-- [ ] T007 [US2] Add getCatalog() method to ToolRegistry in `packages/agency/src/tools/registry.ts`
-- [ ] T008 [US1] Modify register() to log warning on duplicate registration in `packages/agency/src/tools/registry.ts`
-- [ ] T009 Update `packages/agency/src/tools/index.ts` to export new types, functions, and constants
+- [X] T005 [US1] Add validateName() method to ToolRegistry in `packages/agency/src/tools/registry.ts`
+- [X] T006 [US2] Add getByPrefix() method to ToolRegistry in `packages/agency/src/tools/registry.ts`
+- [X] T007 [US2] Add getCatalog() method to ToolRegistry in `packages/agency/src/tools/registry.ts`
+- [X] T008 [US1] Modify register() to log warning on duplicate registration in `packages/agency/src/tools/registry.ts`
+- [X] T009 Update `packages/agency/src/tools/index.ts` to export new types, functions, and constants
 
 ## Phase 4: Registry Tests
 
-- [ ] T010 [P] [US1] Add validateName() tests to `packages/agency/src/tools/registry.test.ts`
-- [ ] T011 [P] [US2] Add getByPrefix() tests to `packages/agency/src/tools/registry.test.ts`
-- [ ] T012 [P] [US2] Add getCatalog() tests to `packages/agency/src/tools/registry.test.ts`
-- [ ] T013 [P] [US1] Add duplicate registration warning tests to `packages/agency/src/tools/registry.test.ts`
+- [X] T010 [P] [US1] Add validateName() tests to `packages/agency/src/tools/registry.test.ts`
+- [X] T011 [P] [US2] Add getByPrefix() tests to `packages/agency/src/tools/registry.test.ts`
+- [X] T012 [P] [US2] Add getCatalog() tests to `packages/agency/src/tools/registry.test.ts`
+- [X] T013 [P] [US1] Add duplicate registration warning tests to `packages/agency/src/tools/registry.test.ts`
 
 ## Phase 5: Verification
 
-- [ ] T014 Run `pnpm test` to verify all tests pass
-- [ ] T015 Run `pnpm typecheck` to verify no type errors
-- [ ] T016 Run `pnpm lint` to verify code style
+- [X] T014 Run `pnpm test` to verify all tests pass
+- [X] T015 Run `pnpm typecheck` to verify no type errors
+- [X] T016 Run `pnpm lint` to verify code style
 
 ## Dependencies & Execution Order
 
