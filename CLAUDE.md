@@ -16,6 +16,8 @@ The `agency` repository contains agent-optimized MCP tooling:
 
 
 
+
+
 - TypeScript 5.x (Node.js 20+)
 - pnpm workspaces
 - turborepo for monorepo management
@@ -107,6 +109,8 @@ This repository uses spec-driven development:
 - **generacy**: Orchestration services + plugins - workflow engine
 
 ## Recent Changes
+
+- 004-memory-telemetry-storage-provider: Added configuration
 
 - 007-mcp-server-foundation: Added configuration
 
