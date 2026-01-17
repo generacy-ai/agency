@@ -98,6 +98,45 @@ export interface McpTool {
 }
 
 /**
+ * Configuration for name validation behavior
+ */
+export interface ValidationOptions {
+  /**
+   * When true, custom prefixes are rejected as errors.
+   * When false (default), custom prefixes produce warnings.
+   */
+  strict?: boolean;
+}
+
+/**
+ * Result of tool name validation
+ */
+export interface ValidationResult {
+  /** Whether the name is valid (no errors) */
+  valid: boolean;
+
+  /** Validation errors (name is invalid if any present) */
+  errors: string[];
+
+  /** Validation warnings (name is valid but has issues) */
+  warnings: string[];
+}
+
+/**
+ * Grouped catalog of all registered tools
+ */
+export interface ToolCatalog {
+  /** All registered tools */
+  tools: AgencyTool[];
+
+  /** Tools grouped by prefix */
+  byPrefix: Record<string, AgencyTool[]>;
+
+  /** ISO timestamp when catalog was generated */
+  generatedAt: string;
+}
+
+/**
  * Convert an AgencyTool to MCP-compatible format
  */
 export function toMcpTool(tool: AgencyTool): McpTool {
