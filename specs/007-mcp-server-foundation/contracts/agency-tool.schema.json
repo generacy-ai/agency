@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://generacy.ai/schemas/agency-tool.json",
+  "title": "AgencyTool",
+  "description": "Tool definition with Agency-specific metadata",
+  "type": "object",
+  "required": ["name", "description", "inputSchema", "namespace", "outputPattern"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z]+\\.[a-z_]+$",
+      "description": "Namespaced tool name: namespace.action"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable description"
+    },
+    "inputSchema": {
+      "$ref": "#/definitions/JsonSchema",
+      "description": "JSON Schema for input parameters"
+    },
+    "namespace": {
+      "type": "string",
+      "pattern": "^[a-z]+$",
+      "description": "Tool category for mode filtering"
+    },
+    "outputPattern": {
+      "type": "string",
+      "enum": ["terse"],
+      "description": "Output verbosity pattern"
+    },
+    "modes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Explicit mode list (optional)"
+    }
+  },
+  "definitions": {
+    "JsonSchema": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["object", "string", "number", "boolean", "array"]
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/JsonSchema"
+          }
+        },
+        "items": {
+          "$ref": "#/definitions/JsonSchema"
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": "string"
+        },
+        "default": {},
+        "enum": {
+          "type": "array"
+        }
+      }
+    }
+  }
+}
