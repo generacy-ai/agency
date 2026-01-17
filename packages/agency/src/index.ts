@@ -33,7 +33,42 @@ export {
 } from './tools/index.js';
 
 // Plugins
-export { PluginLoader, type AgencyPlugin } from './plugins/index.js';
+export {
+  PluginLoader,
+  PluginErrorCodes,
+  PluginDiscovery,
+  DependencyResolver,
+  PluginManifestSchema,
+  validateManifest,
+  parseManifest,
+  createTestManifest,
+  CircularDependencyError,
+  MissingDependencyError,
+  type AgencyPlugin,
+  type LegacyAgencyPlugin,
+  type PluginManifest,
+  type PluginState,
+  type DiscoveredPlugin,
+  type AgencyCoreAPI,
+  type PluginLoadOptions,
+} from './plugins/index.js';
+
+// Channels
+export {
+  ChannelManager,
+  createMessageEnvelope,
+  type ChannelDefinition,
+  type MessageEnvelope,
+  type MessageHandler,
+  type ChannelState,
+} from './channels/index.js';
+
+// Core API
+export {
+  CoreAPIFactory,
+  createCoreAPIFactory,
+  type CoreAPIDependencies,
+} from './core-api/index.js';
 
 // Modes
 export { ModeManager } from './modes/index.js';

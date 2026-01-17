@@ -17,16 +17,32 @@ export const ErrorCodes = {
   PLUGIN_NOT_FOUND: 'PLUGIN_NOT_FOUND',
   /** Plugin initialization error */
   PLUGIN_INIT_FAILED: 'PLUGIN_INIT_FAILED',
+  /** Critical plugin initialization error */
+  CRITICAL_PLUGIN_INIT_FAILED: 'CRITICAL_PLUGIN_INIT_FAILED',
+  /** Plugin has missing dependencies */
+  PLUGIN_MISSING_DEPS: 'PLUGIN_MISSING_DEPS',
+  /** Plugin manifest validation failed */
+  PLUGIN_MANIFEST_INVALID: 'PLUGIN_MANIFEST_INVALID',
+  /** Plugin dependency cycle detected */
+  PLUGIN_DEPENDENCY_CYCLE: 'PLUGIN_DEPENDENCY_CYCLE',
   /** Tool not found in registry */
   TOOL_NOT_FOUND: 'TOOL_NOT_FOUND',
   /** Tool execution error */
   TOOL_EXEC_FAILED: 'TOOL_EXEC_FAILED',
   /** Mode not defined in config */
   MODE_NOT_FOUND: 'MODE_NOT_FOUND',
+  /** Mode already registered */
+  MODE_ALREADY_REGISTERED: 'MODE_ALREADY_REGISTERED',
   /** Server not running */
   SERVER_NOT_RUNNING: 'SERVER_NOT_RUNNING',
   /** Server already running */
   SERVER_ALREADY_RUNNING: 'SERVER_ALREADY_RUNNING',
+  /** Channel not found */
+  CHANNEL_NOT_FOUND: 'CHANNEL_NOT_FOUND',
+  /** Channel already registered */
+  CHANNEL_ALREADY_REGISTERED: 'CHANNEL_ALREADY_REGISTERED',
+  /** Cannot send to channel without subscribers */
+  CHANNEL_NO_SUBSCRIBERS: 'CHANNEL_NO_SUBSCRIBERS',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
