@@ -110,6 +110,8 @@ This repository uses spec-driven development:
 
 ## Recent Changes
 
+- 005-file-telemetry-storage-provider: Added configuration
+
 - 004-memory-telemetry-storage-provider: Added configuration
 
 - 010-tool-registry-naming-convention: Added configuration
