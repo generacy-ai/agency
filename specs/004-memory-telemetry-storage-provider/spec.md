@@ -1,8 +1,6 @@
 # Feature Specification: In-memory telemetry storage provider
 
-**Branch**: `004-memory-telemetry-storage-provider` | **Date**: 2026-01-17 | **Status**: Draft
-
-## Summary
+**Branch**: `004-memory-telemetry-storage-provider` | **Date**: 2026-01-17 | **Status**: Clarified
 
 ## Summary
 
@@ -20,9 +18,9 @@ Implement the default in-memory storage provider for real-time telemetry viewing
 
 ### Storage
 
-- Ring buffer with configurable max size (default: 1000 events)
+- Ring buffer with configurable max size (default: 10000 events)
 - FIFO eviction when buffer is full
-- Per-session isolation option
+- Single shared storage with session-based filtering at query time (no per-session isolation)
 
 ### Query Support
 
@@ -30,13 +28,13 @@ Implement the default in-memory storage provider for real-time telemetry viewing
 interface MemoryTelemetryProvider extends TelemetryStorageProvider {
   // Full query support
   query(filter: TelemetryFilter): Promise<ToolCallEvent[]>;
-  
-  // Real-time subscription
+
+  // Real-time subscription (multiple subscribers with independent error isolation)
   subscribe(callback: (event: ToolCallEvent) => void): () => void;
-  
+
   // Stats
   getStats(filter?: StatsFilter): Promise<ToolStats>;
-  
+
   // Management
   clear(): void;
   getBufferSize(): number;
@@ -50,48 +48,92 @@ Support filtering by:
 - Server/tool name
 - Success/failure
 - Session ID
-- Duration threshold
+- Duration threshold (`durationThresholdMs` - returns events >= threshold)
+
+### Registration
+
+Factory function provides "batteries included" convenience:
+```typescript
+// Convenience factory with defaults
+const telemetry = createTelemetryManager({ storage: 'memory' });
+
+// Or explicit for custom setups
+const telemetry = new TelemetryManager();
+telemetry.registerProvider(new MemoryStorageProvider());
+```
 
 ## Acceptance Criteria
 
-- [ ] Events stored in memory with configurable limit
-- [ ] Query API with filtering support
-- [ ] Real-time subscription for live updates
+- [ ] Events stored in memory with configurable limit (default 10000)
+- [ ] Query API with filtering support including `durationThresholdMs`
+- [ ] Real-time subscription for live updates (multiple subscribers, error-isolated)
 - [ ] Stats aggregation (success rate, avg duration)
 - [ ] Clear/reset functionality
-- [ ] Registered by default when telemetry enabled
+- [ ] Factory function `createTelemetryManager({ storage: 'memory' })` for default registration
 
 ## User Stories
 
-### US1: [Primary User Story]
+### US1: Developer Debugging Tool Calls
 
-**As a** [user type],
-**I want** [capability],
-**So that** [benefit].
+**As a** developer debugging MCP tool calls,
+**I want** to query recent telemetry events with filters,
+**So that** I can identify slow or failing tool calls quickly.
 
 **Acceptance Criteria**:
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
+- [ ] Can filter events by duration threshold (e.g., >= 100ms)
+- [ ] Can filter events by success/failure status
+- [ ] Results ordered by timestamp
+
+### US2: Real-time Monitoring
+
+**As a** developer monitoring live tool activity,
+**I want** to subscribe to telemetry events in real-time,
+**So that** I can see tool calls as they happen.
+
+**Acceptance Criteria**:
+- [ ] Multiple UI components can subscribe simultaneously
+- [ ] One subscriber's error doesn't affect others
+- [ ] Can unsubscribe to stop receiving events
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | [Description] | P1 | |
+| FR-001 | Ring buffer with 10000 event default | P1 | Configurable via constructor |
+| FR-002 | FIFO eviction on buffer full | P1 | |
+| FR-003 | Query with TelemetryFilter support | P1 | Including durationThresholdMs |
+| FR-004 | Multiple subscriber support | P1 | Error isolation between subscribers |
+| FR-005 | Stats aggregation | P2 | Success rate, avg duration |
+| FR-006 | Factory function for easy setup | P2 | createTelemetryManager() |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | [Metric] | [Target] | [How to measure] |
+| SC-001 | Memory usage | < 20MB for 10K events | Profile with typical event payloads |
+| SC-002 | Query latency | < 10ms for 10K events | Benchmark filtering operations |
 
 ## Assumptions
 
-- [Assumption 1]
+- TelemetryStorageProvider interface is defined in #3
+- ToolCallEvent type is defined in #3
+- TelemetryFilter includes standard fields (timeRange, serverName, toolName, success, sessionId)
 
 ## Out of Scope
 
-- [Exclusion 1]
+- Persistence to disk (separate provider)
+- Cross-process telemetry sharing
+- Automatic cleanup/TTL expiration
+
+## Clarified Decisions
+
+| Topic | Decision | Rationale |
+|-------|----------|-----------|
+| Subscription Pattern | Multiple subscribers with independent error isolation | Telemetry consumers are naturally multiple (UI, loggers, stats) |
+| Session Isolation | Query-time filtering only | Simpler, memory-efficient, enables cross-session analysis |
+| Default Buffer Size | 10000 events | Minimal memory cost, benefits debugging with longer history |
+| Duration Filter | Single `durationThresholdMs` field | Primary use case is "show slow calls", keeps API simple |
+| Auto-Registration | Factory function pattern | Keeps TelemetryManager focused while providing convenience |
 
 ---
 
