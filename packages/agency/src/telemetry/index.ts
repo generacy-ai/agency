@@ -16,6 +16,7 @@ export type {
   MemoryProviderOptions,
   ToolCallHandler,
   WrapHandlerOptions,
+  SubscriberCallback,
 } from './types.js';
 
 // Configuration
@@ -36,3 +37,13 @@ export { wrapToolHandler, createHandlerWrapper } from './interceptor.js';
 
 // Built-in providers
 export { MemoryStorageProvider } from './providers/index.js';
+export {
+  FileStorageProvider,
+  FileProviderOptionsSchema,
+  RotationResultSchema,
+  type FileProviderOptions,
+  type RotationResult,
+} from './providers/index.js';
+
+// Factory function
+export { createTelemetryManager, type CreateTelemetryManagerOptions } from './factory.js';
