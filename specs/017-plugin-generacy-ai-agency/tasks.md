@@ -10,68 +10,68 @@
 
 ## Phase 1: Package Setup
 
-- [ ] T001 Create `packages/agency-plugin-npm/package.json` with workspace dependencies (@generacy-ai/agency, typescript, vitest)
-- [ ] T002 [P] Create `packages/agency-plugin-npm/tsconfig.json` extending workspace base config
-- [ ] T003 [P] Create `packages/agency-plugin-npm/vitest.config.ts` with test configuration
+- [x] T001 Create `packages/agency-plugin-npm/package.json` with workspace dependencies (@generacy-ai/agency, typescript, vitest)
+- [x] T002 [P] Create `packages/agency-plugin-npm/tsconfig.json` extending workspace base config
+- [x] T003 [P] Create `packages/agency-plugin-npm/vitest.config.ts` with test configuration
 
 ## Phase 2: Core Types and Configuration
 
-- [ ] T010 [US1] Create `src/pm/types.ts` with PackageManager type and DetectionResult interface
-- [ ] T011 [P] [US1] Create `src/config.ts` with NpmPluginConfig interface and default values
-- [ ] T012 [P] Create `src/manifest.ts` with plugin manifest definition (tools list, mode affiliations)
+- [x] T010 [US1] Create `src/pm/types.ts` with PackageManager type and DetectionResult interface
+- [x] T011 [P] [US1] Create `src/config.ts` with NpmPluginConfig interface and default values
+- [x] T012 [P] Create `src/manifest.ts` with plugin manifest definition (tools list, mode affiliations)
 
 ## Phase 3: Package Manager Detection
 
-- [ ] T020 [US1] Create `src/pm/detect.ts` with lockfile-based detection logic (pnpm-lock.yaml > yarn.lock > package-lock.json)
-- [ ] T021 [US2] Create `src/pm/commands.ts` with CommandBuilder for each PM (install, run, workspace flags)
-- [ ] T022 [P] Create `src/pm/index.ts` exporting detection and command modules
+- [x] T020 [US1] Create `src/pm/detect.ts` with lockfile-based detection logic (pnpm-lock.yaml > yarn.lock > package-lock.json)
+- [x] T021 [US2] Create `src/pm/commands.ts` with CommandBuilder for each PM (install, run, workspace flags)
+- [x] T022 [P] Create `src/pm/index.ts` exporting detection and command modules
 
 ## Phase 4: Script Validation and Execution
 
-- [ ] T030 [US1] Create `src/scripts/validate.ts` to check package.json for script existence
-- [ ] T031 [P] Create `src/scripts/index.ts` exporting validation module
-- [ ] T032 [US1] Create `src/exec/runner.ts` with spawn-based command execution and output capture
-- [ ] T033 [P] Create `src/exec/index.ts` exporting runner module
+- [x] T030 [US1] Create `src/scripts/validate.ts` to check package.json for script existence
+- [x] T031 [P] Create `src/scripts/index.ts` exporting validation module
+- [x] T032 [US1] Create `src/exec/runner.ts` with spawn-based command execution and output capture
+- [x] T033 [P] Create `src/exec/index.ts` exporting runner module
 
 ## Phase 5: Tool Parameter Schemas
 
-- [ ] T040 Create `src/tools/schemas.ts` with Zod schemas for all 8 tools (BaseParams, InstallDependencies, Compile, Lint, Format, RunTest, RunCoverage)
+- [x] T040 Create `src/tools/schemas.ts` with Zod schemas for all 8 tools (BaseParams, InstallDependencies, Compile, Lint, Format, RunTest, RunCoverage)
 
 ## Phase 6: Build Tools Implementation
 
-- [ ] T050 [US1] Create `src/tools/build/install-dependencies.ts` implementing build.install_dependencies tool
-- [ ] T051 [P] [US1] Create `src/tools/build/compile.ts` implementing build.compile tool
-- [ ] T052 [P] [US1] Create `src/tools/build/lint.ts` implementing build.lint tool
-- [ ] T053 [P] [US1] Create `src/tools/build/format.ts` implementing build.format tool
+- [x] T050 [US1] Create `src/tools/build/install-dependencies.ts` implementing build.install_dependencies tool
+- [x] T051 [P] [US1] Create `src/tools/build/compile.ts` implementing build.compile tool
+- [x] T052 [P] [US1] Create `src/tools/build/lint.ts` implementing build.lint tool
+- [x] T053 [P] [US1] Create `src/tools/build/format.ts` implementing build.format tool
 
 ## Phase 7: Test Tools Implementation
 
-- [ ] T060 [US1] Create `src/tools/test/run-unit.ts` implementing test.run_unit tool
-- [ ] T061 [P] [US1] Create `src/tools/test/run-integration.ts` implementing test.run_integration tool
-- [ ] T062 [P] [US1] Create `src/tools/test/run-e2e.ts` implementing test.run_e2e tool
-- [ ] T063 [P] [US1] Create `src/tools/test/run-coverage.ts` implementing test.run_coverage tool
+- [x] T060 [US1] Create `src/tools/test/run-unit.ts` implementing test.run_unit tool
+- [x] T061 [P] [US1] Create `src/tools/test/run-integration.ts` implementing test.run_integration tool
+- [x] T062 [P] [US1] Create `src/tools/test/run-e2e.ts` implementing test.run_e2e tool
+- [x] T063 [P] [US1] Create `src/tools/test/run-coverage.ts` implementing test.run_coverage tool
 
 ## Phase 8: Tool Registration
 
-- [ ] T070 Create `src/tools/index.ts` registering all 8 tools with tool factory pattern
+- [x] T070 Create `src/tools/index.ts` registering all 8 tools with tool factory pattern
 
 ## Phase 9: Plugin Entry Point
 
-- [ ] T080 Create `src/index.ts` as plugin entry point implementing AgencyPlugin interface with initialize function
+- [x] T080 Create `src/index.ts` as plugin entry point implementing AgencyPlugin interface with initialize function
 
 ## Phase 10: Test Fixtures
 
-- [ ] T090 Create `tests/fixtures/npm-project/` with package.json and package-lock.json
-- [ ] T091 [P] Create `tests/fixtures/yarn-project/` with package.json and yarn.lock
-- [ ] T092 [P] Create `tests/fixtures/pnpm-project/` with package.json and pnpm-lock.yaml
-- [ ] T093 [P] Create `tests/fixtures/monorepo/` with workspace setup for testing workspace parameter
+- [x] T090 Create `tests/fixtures/npm-project/` with package.json and package-lock.json
+- [x] T091 [P] Create `tests/fixtures/yarn-project/` with package.json and yarn.lock
+- [x] T092 [P] Create `tests/fixtures/pnpm-project/` with package.json and pnpm-lock.yaml
+- [x] T093 [P] Create `tests/fixtures/monorepo/` with workspace setup for testing workspace parameter
 
 ## Phase 11: Unit Tests
 
-- [ ] T100 [US1] Create `tests/pm/detect.test.ts` testing package manager detection from lockfiles
-- [ ] T101 [P] Create `tests/scripts/validate.test.ts` testing script validation logic
-- [ ] T102 [P] [US1] Create `tests/tools/build.test.ts` testing build tools (install, compile, lint, format)
-- [ ] T103 [P] [US1] Create `tests/tools/test.test.ts` testing test tools (unit, integration, e2e, coverage)
+- [x] T100 [US1] Create `tests/pm/detect.test.ts` testing package manager detection from lockfiles
+- [x] T101 [P] Create `tests/scripts/validate.test.ts` testing script validation logic
+- [x] T102 [P] [US1] Create `tests/tools/build.test.ts` testing build tools (install, compile, lint, format)
+- [x] T103 [P] [US1] Create `tests/tools/test.test.ts` testing test tools (unit, integration, e2e, coverage)
 
 ## Dependencies & Execution Order
 

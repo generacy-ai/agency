@@ -1,0 +1,12 @@
+{
+  "name": "monorepo-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "echo 'Building all...'",
+    "test": "echo 'Testing all...'",
+    "lint": "echo 'Linting all...'",
+    "format": "echo 'Formatting all...'"
+  }
+}

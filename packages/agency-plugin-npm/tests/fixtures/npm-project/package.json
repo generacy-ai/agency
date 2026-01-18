@@ -1,0 +1,10 @@
+{
+  "name": "npm-fixture",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "echo 'Building...'",
+    "test": "echo 'Testing...'",
+    "lint": "echo 'Linting...'",
+    "format": "echo 'Formatting...'"
+  }
+}
