@@ -1,0 +1,8 @@
+{
+  "name": "@monorepo/pkg-a",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "echo 'Building pkg-a...'",
+    "test": "echo 'Testing pkg-a...'"
+  }
+}

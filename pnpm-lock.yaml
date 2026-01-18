@@ -136,7 +136,13 @@ importers:
       '@generacy-ai/agency':
         specifier: workspace:*
         version: link:../agency
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
     devDependencies:
+      '@types/node':
+        specifier: ^20.17.0
+        version: 20.19.30
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
