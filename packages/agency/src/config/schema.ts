@@ -7,6 +7,18 @@
 
 import { z } from 'zod';
 
+// Re-export mode schemas and types from modes module
+// These are available for consumers who want to use the full mode configuration
+export {
+  ModeDefinitionSchema,
+  ModeConfigSchema,
+  type ModeDefinition,
+  type ModeConfig,
+  type ResolvedMode,
+  type ModeDefinitionInput,
+  type ModeConfigInput,
+} from '../modes/types.js';
+
 /**
  * Schema for plugin-specific configuration
  */

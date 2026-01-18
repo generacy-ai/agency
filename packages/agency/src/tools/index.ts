@@ -1,4 +1,4 @@
-export { ToolRegistry } from './registry.js';
+export { ToolRegistry, type ModePatterns } from './registry.js';
 export {
   toMcpTool,
   type AgencyTool,

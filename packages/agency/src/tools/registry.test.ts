@@ -185,6 +185,71 @@ describe('ToolRegistry', () => {
 
       expect(tools).toEqual([]);
     });
+
+    it('should support excludes patterns (excludes win over includes)', () => {
+      registry.setModePatterns({
+        restricted: {
+          includes: ['source_control.*'],
+          excludes: ['source_control.push'],
+        },
+      });
+
+      registry.register(createTestTool({ name: 'source_control.commit' }));
+      registry.register(createTestTool({ name: 'source_control.push' }));
+      registry.register(createTestTool({ name: 'source_control.status' }));
+
+      const tools = registry.getToolsForMode('restricted');
+
+      expect(tools).toHaveLength(2);
+      expect(tools.map((t) => t.name).sort()).toEqual([
+        'source_control.commit',
+        'source_control.status',
+      ]);
+    });
+
+    it('should support negation patterns in includes', () => {
+      registry.setModePatterns({
+        testing: {
+          includes: ['test.*', '!test.integration_*'],
+          excludes: [],
+        },
+      });
+
+      registry.register(createTestTool({ name: 'test.unit_run' }));
+      registry.register(createTestTool({ name: 'test.integration_db' }));
+      registry.register(createTestTool({ name: 'test.snapshot' }));
+
+      const tools = registry.getToolsForMode('testing');
+
+      expect(tools).toHaveLength(2);
+      expect(tools.map((t) => t.name).sort()).toEqual([
+        'test.snapshot',
+        'test.unit_run',
+      ]);
+    });
+
+    it('should work with mixed legacy and new format in setModePatterns', () => {
+      registry.setModePatterns({
+        legacy: ['build.*'],
+        modern: {
+          includes: ['source_control.*'],
+          excludes: ['source_control.force_push'],
+        },
+      });
+
+      registry.register(createTestTool({ name: 'build.compile' }));
+      registry.register(createTestTool({ name: 'source_control.commit' }));
+      registry.register(createTestTool({ name: 'source_control.force_push' }));
+
+      const legacyTools = registry.getToolsForMode('legacy');
+      const modernTools = registry.getToolsForMode('modern');
+
+      expect(legacyTools).toHaveLength(1);
+      expect(legacyTools[0]?.name).toBe('build.compile');
+
+      expect(modernTools).toHaveLength(1);
+      expect(modernTools[0]?.name).toBe('source_control.commit');
+    });
   });
 
   describe('getMcpToolsForMode', () => {

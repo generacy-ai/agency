@@ -12,7 +12,9 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
@@ -20,12 +22,17 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
-  "keywords": ["mcp", "agent", "generacy"],
+  "keywords": [
+    "mcp",
+    "agent",
+    "generacy"
+  ],
   "author": "Generacy AI",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.5.0",
     "minimatch": "^10.0.0",
+    "yaml": "^2.8.2",
     "zod": "^3.24.1"
   },
   "devDependencies": {
