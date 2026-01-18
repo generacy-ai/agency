@@ -66,6 +66,23 @@ interface ChannelDefinition {
 - Messages follow standard envelope format
 - Support for request/response with correlation IDs
 
+### Behavioral Decisions (from Clarifications)
+
+#### Error Handling
+When a subscriber handler throws an error, the router completes delivery to all subscribers, then reports collected errors to the sender. This aligns with the "graceful degradation" principle - one failing subscriber shouldn't break delivery to others.
+
+#### Multiple Subscriber Delivery
+Messages are delivered to all subscribers concurrently (parallel dispatch). This is the standard pub/sub pattern and aligns with the architectural value of parallel execution.
+
+#### Version Compatibility
+Semver-compatible matching is used: same major version, >= minor.patch. The `minVersion` parameter in `findChannel()` follows this rule. Minor/patch versions are additive and compatible; major versions indicate breaking changes.
+
+#### Default sendAndWait Timeout
+The default timeout for `sendAndWait` when not specified is **30 seconds**. Callers can specify shorter timeouts when needed.
+
+#### Channel ID Conflicts
+When a plugin tries to register a channel with an ID that already exists, the router throws an error rejecting the registration. Channel definitions include an `owner` field indicating ownership semantics. Fail-fast makes conflicts explicit. Plugins needing to take over a channel should explicitly unregister first.
+
 ### Built-in Channels
 
 | Channel | Description |

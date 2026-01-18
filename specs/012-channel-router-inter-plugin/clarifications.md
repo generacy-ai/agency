@@ -12,7 +12,7 @@ Questions and answers to clarify the feature specification.
 - B: Stop delivery immediately, throw error to sender
 - C: Complete delivery to all, then report collected errors
 
-**Answer**: *Pending*
+**Answer**: **C** - Complete delivery to all, then report collected errors. Aligns with the "graceful degradation" principle - one failing subscriber shouldn't break delivery to others. Sender still gets visibility into failures for debugging.
 
 ### Q2: Multiple Subscriber Delivery
 **Context**: Channel pub/sub semantics affect how plugins coordinate.
@@ -22,7 +22,7 @@ Questions and answers to clarify the feature specification.
 - B: Deliver to all sequentially (ordered, one at a time)
 - C: Deliver to first subscriber only (first-wins)
 
-**Answer**: *Pending*
+**Answer**: **A** - Deliver to all concurrently (parallel dispatch). Standard pub/sub pattern. Parallel execution is a core architectural value (parallel agents, maximizing throughput). Sequential delivery would create artificial bottlenecks.
 
 ### Q3: Version Compatibility Semantics
 **Context**: The spec mentions version checking but doesn't define compatibility rules.
@@ -32,7 +32,7 @@ Questions and answers to clarify the feature specification.
 - B: Exact version match required
 - C: Any version >= specified minVersion
 
-**Answer**: *Pending*
+**Answer**: **A** - Semver-compatible (same major, >= minor.patch). The compatibility docs explicitly state "additive-only changes" as a rule. This maps directly to semver: minor/patch versions are additive and compatible, major versions indicate breaking changes.
 
 ### Q4: Default sendAndWait Timeout
 **Context**: The timeout parameter in sendAndWait is optional, so a sensible default is needed.
@@ -42,7 +42,7 @@ Questions and answers to clarify the feature specification.
 - B: 5 seconds (fast failure)
 - C: No timeout (wait indefinitely)
 
-**Answer**: *Pending*
+**Answer**: **A** - 30 seconds. No timeout (C) risks indefinite hangs. 5 seconds (B) is too aggressive for I/O operations. 30 seconds is a sensible default; callers can specify shorter timeouts when needed.
 
 ### Q5: Channel ID Conflicts
 **Context**: Multiple plugins might attempt to register channels with the same ID.
@@ -52,5 +52,5 @@ Questions and answers to clarify the feature specification.
 - B: Allow duplicates, both receive messages
 - C: Replace existing, last registration wins
 
-**Answer**: *Pending*
+**Answer**: **A** - Throw error, reject duplicate registration. Channel definitions include an `owner` field, indicating ownership semantics. Silent replacement or duplication would create confusing bugs. Fail-fast makes conflicts explicit. Plugins needing to take over a channel should explicitly unregister first.
 
