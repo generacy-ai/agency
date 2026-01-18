@@ -12,7 +12,7 @@ Questions and answers to clarify the feature specification.
 - B: Summarized error message with error category (network, permission, not found, etc.)
 - C: Minimal: exit code and first line of stderr only
 
-**Answer**: *Pending*
+**Answer**: **B** - Summarized error message with error category (network, permission, not found, etc.) [Inferred: User indicated completion without explicit answer. Using B as it follows terse output pattern best while maintaining usefulness for debugging.]
 
 ### Q2: Logs Streaming
 **Context**: Acceptance criteria mentions 'Logs streaming support' but MCP tools return single responses. Streaming requires special handling.
@@ -22,7 +22,7 @@ Questions and answers to clarify the feature specification.
 - B: Single snapshot of logs (no real streaming, just tail -N equivalent)
 - C: Server-Sent Events (SSE) if MCP SDK supports it
 
-**Answer**: *Pending*
+**Answer**: **B** - Single snapshot of logs (no real streaming, just tail -N equivalent) [Inferred: User indicated completion without explicit answer. Using B as MCP's request-response model makes true streaming complex, and snapshots cover most use cases.]
 
 ### Q3: Container Tracking
 **Context**: The spec mentions 'container lifecycle properly managed' which could mean different things for a stateless MCP tool.
@@ -32,7 +32,7 @@ Questions and answers to clarify the feature specification.
 - B: Light caching - cache container list for duration of compose session
 - C: Full tracking - maintain container registry with health/status
 
-**Answer**: *Pending*
+**Answer**: **A** - Stateless - each tool call queries Docker directly for current state [Inferred: User indicated completion without explicit answer. Using A as it's simplest and most reliable - Docker daemon is the source of truth.]
 
 ### Q4: Testing Approach
 **Context**: Docker testing can use mocks, Docker-in-Docker, or real Docker. Each has tradeoffs for CI and local dev.
@@ -42,7 +42,7 @@ Questions and answers to clarify the feature specification.
 - B: Spawn real Docker containers in tests (requires Docker in CI)
 - C: Both - unit tests with mocks, integration tests with real Docker
 
-**Answer**: *Pending*
+**Answer**: **C** - Both - unit tests with mocks, integration tests with real Docker [Inferred: User indicated completion without explicit answer. Using C as it provides best coverage - fast CI with mocks, thorough integration when Docker available.]
 
 ### Q5: Tool Parameters
 **Context**: Only docker_compose_up parameters are specified. The other 7 tools need parameter definitions for implementation.
@@ -52,5 +52,5 @@ Questions and answers to clarify the feature specification.
 - B: Use Docker CLI conventions - implementer defines based on docker --help
 - C: Minimal required params in spec, optional params follow Docker CLI
 
-**Answer**: *Pending*
+**Answer**: **C** - Minimal required params in spec, optional params follow Docker CLI [Inferred: User indicated completion without explicit answer. Using C as it balances documentation needs with flexibility, leveraging Docker's established conventions.]
 
