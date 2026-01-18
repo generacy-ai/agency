@@ -114,6 +114,12 @@ This repository uses spec-driven development:
 
 ## Recent Changes
 
+- 017-plugin-generacy-ai-agency: Added configuration
+
+- 016-plugin-generacy-ai-agency: Added configuration
+
+- 015-plugin-generacy-ai-agency: Added configuration
+
 - 014-plugin-generacy-ai-agency: Added configuration
 
 - 012-channel-router-inter-plugin: Added configuration
