@@ -13,7 +13,7 @@ Questions and answers to clarify the feature specification.
 - C: Delegate to channel router's persistence layer
 - D: Use agency core's telemetry storage provider
 
-**Answer**: *Pending*
+**Answer**: **C** - Delegate to channel router's persistence layer. The channel router (#12) is already a dependency. Persistence for undelivered messages is a channel concern, not a plugin concern. This keeps the humancy plugin focused on request semantics rather than storage mechanics.
 
 ### Q2: Request Review Tool Behavior
 **Context**: The `humancy.request_review` tool is listed but no example implementation or parameter schema is provided. Understanding its behavior is needed for implementation.
@@ -24,7 +24,7 @@ Questions and answers to clarify the feature specification.
 - C: Accept artifact, return freeform review comments
 - D: Accept work summary, return continuation decision
 
-**Answer**: *Pending*
+**Answer**: **A** - Accept artifact path/content, return approval status (approved/rejected). The terse output pattern emphasizes "minimal success, detailed failure." A simple approved/rejected/changes-requested status is agent-ergonomic. If the human has feedback, they can reject with comments that become the detailed response.
 
 ### Q3: Connection Mode Detection
 **Context**: The spec lists three connection modes (Direct, Via Generacy, Offline) but doesn't explain how the plugin determines which mode to use.
@@ -35,7 +35,7 @@ Questions and answers to clarify the feature specification.
 - C: Environment-based (detect from runtime environment)
 - D: Hybrid (config preference with automatic fallback)
 
-**Answer**: *Pending*
+**Answer**: **D** - Hybrid (config preference with automatic fallback). The adoption path shows progressive levels (Agency only → +Humancy → +Generacy). Users at different levels have different setups. Hybrid means: Level 1 users (no Humancy) automatically get Offline mode, Level 2 users (local Humancy) auto-detect Direct mode, Level 3+ users can override if needed.
 
 ### Q4: Timeout Behavior
 **Context**: The spec mentions timeout handling but doesn't specify what should happen when a request times out, especially for blocking requests.
@@ -46,7 +46,7 @@ Questions and answers to clarify the feature specification.
 - C: Automatically escalate urgency and retry
 - D: Queue for later and return 'pending' status
 
-**Answer**: *Pending*
+**Answer**: **A** - Return error result, let agent decide how to proceed. The Generacy philosophy puts agents as primary workers with autonomy. When a blocking request times out, the agent should decide whether to retry, make a default choice, fail the task, or work on something else. Return an error with clear timeout indication.
 
 ### Q5: Notify Tool Semantics
 **Context**: The `humancy.notify` tool is described as 'non-blocking' but it's unclear if delivery confirmation is expected or if it's fire-and-forget.
@@ -57,5 +57,5 @@ Questions and answers to clarify the feature specification.
 - C: Configurable per-call (optional wait parameter)
 - D: Best-effort with async callback/event on failure
 
-**Answer**: *Pending*
+**Answer**: **A** - Fire-and-forget (return immediately, no confirmation). The spec explicitly says "non-blocking." Notifications are informational (`when_available` urgency). Fire-and-forget aligns with the purpose. If delivery failures need handling, that's a channel router concern.
 
