@@ -43,3 +43,18 @@ export { AgencyError, ErrorCodes, type ErrorCode } from './errors/index.js';
 
 // Telemetry - Tool call interception and event capture
 export * from './telemetry/index.js';
+
+// Output - Terse output pattern utilities
+export {
+  TerseOutput,
+  toMcpToolResult as terseToMcpToolResult,
+  formatError,
+  SUCCESS_MESSAGES,
+  getSuccessMessage,
+  Verbosity,
+  DEFAULT_TERSE_CONFIG,
+  type TerseToolResult,
+  type ExecResult,
+  type TerseOutputConfig,
+  type SuccessMessageKey,
+} from './output/index.js';

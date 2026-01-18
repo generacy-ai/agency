@@ -10,12 +10,12 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Create output directory structure at `packages/agency/src/output/`
-- [ ] T002 [P] Create `packages/agency/src/output/index.ts` with placeholder exports
+- [X] T001 Create output directory structure at `packages/agency/src/output/`
+- [X] T002 [P] Create `packages/agency/src/output/index.ts` with placeholder exports
 
 ## Phase 2: Core Types
 
-- [ ] T003 [US1] Implement types in `packages/agency/src/output/types.ts`:
+- [X] T003 [US1] Implement types in `packages/agency/src/output/types.ts`:
   - Define `TerseToolResult` interface
   - Define `ExecResult` interface
   - Define `TerseOutputConfig` interface
@@ -24,14 +24,14 @@
 
 ## Phase 3: Core Implementation
 
-- [ ] T004 [US1] Implement `formatError` function in `packages/agency/src/output/format-error.ts`:
+- [X] T004 [US1] Implement `formatError` function in `packages/agency/src/output/format-error.ts`:
   - Accept `Error | string` and optional `context: unknown`
   - Include error message
   - Include stack trace if Error object
   - JSON.stringify context with 2-space indent
   - Handle circular references with try/catch fallback
 
-- [ ] T005 [P] [US1] Implement success messages in `packages/agency/src/output/success-messages.ts`:
+- [X] T005 [P] [US1] Implement success messages in `packages/agency/src/output/success-messages.ts`:
   - Define `SUCCESS_MESSAGES` const object
   - Include git operations (commit, push, pull, checkout)
   - Include build operations (install, compile, clean)
@@ -40,7 +40,7 @@
   - Include generic 'completed' message
   - Export `SuccessMessageKey` type
 
-- [ ] T006 [US1] [US2] Implement `TerseOutput` class in `packages/agency/src/output/terse-output.ts`:
+- [X] T006 [US1] [US2] Implement `TerseOutput` class in `packages/agency/src/output/terse-output.ts`:
   - Static `success(message: string): TerseToolResult`
   - Static `failure(error: Error | string, context?: unknown): TerseToolResult`
   - Static `fromExec(result: ExecResult): TerseToolResult`
@@ -49,25 +49,25 @@
   - `successWithSummary(message: string, summary: string)` for NORMAL mode
   - Truncation support via `maxSuccessLength` config
 
-- [ ] T007 [US1] Implement `toMcpToolResult` converter in `packages/agency/src/output/terse-output.ts`:
+- [X] T007 [US1] Implement `toMcpToolResult` converter in `packages/agency/src/output/terse-output.ts`:
   - Convert `TerseToolResult` to MCP-compatible `ToolResult` format
   - Map `success: false` to `isError: true`
   - Wrap output in content array with text type
 
 ## Phase 4: Exports
 
-- [ ] T008 Update `packages/agency/src/output/index.ts` with all exports:
+- [X] T008 Update `packages/agency/src/output/index.ts` with all exports:
   - Export all types from types.ts
   - Export `TerseOutput` class
   - Export `formatError` function
   - Export `SUCCESS_MESSAGES` and `SuccessMessageKey`
   - Export `toMcpToolResult` function
 
-- [ ] T009 [P] Update `packages/agency/src/index.ts` to re-export output module
+- [X] T009 [P] Update `packages/agency/src/index.ts` to re-export output module
 
 ## Phase 5: Tests
 
-- [ ] T010 [US1] [US2] Write unit tests in `packages/agency/src/output/terse-output.test.ts`:
+- [X] T010 [US1] [US2] Write unit tests in `packages/agency/src/output/terse-output.test.ts`:
   - Test `TerseOutput.success()` returns correct structure
   - Test `TerseOutput.failure()` includes error message, stack trace, context
   - Test `TerseOutput.fromExec()` handles success (exitCode 0) and failure
