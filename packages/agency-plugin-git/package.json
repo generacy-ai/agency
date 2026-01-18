@@ -1,7 +1,7 @@
 {
   "name": "@generacy-ai/agency-plugin-git",
   "version": "0.0.0",
-  "description": "Git operations plugin for Agency",
+  "description": "Git operations plugin for Agency - source control tools for agents",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -16,18 +16,49 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
-  "keywords": ["mcp", "agent", "generacy", "git"],
+  "keywords": ["mcp", "agent", "generacy", "git", "source-control"],
   "author": "Generacy AI",
   "license": "MIT",
   "peerDependencies": {
     "@generacy-ai/agency": "workspace:*"
   },
+  "peerDependenciesMeta": {
+    "@generacy-ai/agency-plugin-humancy": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@types/node": "^20.17.12",
     "typescript": "^5.7.3",
     "vitest": "^3.0.4"
+  },
+  "agency": {
+    "manifest": {
+      "id": "@generacy-ai/agency-plugin-git",
+      "name": "Git Plugin",
+      "description": "Source control operations for agents",
+      "tools": [
+        "source_control.status",
+        "source_control.diff",
+        "source_control.log",
+        "source_control.commit",
+        "source_control.push",
+        "source_control.pull",
+        "source_control.checkout",
+        "source_control.branch",
+        "source_control.stash",
+        "source_control.blame",
+        "source_control.merge",
+        "source_control.rebase"
+      ],
+      "modes": ["research", "coding", "review"],
+      "dependencies": [],
+      "critical": false
+    }
   }
 }
