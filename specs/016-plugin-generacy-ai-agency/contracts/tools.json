@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Firebase Plugin Tools",
+  "description": "Tool definitions for @generacy-ai/agency-plugin-firebase",
+  "tools": [
+    {
+      "name": "run.firebase_emulators_start",
+      "description": "Start Firebase emulators for local development",
+      "namespace": "run",
+      "outputPattern": "terse",
+      "modes": ["debug", "coding"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "only": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["auth", "firestore", "database", "functions", "hosting", "pubsub", "storage"]
+            },
+            "description": "Specific emulators to start"
+          },
+          "import": {
+            "type": "string",
+            "description": "Path to import emulator data from"
+          },
+          "export": {
+            "type": "string",
+            "description": "Path to export emulator data on exit"
+          },
+          "project": {
+            "type": "string",
+            "description": "Override Firebase project ID"
+          }
+        }
+      }
+    },
+    {
+      "name": "run.firebase_emulators_stop",
+      "description": "Stop running Firebase emulators",
+      "namespace": "run",
+      "outputPattern": "terse",
+      "modes": ["debug", "coding"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "force": {
+            "type": "boolean",
+            "description": "Force kill without graceful shutdown",
+            "default": false
+          }
+        }
+      }
+    },
+    {
+      "name": "run.firebase_emulators_status",
+      "description": "Check status of Firebase emulators (running/stopped, ports, URLs)",
+      "namespace": "run",
+      "outputPattern": "terse",
+      "modes": ["debug"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "run.firebase_deploy",
+      "description": "Deploy to Firebase (functions, hosting, rules, etc.)",
+      "namespace": "run",
+      "outputPattern": "terse",
+      "modes": ["debug"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "only": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["functions", "rules", "hosting", "storage", "firestore", "database"]
+            },
+            "description": "Specific targets to deploy"
+          },
+          "project": {
+            "type": "string",
+            "description": "Override Firebase project ID"
+          },
+          "message": {
+            "type": "string",
+            "description": "Deploy message/description"
+          }
+        }
+      }
+    },
+    {
+      "name": "run.firebase_functions_log",
+      "description": "View Firebase Functions logs",
+      "namespace": "run",
+      "outputPattern": "terse",
+      "modes": ["debug"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "only": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Specific function names to view logs for"
+          },
+          "lines": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100,
+            "description": "Number of log entries to return"
+          }
+        }
+      }
+    }
+  ]
+}
