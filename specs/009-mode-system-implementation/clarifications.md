@@ -13,7 +13,7 @@ Questions and answers to clarify the feature specification.
 - C: A special 'all' mode that enables all tools
 - D: No default - require explicit mode setting before tool use
 
-**Answer**: *Pending*
+**Answer**: B — `coding`. The architecture docs state agents are \"the primary workers\" doing development work. The adoption path shows Level 1 users will \"Use with Claude Code / Copilot / Cursor directly\" for regular development. `coding` is the most common use case and aligns with the \"agent ergonomics\" philosophy — agents should be productive immediately.
 
 ### Q2: Invalid Mode Error Handling
 **Context**: When setMode() is called with a mode name that doesn't exist in the configuration, the system needs defined behavior to prevent silent failures.
@@ -23,7 +23,7 @@ Questions and answers to clarify the feature specification.
 - B: Log a warning and keep the current mode
 - C: Log a warning and fall back to default mode
 
-**Answer**: *Pending*
+**Answer**: A — Throw an error immediately. The docs emphasize \"terse output pattern\" — minimal noise on success, detailed on failure. A typo in mode name should fail fast, not silently degrade. This is config-time, not runtime user input — misconfiguration should be caught early. Silent fallbacks hide bugs.
 
 ### Q3: Circular Extension Detection
 **Context**: Mode definitions can extend other modes. If A extends B, B extends C, and C extends A, this creates a circular dependency that could cause infinite loops.
@@ -32,7 +32,7 @@ Questions and answers to clarify the feature specification.
 - A: Validate at config load time and throw an error
 - B: Detect at runtime and stop inheritance chain at first repeat
 
-**Answer**: *Pending*
+**Answer**: A — Validate at config load time and throw an error. Config is loaded once; validation cost is negligible. Runtime detection means the error surfaces later, in a harder-to-debug context. Circular inheritance is always a user mistake — fail fast.
 
 ### Q4: Pattern Conflict Resolution
 **Context**: A tool like 'test.integration_api' could match both an includes pattern ('test.*') and an excludes pattern ('!test.integration_*'). The resolution order affects which tools are available.
@@ -42,7 +42,7 @@ Questions and answers to clarify the feature specification.
 - B: More specific pattern wins
 - C: Last pattern in the list wins
 
-**Answer**: *Pending*
+**Answer**: A — Excludes always win (safer default). Predictable and secure — users don't need to reason about pattern specificity or ordering. The architecture mentions modes like \"review\" which restrict tools — explicit restrictions should be reliable.
 
 ### Q5: Mode Configuration Source
 **Context**: ModeManager requires a ModeConfig object. Understanding where this configuration comes from affects the API design and integration points.
@@ -52,5 +52,5 @@ Questions and answers to clarify the feature specification.
 - B: Passed programmatically via API only
 - C: Both - file-based with API override capability
 
-**Answer**: *Pending*
+**Answer**: C — Both (file-based with API override capability). The architecture explicitly shows two onboarding paths: CLI-first (manually create config) and UI-first (Humancy extension creates config). The docs state \"Generacy can set mode before invoking agent\" — this requires API control. File-based allows version control; API override enables orchestration. Suggested standard location: `.agency/modes.yaml`
 
