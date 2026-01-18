@@ -114,6 +114,8 @@ This repository uses spec-driven development:
 
 - 012-channel-router-inter-plugin: Added configuration
 
+- 009-mode-system-implementation: Added configuration
+
 - 011-terse-output-pattern-utilities: Added configuration
 
 - 008-plugin-loader-lifecycle-management: Added configuration

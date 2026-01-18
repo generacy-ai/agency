@@ -2,11 +2,11 @@
  * Tool Registry for Agency
  *
  * Manages tool registration and provides mode-based filtering
- * using minimatch glob patterns.
+ * using minimatch glob patterns with include/exclude support.
  */
 
-import { minimatch } from 'minimatch';
 import { AgencyError, ErrorCodes } from '../errors/index.js';
+import { matchesTool } from '../modes/pattern-matcher.js';
 import type {
   AgencyTool,
   McpTool,
@@ -18,19 +18,66 @@ import { toMcpTool } from './types.js';
 import { validateToolName } from './validation.js';
 
 /**
+ * Mode patterns with includes and excludes
+ */
+export interface ModePatterns {
+  /** Tool patterns to include (glob syntax) */
+  includes: string[];
+  /** Tool patterns to exclude (always win over includes) */
+  excludes: string[];
+}
+
+/**
+ * Input type for setModePatterns - can be:
+ * - Legacy string[] (treated as includes only)
+ * - ModePatterns with explicit includes/excludes
+ * - ModeDefinition-like object (has includes, optional excludes)
+ */
+type ModePatternInput = string[] | ModePatterns | { includes: string[]; excludes?: string[] };
+
+/**
+ * Type guard to check if input has includes property
+ */
+function hasIncludesProperty(value: ModePatternInput): value is { includes: string[]; excludes?: string[] } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    'includes' in value &&
+    Array.isArray(value.includes)
+  );
+}
+
+/**
  * Tool registry for managing and filtering tools
  */
 export class ToolRegistry {
   private readonly tools = new Map<string, AgencyTool>();
-  private readonly modePatterns = new Map<string, string[]>();
+  private readonly modePatterns = new Map<string, ModePatterns>();
 
   /**
    * Set the mode patterns for filtering
+   *
+   * Accepts multiple formats for backwards compatibility:
+   * - Legacy: `Record<string, string[]>` - patterns treated as includes only
+   * - ModePatterns: `Record<string, ModePatterns>` - includes and excludes
+   * - ModeDefinition-like: Objects with `includes` and optional `excludes`
+   *
+   * @param modes - Mode configuration with patterns
    */
-  setModePatterns(modes: Record<string, string[]>): void {
+  setModePatterns(modes: Record<string, ModePatternInput>): void {
     this.modePatterns.clear();
     for (const [mode, patterns] of Object.entries(modes)) {
-      this.modePatterns.set(mode, patterns);
+      if (Array.isArray(patterns)) {
+        // Legacy format: string[] treated as includes only
+        this.modePatterns.set(mode, { includes: patterns, excludes: [] });
+      } else if (hasIncludesProperty(patterns)) {
+        // ModeDefinition-like or ModePatterns format
+        this.modePatterns.set(mode, {
+          includes: patterns.includes,
+          excludes: patterns.excludes ?? [],
+        });
+      }
     }
   }
 
@@ -96,13 +143,15 @@ export class ToolRegistry {
    *
    * Tools match if:
    * 1. Tool has explicit modes array and includes this mode, OR
-   * 2. Tool name matches any pattern in the mode's pattern list
+   * 2. Tool name matches include patterns and does NOT match exclude patterns
+   *
+   * Important: Excludes ALWAYS win over includes.
    */
   getToolsForMode(mode: string): AgencyTool[] {
-    const patterns = this.modePatterns.get(mode);
+    const modePattern = this.modePatterns.get(mode);
 
     // If mode not found, return empty list
-    if (!patterns) {
+    if (!modePattern) {
       return [];
     }
 
@@ -112,8 +161,8 @@ export class ToolRegistry {
         return tool.modes.includes(mode);
       }
 
-      // Fall back to pattern matching
-      return patterns.some((pattern) => this.matchPattern(tool.name, pattern));
+      // Use matchesTool for pattern matching (handles includes and excludes)
+      return matchesTool(tool.name, modePattern.includes, modePattern.excludes);
     });
   }
 
@@ -122,18 +171,6 @@ export class ToolRegistry {
    */
   getMcpToolsForMode(mode: string): McpTool[] {
     return this.getToolsForMode(mode).map(toMcpTool);
-  }
-
-  /**
-   * Match a tool name against a glob pattern
-   *
-   * Special handling for namespace patterns:
-   * - "namespace.*" matches "namespace.action"
-   * - "*" matches everything
-   */
-  private matchPattern(toolName: string, pattern: string): boolean {
-    // Use minimatch for glob matching
-    return minimatch(toolName, pattern);
   }
 
   /**

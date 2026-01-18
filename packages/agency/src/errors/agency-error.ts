@@ -33,6 +33,10 @@ export const ErrorCodes = {
   MODE_NOT_FOUND: 'MODE_NOT_FOUND',
   /** Mode already registered */
   MODE_ALREADY_REGISTERED: 'MODE_ALREADY_REGISTERED',
+  /** Circular extension detected in mode inheritance */
+  MODE_CIRCULAR_INHERITANCE: 'MODE_CIRCULAR_INHERITANCE',
+  /** Mode configuration validation failed */
+  MODE_CONFIG_INVALID: 'MODE_CONFIG_INVALID',
   /** Server not running */
   SERVER_NOT_RUNNING: 'SERVER_NOT_RUNNING',
   /** Server already running */
