@@ -4,9 +4,7 @@
 
 ## Summary
 
-## Summary
-
-Implement the npm plugin for Node.js project build and test operations.
+Implement the npm plugin for Node.js project build and test operations. This plugin provides MCP tools for common npm-ecosystem operations including dependency management, building, linting, formatting, and testing.
 
 ## Parent Epic
 
@@ -17,6 +15,10 @@ Implement the npm plugin for Node.js project build and test operations.
 - #6 - Agency Core Package
 
 ## Tools
+
+All tools accept the following common parameters:
+- `cwd?: string` - Working directory for command execution (defaults to current directory)
+- `workspace?: string` - Target specific workspace/package in monorepos
 
 | Tool | Description |
 |------|-------------|
@@ -29,51 +31,26 @@ Implement the npm plugin for Node.js project build and test operations.
 | `test.run_e2e` | Run end-to-end tests |
 | `test.run_coverage` | Run tests with coverage |
 
-## Example Implementation
-
-```typescript
-// build.install_dependencies
-async function installDependencies(params: {
-  production?: boolean;
-  frozen?: boolean;
-}): Promise<ToolResult> {
-  const pm = await detectPackageManager(); // npm, yarn, pnpm
-  const args = getInstallArgs(pm, params);
-  
-  const result = await exec(pm, args);
-  return TerseOutput.fromExec(result, 'Dependencies installed.');
-}
-
-// test.run_unit
-async function runUnitTests(params: {
-  pattern?: string;
-  watch?: boolean;
-  coverage?: boolean;
-}): Promise<ToolResult> {
-  const pm = await detectPackageManager();
-  const testScript = await detectTestScript(); // jest, vitest, mocha
-  
-  const args = ['test'];
-  if (params.pattern) args.push('--', params.pattern);
-  if (params.watch) args.push('--watch');
-  if (params.coverage) args.push('--coverage');
-  
-  const result = await exec(pm, ['run', ...args]);
-  
-  if (result.exitCode === 0) {
-    return TerseOutput.success('All tests passed.');
-  } else {
-    // Include full test output on failure
-    return TerseOutput.failure(result);
-  }
-}
-```
-
 ## Package Manager Detection
 
-- Detect npm, yarn, pnpm from lockfiles
-- Use appropriate commands for each
-- Support workspaces/monorepos
+- Detect npm, yarn, pnpm from lockfiles (package-lock.json, yarn.lock, pnpm-lock.yaml)
+- Bun support deferred to future version
+- Use appropriate commands for each package manager
+- Support workspaces/monorepos via `cwd` and `workspace` parameters
+
+## Script Name Handling
+
+- Scripts must match configured names exactly
+- If configured script not found in package.json, fail with clear error message
+- No auto-detection of variant names (explicit > implicit)
+
+## Output Pattern
+
+Following the terse output pattern:
+- **Success**: Minimal confirmation message (e.g., "Dependencies installed.")
+- **Failure**: Detailed output including:
+  - Full command output/error messages
+  - Recovery suggestions where applicable (e.g., "Try running `npm install` first")
 
 ## Mode Affiliations
 
@@ -100,42 +77,61 @@ async function runUnitTests(params: {
 ## Acceptance Criteria
 
 - [ ] All 8 tools implemented
-- [ ] Package manager auto-detection works
-- [ ] Terse output pattern followed
-- [ ] Test failure output includes details
-- [ ] Monorepo support
+- [ ] Package manager auto-detection works (npm, yarn, pnpm)
+- [ ] All tools accept optional `cwd` parameter
+- [ ] All tools accept optional `workspace` parameter for monorepo targeting
+- [ ] Terse output pattern followed (minimal success, detailed failure)
+- [ ] Recovery suggestions included in failure output where applicable
+- [ ] Clear error when configured script not found in package.json
+- [ ] Test failure output includes full details
 
 ## User Stories
 
-### US1: [Primary User Story]
+### US1: Build and Test Workflow
 
-**As a** [user type],
-**I want** [capability],
-**So that** [benefit].
+**As an** AI coding agent,
+**I want** to run build and test commands in any npm-ecosystem project,
+**So that** I can verify code changes work correctly.
 
 **Acceptance Criteria**:
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
+- [ ] Can detect package manager automatically
+- [ ] Can run install, build, lint, and test commands
+- [ ] Receives clear success/failure feedback
+
+### US2: Monorepo Support
+
+**As an** AI coding agent working in a monorepo,
+**I want** to target specific packages for operations,
+**So that** I can work efficiently without affecting unrelated packages.
+
+**Acceptance Criteria**:
+- [ ] Can specify working directory via `cwd`
+- [ ] Can target workspace by name via `workspace`
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | [Description] | P1 | |
-
-## Success Criteria
-
-| ID | Metric | Target | Measurement |
-|----|--------|--------|-------------|
-| SC-001 | [Metric] | [Target] | [How to measure] |
+| FR-001 | Detect package manager from lockfile | P1 | npm, yarn, pnpm |
+| FR-002 | Execute commands via detected package manager | P1 | |
+| FR-003 | Support optional cwd parameter | P1 | For monorepo |
+| FR-004 | Support optional workspace parameter | P1 | For monorepo |
+| FR-005 | Return terse success messages | P1 | |
+| FR-006 | Return detailed failure messages | P1 | With recovery hints |
+| FR-007 | Fail clearly on missing scripts | P1 | No auto-detection |
 
 ## Assumptions
 
-- [Assumption 1]
+- Projects have valid package.json files
+- Package managers are installed in the execution environment
+- Scripts referenced in configuration exist in package.json
 
 ## Out of Scope
 
-- [Exclusion 1]
+- Bun package manager support (future version)
+- Auto-detection of script name variants
+- Package publishing tools
+- Version management tools
 
 ---
 
