@@ -7,8 +7,9 @@
 
 import { AgencyError, ErrorCodes } from '../errors/index.js';
 import type { ChannelDefinition, MessageEnvelope } from '../plugins/types.js';
-import type { MessageHandler, Unsubscribe, ChannelState } from './types.js';
+import type { MessageHandler, Unsubscribe, ChannelState, PendingResponse, DeliveryResult } from './types.js';
 import { createMessageEnvelope } from './types.js';
+import { isVersionCompatible } from './version.js';
 
 /**
  * Channel manager error codes (re-export for convenience)
@@ -16,7 +17,48 @@ import { createMessageEnvelope } from './types.js';
 export const ChannelErrorCodes = {
   CHANNEL_NOT_FOUND: ErrorCodes.CHANNEL_NOT_FOUND,
   CHANNEL_ALREADY_EXISTS: ErrorCodes.CHANNEL_ALREADY_REGISTERED,
+  CHANNEL_VERSION_MISMATCH: ErrorCodes.CHANNEL_VERSION_MISMATCH,
+  CHANNEL_TIMEOUT: ErrorCodes.CHANNEL_TIMEOUT,
+  CHANNEL_DELIVERY_FAILED: ErrorCodes.CHANNEL_DELIVERY_FAILED,
 } as const;
+
+/**
+ * Built-in channel definitions
+ */
+export const BUILT_IN_CHANNELS: ChannelDefinition[] = [
+  {
+    name: 'agency.lifecycle',
+    version: '1.0.0',
+    description: 'Plugin lifecycle events (start, stop, reload)',
+    owner: '@generacy-ai/agency',
+    messageTypes: ['start', 'stop', 'reload'],
+  },
+  {
+    name: 'agency.mode',
+    version: '1.0.0',
+    description: 'Mode change notifications',
+    owner: '@generacy-ai/agency',
+    messageTypes: ['change'],
+  },
+  {
+    name: 'agency.telemetry',
+    version: '1.0.0',
+    description: 'Telemetry event aggregation',
+    owner: '@generacy-ai/agency',
+    messageTypes: ['event', 'metric'],
+  },
+  {
+    name: 'agency.humancy',
+    version: '1.0.0',
+    description: 'Bridge to Humancy component',
+    owner: '@generacy-ai/agency',
+    messageTypes: ['*'],
+    pairedWith: {
+      component: 'humancy',
+      channelId: 'humancy.agency',
+    },
+  },
+];
 
 /**
  * Channel Manager for inter-plugin communication
@@ -46,6 +88,7 @@ export class ChannelManager {
       definition: channel,
       subscribers: new Set(),
       messageCount: 0,
+      pendingResponses: new Map(),
     });
   }
 
@@ -89,6 +132,70 @@ export class ChannelManager {
   }
 
   /**
+   * Get all registered channel definitions
+   *
+   * @returns Array of channel definitions
+   */
+  getChannels(): ChannelDefinition[] {
+    return [...this.channels.values()].map((state) => state.definition);
+  }
+
+  /**
+   * Find a channel by ID with optional version filtering
+   *
+   * @param id Channel ID to find
+   * @param minVersion Minimum required version (optional)
+   * @returns Channel definition if found and version compatible, undefined otherwise
+   */
+  findChannel(id: string, minVersion?: string): ChannelDefinition | undefined {
+    const state = this.channels.get(id);
+    if (!state) {
+      return undefined;
+    }
+
+    if (minVersion) {
+      const channelVersion = state.definition.version;
+      if (!channelVersion || !isVersionCompatible(channelVersion, minVersion)) {
+        return undefined;
+      }
+    }
+
+    return state.definition;
+  }
+
+  /**
+   * Find channels paired with the given channel
+   *
+   * @param channel Channel to find pairs for
+   * @returns Array of paired channel definitions
+   */
+  findPair(channel: ChannelDefinition): ChannelDefinition[] {
+    const pairs: ChannelDefinition[] = [];
+
+    for (const state of this.channels.values()) {
+      const def = state.definition;
+      // Check if this channel is paired with the input channel
+      if (
+        def.pairedWith &&
+        def.pairedWith.channelId === channel.name
+      ) {
+        pairs.push(def);
+      }
+      // Also check if input channel is paired with this channel
+      if (
+        channel.pairedWith &&
+        channel.pairedWith.channelId === def.name
+      ) {
+        if (!pairs.includes(def)) {
+          pairs.push(def);
+        }
+      }
+    }
+
+    return pairs;
+  }
+
+  /**
    * Subscribe to a channel
    *
    * @param channel Channel name
@@ -114,13 +221,14 @@ export class ChannelManager {
   }
 
   /**
-   * Send a message to a channel
+   * Send a message to a channel with async parallel delivery
    *
    * @param channel Channel name
    * @param message Message envelope to send
-   * @throws AgencyError if channel doesn't exist
+   * @returns Delivery result with success count and any errors
+   * @throws AgencyError if channel doesn't exist or all handlers fail
    */
-  send<T>(channel: string, message: MessageEnvelope<T>): void {
+  async send<T>(channel: string, message: MessageEnvelope<T>): Promise<DeliveryResult> {
     const state = this.channels.get(channel);
     if (!state) {
       throw new AgencyError(
@@ -132,15 +240,64 @@ export class ChannelManager {
 
     state.messageCount++;
 
-    // Deliver to all subscribers
-    for (const handler of state.subscribers) {
-      try {
-        handler(message);
-      } catch {
-        // Log but don't propagate subscriber errors
-        // In a real implementation, we might want to track failed deliveries
+    // Check for response to pending sendAndWait
+    // Only intercept if this is a RESPONSE (different message ID than the original request)
+    if (message.correlationId) {
+      const pending = state.pendingResponses.get(message.correlationId);
+      // Only resolve if this is a response (different message ID than the original request)
+      if (pending && message.id !== pending.requestMessageId) {
+        clearTimeout(pending.timeoutId);
+        state.pendingResponses.delete(message.correlationId);
+        pending.resolve(message as MessageEnvelope);
+        // Response messages are not delivered to subscribers to avoid infinite loops
+        return { successCount: 0, errors: [] };
       }
     }
+
+    // Parallel delivery to all subscribers
+    const errors: Array<{ handler: string; error: Error }> = [];
+    let successCount = 0;
+
+    const results = await Promise.allSettled(
+      [...state.subscribers].map(async (handler, index) => {
+        try {
+          await handler(message);
+          return { success: true, index };
+        } catch (error) {
+          return { success: false, index, error: error as Error };
+        }
+      })
+    );
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        if (result.value.success) {
+          successCount++;
+        } else {
+          errors.push({
+            handler: `handler_${result.value.index}`,
+            error: result.value.error!,
+          });
+        }
+      } else {
+        // Promise.allSettled should not reject, but handle just in case
+        errors.push({
+          handler: 'unknown',
+          error: result.reason as Error,
+        });
+      }
+    }
+
+    // If all handlers failed and there were handlers, throw an aggregate error
+    if (errors.length > 0 && successCount === 0 && state.subscribers.size > 0) {
+      throw new AgencyError(
+        ErrorCodes.CHANNEL_DELIVERY_FAILED,
+        `All message handlers failed for channel: ${channel}`,
+        { channelName: channel, errorCount: errors.length }
+      );
+    }
+
+    return { successCount, errors };
   }
 
   /**
@@ -150,20 +307,97 @@ export class ChannelManager {
    * @param sender Sender plugin ID
    * @param payload Message payload
    * @param correlationId Optional correlation ID
+   * @returns Delivery result with success count and any errors
    */
-  sendMessage<T>(
+  async sendMessage<T>(
     channel: string,
     sender: string,
     payload: T,
     correlationId?: string
-  ): void {
+  ): Promise<DeliveryResult> {
     const envelope = createMessageEnvelope({
       channel,
       sender,
       payload,
       correlationId,
     });
-    this.send(channel, envelope);
+    return this.send(channel, envelope);
+  }
+
+  /**
+   * Default timeout for sendAndWait in milliseconds
+   */
+  private static readonly DEFAULT_TIMEOUT = 30000;
+
+  /**
+   * Send a message and wait for a response with matching correlation ID
+   *
+   * @param channelId Channel to send to
+   * @param message Message envelope to send
+   * @param timeout Timeout in milliseconds (default: 30000)
+   * @returns Promise that resolves with the response message
+   * @throws AgencyError if channel doesn't exist or timeout occurs
+   */
+  async sendAndWait<T, R = unknown>(
+    channelId: string,
+    message: MessageEnvelope<T>,
+    timeout: number = ChannelManager.DEFAULT_TIMEOUT
+  ): Promise<MessageEnvelope<R>> {
+    const state = this.channels.get(channelId);
+    if (!state) {
+      throw new AgencyError(
+        ErrorCodes.CHANNEL_NOT_FOUND,
+        `Channel not found: ${channelId}`,
+        { channelName: channelId }
+      );
+    }
+
+    // Ensure message has a correlation ID
+    const correlationId = message.correlationId || crypto.randomUUID();
+    const messageWithCorrelation = {
+      ...message,
+      correlationId,
+    };
+
+    // Set up response promise and pending entry
+    let resolveFn: (message: MessageEnvelope<R>) => void;
+    let rejectFn: (error: Error) => void;
+
+    const responsePromise = new Promise<MessageEnvelope<R>>((resolve, reject) => {
+      resolveFn = resolve;
+      rejectFn = reject;
+    });
+
+    const timeoutId = setTimeout(() => {
+      state.pendingResponses.delete(correlationId);
+      rejectFn(
+        new AgencyError(
+          ErrorCodes.CHANNEL_TIMEOUT,
+          `Timeout waiting for response on channel: ${channelId}`,
+          { channelName: channelId, correlationId, timeoutMs: timeout }
+        )
+      );
+    }, timeout);
+
+    const pending: PendingResponse = {
+      resolve: resolveFn! as (message: MessageEnvelope) => void,
+      reject: rejectFn!,
+      timeoutId,
+      requestMessageId: messageWithCorrelation.id,
+    };
+
+    // Register the pending response BEFORE sending
+    // The send() method will check for this correlation ID only for RESPONSE messages
+    // (those with a different message ID than the original request)
+    state.pendingResponses.set(correlationId, pending);
+
+    // Send the message - this triggers handlers which may respond
+    // The handler response will use the same correlationId, which will be
+    // caught by the pending response check in send()
+    await this.send(channelId, messageWithCorrelation);
+
+    // Wait for response
+    return responsePromise;
   }
 
   /**
@@ -220,6 +454,20 @@ export class ChannelManager {
    */
   clear(): void {
     this.channels.clear();
+  }
+
+  /**
+   * Register all built-in Agency channels
+   *
+   * This should be called during Agency initialization to set up
+   * the standard channels for lifecycle, mode, telemetry, and bridging.
+   */
+  registerBuiltInChannels(): void {
+    for (const channel of BUILT_IN_CHANNELS) {
+      if (!this.channels.has(channel.name)) {
+        this.registerChannel(channel);
+      }
+    }
   }
 
   /**

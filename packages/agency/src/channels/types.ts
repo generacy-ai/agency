@@ -20,6 +20,37 @@ export type MessageHandler<T = unknown> = (message: MessageEnvelope<T>) => void;
 export type Unsubscribe = () => void;
 
 /**
+ * Pending response handler for sendAndWait
+ */
+export interface PendingResponse {
+  /** Promise resolve function */
+  resolve: (message: MessageEnvelope) => void;
+
+  /** Promise reject function */
+  reject: (error: Error) => void;
+
+  /** Timeout timer reference */
+  timeoutId: ReturnType<typeof setTimeout>;
+
+  /** Original request message ID (to distinguish request from response) */
+  requestMessageId: string;
+}
+
+/**
+ * Result of message delivery, capturing any errors
+ */
+export interface DeliveryResult {
+  /** Number of successful deliveries */
+  successCount: number;
+
+  /** Errors from failed handlers */
+  errors: Array<{
+    handler: string;
+    error: Error;
+  }>;
+}
+
+/**
  * Channel state tracking
  */
 export interface ChannelState {
@@ -31,6 +62,9 @@ export interface ChannelState {
 
   /** Message count for metrics */
   messageCount: number;
+
+  /** Pending response handlers for sendAndWait */
+  pendingResponses: Map<string, PendingResponse>;
 }
 
 /**

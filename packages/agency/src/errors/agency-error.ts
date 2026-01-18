@@ -43,6 +43,12 @@ export const ErrorCodes = {
   CHANNEL_ALREADY_REGISTERED: 'CHANNEL_ALREADY_REGISTERED',
   /** Cannot send to channel without subscribers */
   CHANNEL_NO_SUBSCRIBERS: 'CHANNEL_NO_SUBSCRIBERS',
+  /** Channel version is not compatible */
+  CHANNEL_VERSION_MISMATCH: 'CHANNEL_VERSION_MISMATCH',
+  /** sendAndWait timed out waiting for response */
+  CHANNEL_TIMEOUT: 'CHANNEL_TIMEOUT',
+  /** One or more message handlers failed during delivery */
+  CHANNEL_DELIVERY_FAILED: 'CHANNEL_DELIVERY_FAILED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

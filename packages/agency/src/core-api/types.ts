@@ -69,8 +69,12 @@ export interface CoreAPIDependencies {
   /** Channel manager for channel operations */
   channelManager: {
     registerChannel(channel: ChannelDefinition): void;
-    send<T>(channel: string, message: MessageEnvelope<T>): void;
+    send<T>(channel: string, message: MessageEnvelope<T>): Promise<{ successCount: number; errors: Array<{ handler: string; error: Error }> }>;
+    sendAndWait<T, R = unknown>(channelId: string, message: MessageEnvelope<T>, timeout?: number): Promise<MessageEnvelope<R>>;
     subscribe<T>(channel: string, handler: MessageHandler<T>): Unsubscribe;
+    getChannels(): ChannelDefinition[];
+    findChannel(id: string, minVersion?: string): ChannelDefinition | undefined;
+    findPair(channel: ChannelDefinition): ChannelDefinition[];
   };
 
   /** Configuration access */

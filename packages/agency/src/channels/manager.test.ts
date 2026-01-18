@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { ChannelManager, ChannelErrorCodes } from './manager.js';
-import { AgencyError } from '../errors/index.js';
+import { ChannelManager, ChannelErrorCodes, BUILT_IN_CHANNELS } from './manager.js';
+import { AgencyError, ErrorCodes } from '../errors/index.js';
 import { createMessageEnvelope } from './types.js';
 import type { ChannelDefinition } from '../plugins/types.js';
 
@@ -11,11 +11,16 @@ describe('ChannelManager', () => {
     manager = new ChannelManager();
   });
 
-  function createChannel(name: string, owner: string = '@test/plugin'): ChannelDefinition {
+  function createChannel(
+    name: string,
+    owner: string = '@test/plugin',
+    options?: Partial<ChannelDefinition>
+  ): ChannelDefinition {
     return {
       name,
       description: `Test channel: ${name}`,
       owner,
+      ...options,
     };
   }
 
@@ -100,6 +105,97 @@ describe('ChannelManager', () => {
     });
   });
 
+  describe('getChannels', () => {
+    it('returns all channel definitions', () => {
+      const channelA = createChannel('channel-a', '@owner/a');
+      const channelB = createChannel('channel-b', '@owner/b');
+      manager.registerChannel(channelA);
+      manager.registerChannel(channelB);
+
+      const channels = manager.getChannels();
+
+      expect(channels).toHaveLength(2);
+      expect(channels).toContainEqual(channelA);
+      expect(channels).toContainEqual(channelB);
+    });
+
+    it('returns empty array when no channels', () => {
+      const channels = manager.getChannels();
+      expect(channels).toEqual([]);
+    });
+  });
+
+  describe('findChannel', () => {
+    it('returns channel by ID', () => {
+      const channel = createChannel('events', '@test/plugin', { version: '1.0.0' });
+      manager.registerChannel(channel);
+
+      const result = manager.findChannel('events');
+
+      expect(result).toEqual(channel);
+    });
+
+    it('returns undefined for non-existent channel', () => {
+      const result = manager.findChannel('nonexistent');
+      expect(result).toBeUndefined();
+    });
+
+    it('returns channel when version is compatible', () => {
+      const channel = createChannel('events', '@test/plugin', { version: '1.2.0' });
+      manager.registerChannel(channel);
+
+      const result = manager.findChannel('events', '1.0.0');
+
+      expect(result).toEqual(channel);
+    });
+
+    it('returns undefined when version is not compatible', () => {
+      const channel = createChannel('events', '@test/plugin', { version: '1.0.0' });
+      manager.registerChannel(channel);
+
+      const result = manager.findChannel('events', '2.0.0');
+
+      expect(result).toBeUndefined();
+    });
+
+    it('returns undefined when channel has no version and version is required', () => {
+      const channel = createChannel('events');
+      manager.registerChannel(channel);
+
+      const result = manager.findChannel('events', '1.0.0');
+
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('findPair', () => {
+    it('finds channels paired with the given channel', () => {
+      const humancyChannel = createChannel('humancy.agency', '@humancy', {
+        version: '1.0.0',
+        pairedWith: { component: 'agency', channelId: 'agency.humancy' },
+      });
+      const agencyChannel = createChannel('agency.humancy', '@generacy-ai/agency', {
+        version: '1.0.0',
+        pairedWith: { component: 'humancy', channelId: 'humancy.agency' },
+      });
+      manager.registerChannel(humancyChannel);
+      manager.registerChannel(agencyChannel);
+
+      const pairs = manager.findPair(agencyChannel);
+
+      expect(pairs).toContainEqual(humancyChannel);
+    });
+
+    it('returns empty array when no pairs exist', () => {
+      const channel = createChannel('standalone');
+      manager.registerChannel(channel);
+
+      const pairs = manager.findPair(channel);
+
+      expect(pairs).toEqual([]);
+    });
+  });
+
   describe('subscribe', () => {
     it('adds subscriber to channel', () => {
       manager.registerChannel(createChannel('events'));
@@ -141,8 +237,62 @@ describe('ChannelManager', () => {
     });
   });
 
+  describe('unsubscribe cleanup (AC5)', () => {
+    it('removes handler from subscribers on unsubscribe', () => {
+      manager.registerChannel(createChannel('events'));
+      const handler = vi.fn();
+
+      const unsubscribe = manager.subscribe('events', handler);
+      expect(manager.getSubscriberCount('events')).toBe(1);
+
+      unsubscribe();
+      expect(manager.getSubscriberCount('events')).toBe(0);
+    });
+
+    it('does not affect other subscribers when one unsubscribes', async () => {
+      manager.registerChannel(createChannel('events'));
+      const handler1 = vi.fn();
+      const handler2 = vi.fn();
+
+      const unsubscribe1 = manager.subscribe('events', handler1);
+      manager.subscribe('events', handler2);
+
+      unsubscribe1();
+
+      const message = createMessageEnvelope({
+        channel: 'events',
+        sender: '@test/plugin',
+        payload: {},
+      });
+      await manager.send('events', message);
+
+      expect(handler1).not.toHaveBeenCalled();
+      expect(handler2).toHaveBeenCalledWith(message);
+    });
+
+    it('allows re-subscription after unsubscribe', async () => {
+      manager.registerChannel(createChannel('events'));
+      const handler = vi.fn();
+
+      const unsubscribe = manager.subscribe('events', handler);
+      unsubscribe();
+
+      manager.subscribe('events', handler);
+      expect(manager.getSubscriberCount('events')).toBe(1);
+
+      const message = createMessageEnvelope({
+        channel: 'events',
+        sender: '@test/plugin',
+        payload: {},
+      });
+      await manager.send('events', message);
+
+      expect(handler).toHaveBeenCalledWith(message);
+    });
+  });
+
   describe('send', () => {
-    it('delivers message to all subscribers', () => {
+    it('delivers message to all subscribers', async () => {
       manager.registerChannel(createChannel('events'));
       const handler1 = vi.fn();
       const handler2 = vi.fn();
@@ -154,13 +304,13 @@ describe('ChannelManager', () => {
         sender: '@test/plugin',
         payload: { type: 'test' },
       });
-      manager.send('events', message);
+      await manager.send('events', message);
 
       expect(handler1).toHaveBeenCalledWith(message);
       expect(handler2).toHaveBeenCalledWith(message);
     });
 
-    it('increments message count', () => {
+    it('increments message count', async () => {
       manager.registerChannel(createChannel('events'));
       const handler = vi.fn();
       manager.subscribe('events', handler);
@@ -171,24 +321,24 @@ describe('ChannelManager', () => {
         payload: {},
       });
 
-      manager.send('events', message);
-      manager.send('events', message);
-      manager.send('events', message);
+      await manager.send('events', message);
+      await manager.send('events', message);
+      await manager.send('events', message);
 
       expect(manager.getMessageCount('events')).toBe(3);
     });
 
-    it('throws for non-existent channel', () => {
+    it('throws for non-existent channel', async () => {
       const message = createMessageEnvelope({
         channel: 'nonexistent',
         sender: '@test/plugin',
         payload: {},
       });
 
-      expect(() => manager.send('nonexistent', message)).toThrow(AgencyError);
+      await expect(manager.send('nonexistent', message)).rejects.toThrow(AgencyError);
     });
 
-    it('continues delivery even if handler throws', () => {
+    it('continues delivery even if handler throws', async () => {
       manager.registerChannel(createChannel('events'));
       const errorHandler = vi.fn().mockImplementation(() => {
         throw new Error('Handler error');
@@ -204,21 +354,59 @@ describe('ChannelManager', () => {
         payload: {},
       });
 
-      // Should not throw
-      manager.send('events', message);
+      // Should not throw because one handler succeeded
+      const result = await manager.send('events', message);
 
       expect(errorHandler).toHaveBeenCalled();
       expect(successHandler).toHaveBeenCalled();
+      expect(result.successCount).toBe(1);
+      expect(result.errors).toHaveLength(1);
+    });
+
+    it('returns delivery result with success count', async () => {
+      manager.registerChannel(createChannel('events'));
+      const handler1 = vi.fn();
+      const handler2 = vi.fn();
+      manager.subscribe('events', handler1);
+      manager.subscribe('events', handler2);
+
+      const message = createMessageEnvelope({
+        channel: 'events',
+        sender: '@test/plugin',
+        payload: {},
+      });
+
+      const result = await manager.send('events', message);
+
+      expect(result.successCount).toBe(2);
+      expect(result.errors).toEqual([]);
+    });
+
+    it('throws when all handlers fail', async () => {
+      manager.registerChannel(createChannel('events'));
+      const errorHandler1 = vi.fn().mockRejectedValue(new Error('Error 1'));
+      const errorHandler2 = vi.fn().mockRejectedValue(new Error('Error 2'));
+
+      manager.subscribe('events', errorHandler1);
+      manager.subscribe('events', errorHandler2);
+
+      const message = createMessageEnvelope({
+        channel: 'events',
+        sender: '@test/plugin',
+        payload: {},
+      });
+
+      await expect(manager.send('events', message)).rejects.toThrow(AgencyError);
     });
   });
 
   describe('sendMessage', () => {
-    it('creates and sends message envelope', () => {
+    it('creates and sends message envelope', async () => {
       manager.registerChannel(createChannel('events'));
       const handler = vi.fn();
       manager.subscribe('events', handler);
 
-      manager.sendMessage('events', '@test/sender', { data: 'test' });
+      await manager.sendMessage('events', '@test/sender', { data: 'test' });
 
       expect(handler).toHaveBeenCalledTimes(1);
       const envelope = handler.mock.calls[0][0];
@@ -229,16 +417,137 @@ describe('ChannelManager', () => {
       expect(envelope.timestamp).toBeInstanceOf(Date);
     });
 
-    it('includes correlation ID when provided', () => {
+    it('includes correlation ID when provided', async () => {
       manager.registerChannel(createChannel('events'));
       const handler = vi.fn();
       manager.subscribe('events', handler);
 
-      manager.sendMessage('events', '@test/sender', {}, 'corr-123');
+      await manager.sendMessage('events', '@test/sender', {}, 'corr-123');
 
       const envelope = handler.mock.calls[0][0];
       expect(envelope.correlationId).toBe('corr-123');
     });
+  });
+
+  describe('sendAndWait', () => {
+    it('sends message and waits for response', async () => {
+      manager.registerChannel(createChannel('events'));
+
+      // Handler that responds to the message
+      manager.subscribe('events', async (msg) => {
+        if (msg.correlationId) {
+          const response = createMessageEnvelope({
+            channel: 'events',
+            sender: '@test/responder',
+            payload: { response: 'ok' },
+            correlationId: msg.correlationId,
+          });
+          await manager.send('events', response);
+        }
+      });
+
+      const request = createMessageEnvelope({
+        channel: 'events',
+        sender: '@test/requester',
+        payload: { request: 'data' },
+      });
+
+      const response = await manager.sendAndWait('events', request);
+
+      expect(response.payload).toEqual({ response: 'ok' });
+      expect(response.correlationId).toBeDefined();
+    });
+
+    it('times out if no response received', async () => {
+      manager.registerChannel(createChannel('events'));
+      manager.subscribe('events', vi.fn()); // Handler that doesn't respond
+
+      const request = createMessageEnvelope({
+        channel: 'events',
+        sender: '@test/requester',
+        payload: {},
+      });
+
+      await expect(manager.sendAndWait('events', request, 50)).rejects.toThrow(AgencyError);
+    }, 1000);
+
+    it('throws timeout error with correct code', async () => {
+      manager.registerChannel(createChannel('events'));
+      manager.subscribe('events', vi.fn());
+
+      const request = createMessageEnvelope({
+        channel: 'events',
+        sender: '@test/requester',
+        payload: {},
+      });
+
+      try {
+        await manager.sendAndWait('events', request, 50);
+        expect.fail('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(AgencyError);
+        expect((error as AgencyError).code).toBe(ErrorCodes.CHANNEL_TIMEOUT);
+      }
+    }, 1000);
+
+    it('generates correlation ID if not provided', async () => {
+      manager.registerChannel(createChannel('events'));
+
+      let receivedCorrelationId: string | undefined;
+      manager.subscribe('events', async (msg) => {
+        receivedCorrelationId = msg.correlationId;
+        if (msg.correlationId) {
+          const response = createMessageEnvelope({
+            channel: 'events',
+            sender: '@test/responder',
+            payload: {},
+            correlationId: msg.correlationId,
+          });
+          await manager.send('events', response);
+        }
+      });
+
+      const request = createMessageEnvelope({
+        channel: 'events',
+        sender: '@test/requester',
+        payload: {},
+        // No correlationId provided
+      });
+
+      await manager.sendAndWait('events', request);
+
+      expect(receivedCorrelationId).toBeDefined();
+      expect(receivedCorrelationId?.length).toBeGreaterThan(0);
+    });
+
+    it('cleans up pending response on timeout', async () => {
+      manager.registerChannel(createChannel('events'));
+      manager.subscribe('events', vi.fn());
+
+      const request = createMessageEnvelope({
+        channel: 'events',
+        sender: '@test/requester',
+        payload: {},
+        correlationId: 'test-corr-id',
+      });
+
+      try {
+        await manager.sendAndWait('events', request, 50);
+      } catch {
+        // Expected timeout
+      }
+
+      // Late response should not cause issues
+      const lateResponse = createMessageEnvelope({
+        channel: 'events',
+        sender: '@test/responder',
+        payload: {},
+        correlationId: 'test-corr-id',
+      });
+
+      // Should complete without error
+      await manager.send('events', lateResponse);
+    }, 1000);
   });
 
   describe('getChannelsByOwner', () => {
@@ -286,8 +595,41 @@ describe('ChannelManager', () => {
     });
   });
 
+  describe('registerBuiltInChannels', () => {
+    it('registers all built-in channels', () => {
+      manager.registerBuiltInChannels();
+
+      expect(manager.hasChannel('agency.lifecycle')).toBe(true);
+      expect(manager.hasChannel('agency.mode')).toBe(true);
+      expect(manager.hasChannel('agency.telemetry')).toBe(true);
+      expect(manager.hasChannel('agency.humancy')).toBe(true);
+    });
+
+    it('does not throw if called multiple times', () => {
+      manager.registerBuiltInChannels();
+      expect(() => manager.registerBuiltInChannels()).not.toThrow();
+    });
+
+    it('built-in channels have correct version', () => {
+      manager.registerBuiltInChannels();
+
+      const lifecycle = manager.getChannel('agency.lifecycle');
+      expect(lifecycle?.version).toBe('1.0.0');
+    });
+
+    it('agency.humancy has pairedWith configuration', () => {
+      manager.registerBuiltInChannels();
+
+      const humancy = manager.getChannel('agency.humancy');
+      expect(humancy?.pairedWith).toEqual({
+        component: 'humancy',
+        channelId: 'humancy.agency',
+      });
+    });
+  });
+
   describe('getStats', () => {
-    it('returns aggregate statistics', () => {
+    it('returns aggregate statistics', async () => {
       manager.registerChannel(createChannel('channel-a', '@owner/a'));
       manager.registerChannel(createChannel('channel-b', '@owner/b'));
 
@@ -297,9 +639,9 @@ describe('ChannelManager', () => {
       manager.subscribe('channel-a', handler2);
       manager.subscribe('channel-b', handler1);
 
-      manager.sendMessage('channel-a', '@test/sender', {});
-      manager.sendMessage('channel-a', '@test/sender', {});
-      manager.sendMessage('channel-b', '@test/sender', {});
+      await manager.sendMessage('channel-a', '@test/sender', {});
+      await manager.sendMessage('channel-a', '@test/sender', {});
+      await manager.sendMessage('channel-b', '@test/sender', {});
 
       const stats = manager.getStats();
 
@@ -337,5 +679,28 @@ describe('createMessageEnvelope', () => {
     });
 
     expect(envelope.correlationId).toBe('request-123');
+  });
+});
+
+describe('BUILT_IN_CHANNELS', () => {
+  it('exports all expected built-in channels', () => {
+    const names = BUILT_IN_CHANNELS.map((c) => c.name);
+
+    expect(names).toContain('agency.lifecycle');
+    expect(names).toContain('agency.mode');
+    expect(names).toContain('agency.telemetry');
+    expect(names).toContain('agency.humancy');
+  });
+
+  it('all built-in channels have version 1.0.0', () => {
+    for (const channel of BUILT_IN_CHANNELS) {
+      expect(channel.version).toBe('1.0.0');
+    }
+  });
+
+  it('all built-in channels are owned by @generacy-ai/agency', () => {
+    for (const channel of BUILT_IN_CHANNELS) {
+      expect(channel.owner).toBe('@generacy-ai/agency');
+    }
   });
 });
