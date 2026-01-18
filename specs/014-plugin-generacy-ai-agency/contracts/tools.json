@@ -1,0 +1,248 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Git Plugin Tools",
+  "description": "Tool definitions for @generacy-ai/agency-plugin-git",
+  "definitions": {
+    "BaseParams": {
+      "type": "object",
+      "properties": {
+        "cwd": {
+          "type": "string",
+          "description": "Working directory. Defaults to process.cwd()"
+        }
+      }
+    },
+    "FileChange": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["added", "modified", "deleted", "renamed", "copied"]
+        },
+        "oldPath": { "type": "string" }
+      },
+      "required": ["path", "status"]
+    }
+  },
+  "tools": {
+    "source_control.status": {
+      "name": "source_control.status",
+      "description": "Get working tree status",
+      "namespace": "source_control",
+      "modes": ["research", "coding", "review"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cwd": { "type": "string", "description": "Working directory" }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "branch": { "type": "string" },
+          "upstream": { "type": "string" },
+          "ahead": { "type": "integer" },
+          "behind": { "type": "integer" },
+          "staged": { "type": "array", "items": { "$ref": "#/definitions/FileChange" } },
+          "unstaged": { "type": "array", "items": { "$ref": "#/definitions/FileChange" } },
+          "untracked": { "type": "array", "items": { "type": "string" } },
+          "conflicts": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "source_control.diff": {
+      "name": "source_control.diff",
+      "description": "Show changes (staged, unstaged, or between refs)",
+      "namespace": "source_control",
+      "modes": ["research", "coding", "review"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cwd": { "type": "string" },
+          "staged": { "type": "boolean", "description": "Show staged changes only" },
+          "ref1": { "type": "string", "description": "First ref for comparison" },
+          "ref2": { "type": "string", "description": "Second ref for comparison" },
+          "files": { "type": "array", "items": { "type": "string" } },
+          "format": { "type": "string", "enum": ["summary", "stat", "full"] }
+        }
+      }
+    },
+    "source_control.log": {
+      "name": "source_control.log",
+      "description": "View commit history",
+      "namespace": "source_control",
+      "modes": ["research", "coding", "review"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cwd": { "type": "string" },
+          "limit": { "type": "integer", "default": 10 },
+          "ref": { "type": "string", "description": "Starting ref" },
+          "file": { "type": "string", "description": "File to filter by" },
+          "author": { "type": "string" },
+          "since": { "type": "string", "format": "date-time" },
+          "until": { "type": "string", "format": "date-time" }
+        }
+      }
+    },
+    "source_control.commit": {
+      "name": "source_control.commit",
+      "description": "Create a commit",
+      "namespace": "source_control",
+      "modes": ["coding"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cwd": { "type": "string" },
+          "message": { "type": "string", "description": "Commit message" },
+          "files": { "type": "array", "items": { "type": "string" } },
+          "amend": { "type": "boolean" },
+          "allowEmpty": { "type": "boolean" }
+        },
+        "required": ["message"]
+      }
+    },
+    "source_control.push": {
+      "name": "source_control.push",
+      "description": "Push to remote",
+      "namespace": "source_control",
+      "modes": ["coding"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cwd": { "type": "string" },
+          "remote": { "type": "string", "default": "origin" },
+          "branch": { "type": "string" },
+          "force": { "type": "boolean", "description": "Force push (requires approval)" },
+          "setUpstream": { "type": "boolean" },
+          "tags": { "type": "boolean" }
+        }
+      }
+    },
+    "source_control.pull": {
+      "name": "source_control.pull",
+      "description": "Pull from remote",
+      "namespace": "source_control",
+      "modes": ["coding"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cwd": { "type": "string" },
+          "remote": { "type": "string", "default": "origin" },
+          "branch": { "type": "string" },
+          "rebase": { "type": "boolean" },
+          "autostash": { "type": "boolean" }
+        }
+      }
+    },
+    "source_control.checkout": {
+      "name": "source_control.checkout",
+      "description": "Switch branches or restore files",
+      "namespace": "source_control",
+      "modes": ["coding"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cwd": { "type": "string" },
+          "ref": { "type": "string", "description": "Branch, commit, or file path" },
+          "create": { "type": "boolean", "description": "Create new branch" },
+          "force": { "type": "boolean" },
+          "files": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["ref"]
+      }
+    },
+    "source_control.branch": {
+      "name": "source_control.branch",
+      "description": "Create, list, or delete branches",
+      "namespace": "source_control",
+      "modes": ["coding"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cwd": { "type": "string" },
+          "action": { "type": "string", "enum": ["list", "create", "delete", "rename"] },
+          "name": { "type": "string" },
+          "newName": { "type": "string", "description": "New name for rename" },
+          "force": { "type": "boolean" },
+          "all": { "type": "boolean", "description": "Include remote branches" }
+        },
+        "required": ["action"]
+      }
+    },
+    "source_control.stash": {
+      "name": "source_control.stash",
+      "description": "Stash/unstash changes",
+      "namespace": "source_control",
+      "modes": ["coding"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cwd": { "type": "string" },
+          "action": { "type": "string", "enum": ["push", "pop", "apply", "drop", "list", "show"] },
+          "message": { "type": "string", "description": "Stash message" },
+          "index": { "type": "integer", "default": 0 },
+          "includeUntracked": { "type": "boolean" }
+        },
+        "required": ["action"]
+      }
+    },
+    "source_control.blame": {
+      "name": "source_control.blame",
+      "description": "Show line-by-line authorship",
+      "namespace": "source_control",
+      "modes": ["research", "coding", "review"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cwd": { "type": "string" },
+          "file": { "type": "string", "description": "File to blame" },
+          "lines": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "[start, end] line range"
+          },
+          "rev": { "type": "string", "description": "Revision to blame from" }
+        },
+        "required": ["file"]
+      }
+    },
+    "source_control.merge": {
+      "name": "source_control.merge",
+      "description": "Merge branches",
+      "namespace": "source_control",
+      "modes": ["coding"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cwd": { "type": "string" },
+          "branch": { "type": "string", "description": "Branch to merge" },
+          "noCommit": { "type": "boolean" },
+          "strategy": { "type": "string", "enum": ["ours", "theirs", "recursive"] },
+          "squash": { "type": "boolean" }
+        },
+        "required": ["branch"]
+      }
+    },
+    "source_control.rebase": {
+      "name": "source_control.rebase",
+      "description": "Rebase current branch",
+      "namespace": "source_control",
+      "modes": ["coding"],
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cwd": { "type": "string" },
+          "onto": { "type": "string", "description": "Branch or commit to rebase onto" },
+          "abort": { "type": "boolean" },
+          "continue": { "type": "boolean" },
+          "skip": { "type": "boolean" }
+        },
+        "required": ["onto"]
+      }
+    }
+  }
+}
