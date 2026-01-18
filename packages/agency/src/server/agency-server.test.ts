@@ -186,3 +186,132 @@ describe('AgencyServer lifecycle', () => {
     expect(server.isRunning()).toBe(false);
   });
 });
+
+describe('AgencyServer plugin integration', () => {
+  let server: AgencyServer;
+
+  beforeEach(async () => {
+    server = await AgencyServer.create({ config: testConfig });
+  });
+
+  afterEach(async () => {
+    if (server.isRunning()) {
+      await server.stop();
+    }
+  });
+
+  describe('ChannelManager integration', () => {
+    it('should expose channel manager', () => {
+      const channelManager = server.getChannelManager();
+      expect(channelManager).toBeDefined();
+    });
+
+    it('should allow channel registration', () => {
+      const channelManager = server.getChannelManager();
+
+      channelManager.registerChannel({
+        name: 'test-channel',
+        description: 'Test channel',
+        owner: 'test',
+      });
+
+      expect(channelManager.hasChannel('test-channel')).toBe(true);
+    });
+  });
+
+  describe('ModeManager integration', () => {
+    it('should expose mode manager', () => {
+      const modeManager = server.getModeManager();
+      expect(modeManager).toBeDefined();
+    });
+
+    it('should support mode change subscriptions', () => {
+      const modeManager = server.getModeManager();
+      const callback = vi.fn();
+
+      const unsubscribe = modeManager.onModeChange(callback);
+      server.setMode('dev');
+
+      expect(callback).toHaveBeenCalledWith('dev');
+      unsubscribe();
+    });
+  });
+
+  describe('PluginLoader integration', () => {
+    it('should expose plugin loader', () => {
+      const pluginLoader = server.getPluginLoader();
+      expect(pluginLoader).toBeDefined();
+    });
+
+    it('should notify plugins of mode changes', async () => {
+      const onModeChange = vi.fn();
+      const plugin = createTestPlugin({
+        onModeChange,
+      });
+
+      await server.loadPlugin(plugin);
+      server.setMode('dev');
+
+      expect(onModeChange).toHaveBeenCalledWith('dev');
+    });
+  });
+
+  describe('enhanced plugin support', () => {
+    it('should load enhanced plugins with manifest', async () => {
+      const initialize = vi.fn();
+      const enhancedPlugin = {
+        manifest: {
+          id: '@test/enhanced-plugin',
+          name: 'Enhanced Plugin',
+          version: '1.0.0',
+          description: 'Test enhanced plugin',
+          author: 'Test',
+          license: 'MIT',
+        },
+        initialize,
+        shutdown: vi.fn(),
+      };
+
+      await server.loadPlugin(enhancedPlugin);
+
+      expect(initialize).toHaveBeenCalled();
+    });
+
+    it('should shutdown enhanced plugins on server stop', async () => {
+      const shutdown = vi.fn();
+      const enhancedPlugin = {
+        manifest: {
+          id: '@test/shutdown-plugin',
+          name: 'Shutdown Plugin',
+          version: '1.0.0',
+          description: 'Test shutdown',
+          author: 'Test',
+          license: 'MIT',
+        },
+        initialize: vi.fn(),
+        shutdown,
+      };
+
+      await server.loadPlugin(enhancedPlugin);
+
+      // Mock running state and stop
+      // @ts-expect-error - accessing private property for testing
+      server['state'] = 'running';
+      await server.stop();
+
+      expect(shutdown).toHaveBeenCalled();
+    });
+  });
+
+  describe('autoLoadPlugins option', () => {
+    it('should accept autoLoadPlugins option', async () => {
+      const serverWithAutoLoad = await AgencyServer.create({
+        config: testConfig,
+        autoLoadPlugins: true,
+      });
+
+      // Should not throw
+      expect(serverWithAutoLoad.getConfig()).toBeDefined();
+    });
+  });
+});
