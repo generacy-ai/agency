@@ -6,6 +6,12 @@
  * - Mode-based tool filtering
  * - Multi-source configuration loading
  * - Graceful lifecycle management
+ *
+ * Enhanced to support:
+ * - CoreAPI for plugin initialization
+ * - ChannelManager for inter-plugin communication
+ * - Plugin discovery and automatic loading
+ * - Mode change notifications to plugins
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -20,8 +26,11 @@ import {
 import { ConfigLoader, type AgencyConfig } from '../config/index.js';
 import { AgencyError, ErrorCodes } from '../errors/index.js';
 import { ModeManager } from '../modes/index.js';
-import { PluginLoader, type AgencyPlugin } from '../plugins/index.js';
+import { PluginLoader, type AgencyPlugin, type LegacyAgencyPlugin, type PluginLoadOptions } from '../plugins/index.js';
 import { ToolRegistry, type AgencyTool } from '../tools/index.js';
+import { ChannelManager } from '../channels/index.js';
+import { CoreAPIFactory } from '../core-api/index.js';
+import type { TelemetryEvent } from '../plugins/types.js';
 
 /**
  * Server state
@@ -37,6 +46,9 @@ export interface AgencyServerOptions {
 
   /** Project root for config loading (defaults to cwd) */
   projectRoot?: string;
+
+  /** Whether to auto-discover and load plugins on start */
+  autoLoadPlugins?: boolean;
 }
 
 /**
@@ -46,26 +58,61 @@ export interface AgencyServerOptions {
  * - Mode-based tool filtering
  * - Plugin system for extensibility
  * - Multi-source configuration
+ * - Inter-plugin communication via channels
+ * - CoreAPI for plugin initialization
  */
 export class AgencyServer {
   private readonly config: AgencyConfig;
+  private readonly projectRoot: string;
   private readonly registry: ToolRegistry;
   private readonly modeManager: ModeManager;
   private readonly pluginLoader: PluginLoader;
+  private readonly channelManager: ChannelManager;
+  private readonly coreAPIFactory: CoreAPIFactory;
+  private readonly autoLoadPlugins: boolean;
 
   private server: Server | null = null;
   private transport: StdioServerTransport | null = null;
   private state: ServerState = 'stopped';
+  private modeChangeUnsubscribe?: () => void;
 
-  private constructor(config: AgencyConfig) {
+  private constructor(config: AgencyConfig, options: AgencyServerOptions = {}) {
     this.config = config;
+    this.projectRoot = options.projectRoot ?? process.cwd();
+    this.autoLoadPlugins = options.autoLoadPlugins ?? false;
 
     // Initialize components
     this.registry = new ToolRegistry();
     this.registry.setModePatterns(config.modes);
 
     this.modeManager = new ModeManager(config.modes, config.defaultMode);
-    this.pluginLoader = new PluginLoader(this.registry);
+    this.channelManager = new ChannelManager();
+
+    // Create CoreAPI factory with dependencies
+    this.coreAPIFactory = new CoreAPIFactory({
+      toolRegistry: this.registry,
+      modeManager: {
+        getMode: () => this.modeManager.getMode(),
+        registerMode: (mode: string) => this.modeManager.registerMode(mode),
+        onModeChange: (callback) => this.modeManager.onModeChange(callback),
+      },
+      channelManager: this.channelManager,
+      config: config as unknown as Record<string, unknown>,
+      recordEvent: (event: TelemetryEvent) => this.recordTelemetryEvent(event),
+    });
+
+    // Create plugin loader with enhanced dependencies
+    this.pluginLoader = new PluginLoader({
+      toolRegistry: this.registry,
+      coreAPIFactory: this.coreAPIFactory,
+      channelManager: this.channelManager,
+      modeManager: this.modeManager,
+    });
+
+    // Subscribe to mode changes to notify plugins
+    this.modeChangeUnsubscribe = this.modeManager.onModeChange((mode) => {
+      this.pluginLoader.notifyModeChange(mode);
+    });
   }
 
   /**
@@ -84,7 +131,7 @@ export class AgencyServer {
       config = await loader.load();
     }
 
-    return new AgencyServer(config);
+    return new AgencyServer(config, options);
   }
 
   /**
@@ -104,6 +151,11 @@ export class AgencyServer {
     this.state = 'starting';
 
     try {
+      // Auto-load plugins if enabled
+      if (this.autoLoadPlugins) {
+        await this.discoverAndLoadPlugins();
+      }
+
       // Create the MCP server
       this.server = new Server(
         {
@@ -144,8 +196,17 @@ export class AgencyServer {
     this.state = 'stopping';
 
     try {
+      // Unsubscribe from mode changes
+      if (this.modeChangeUnsubscribe) {
+        this.modeChangeUnsubscribe();
+        this.modeChangeUnsubscribe = undefined;
+      }
+
       // Shutdown all plugins
       await this.pluginLoader.shutdownAll();
+
+      // Clear channels
+      this.channelManager.clear();
 
       // Close the server
       if (this.server) {
@@ -157,6 +218,22 @@ export class AgencyServer {
     } finally {
       this.state = 'stopped';
     }
+  }
+
+  /**
+   * Discover and load plugins from configured sources
+   *
+   * @param options Optional load options to override config
+   * @returns Array of loaded plugin IDs
+   */
+  async discoverAndLoadPlugins(options?: Partial<PluginLoadOptions>): Promise<string[]> {
+    return this.pluginLoader.discoverAndLoad({
+      projectRoot: this.projectRoot,
+      pluginPaths: this.config.pluginPaths,
+      plugins: this.config.plugins,
+      pluginOptions: this.config.pluginOptions,
+      ...options,
+    });
   }
 
   /**
@@ -176,12 +253,12 @@ export class AgencyServer {
   /**
    * Load a plugin
    */
-  async loadPlugin(plugin: AgencyPlugin): Promise<void> {
+  async loadPlugin(plugin: AgencyPlugin | LegacyAgencyPlugin): Promise<void> {
     await this.pluginLoader.loadPlugin(plugin);
   }
 
   /**
-   * Unload a plugin by name
+   * Unload a plugin by name or ID
    */
   async unloadPlugin(name: string): Promise<boolean> {
     return this.pluginLoader.unloadPlugin(name);
@@ -189,6 +266,8 @@ export class AgencyServer {
 
   /**
    * Set the current mode
+   *
+   * Mode change is automatically broadcast to all plugins.
    */
   setMode(mode: string): void {
     this.modeManager.setMode(mode);
@@ -213,6 +292,38 @@ export class AgencyServer {
    */
   isRunning(): boolean {
     return this.state === 'running';
+  }
+
+  /**
+   * Get the channel manager for testing or advanced usage
+   */
+  getChannelManager(): ChannelManager {
+    return this.channelManager;
+  }
+
+  /**
+   * Get the mode manager for testing or advanced usage
+   */
+  getModeManager(): ModeManager {
+    return this.modeManager;
+  }
+
+  /**
+   * Get the plugin loader for testing or advanced usage
+   */
+  getPluginLoader(): PluginLoader {
+    return this.pluginLoader;
+  }
+
+  /**
+   * Record a telemetry event
+   *
+   * This is called by plugins via CoreAPI. Override or extend
+   * to integrate with telemetry providers.
+   */
+  private recordTelemetryEvent(event: TelemetryEvent): void {
+    // Base implementation does nothing
+    // Can be extended to integrate with TelemetryManager
   }
 
   /**
@@ -256,6 +367,9 @@ export class AgencyServer {
             { toolName: name, mode }
           );
         }
+
+        // Notify plugins of tool call
+        this.pluginLoader.notifyToolCall(name, args);
 
         try {
           // Execute the tool

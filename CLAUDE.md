@@ -112,6 +112,8 @@ This repository uses spec-driven development:
 
 - 011-terse-output-pattern-utilities: Added configuration
 
+- 008-plugin-loader-lifecycle-management: Added configuration
+
 - 005-file-telemetry-storage-provider: Added configuration
 
 - 004-memory-telemetry-storage-provider: Added configuration
