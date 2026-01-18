@@ -99,11 +99,23 @@ export interface ChannelDefinition {
   /** Channel identifier */
   name: string;
 
+  /** Channel schema version (semver format) */
+  version?: string;
+
   /** Human-readable description */
   description: string;
 
   /** Plugin that owns/created this channel */
   owner: string;
+
+  /** Supported message type identifiers */
+  messageTypes?: string[];
+
+  /** Cross-component pairing configuration */
+  pairedWith?: {
+    component: 'agency' | 'humancy' | 'generacy';
+    channelId: string;
+  };
 
   /** Message schema for validation (optional) */
   messageSchema?: Record<string, unknown>;
