@@ -1,6 +1,6 @@
 # Agency Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-01-18
+Auto-generated from all feature plans. Last updated: 2026-01-19
 
 ## Project Overview
 
@@ -11,6 +11,8 @@ The `agency` repository contains agent-optimized MCP tooling:
 - **@generacy-ai/agency-plugin-***: Official plugins for agent capabilities
 
 ## Active Technologies
+
+
 
 
 
@@ -113,6 +115,8 @@ This repository uses spec-driven development:
 - **generacy**: Orchestration services + plugins - workflow engine
 
 ## Recent Changes
+
+- 036-enhance-humancy-plugin-three: Added configuration
 
 - 018-plugin-generacy-ai-agency: Added configuration
 
