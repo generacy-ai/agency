@@ -45,12 +45,14 @@ describe('HumancyPlugin', () => {
       expect(plugin.manifest.id).toBe('@generacy-ai/agency-plugin-humancy');
     });
 
-    it('should list all 4 tools', () => {
-      expect(plugin.manifest.tools).toHaveLength(4);
+    it('should list all 6 tools', () => {
+      expect(plugin.manifest.tools).toHaveLength(6);
       expect(plugin.manifest.tools).toContain('humancy.ask_question');
       expect(plugin.manifest.tools).toContain('humancy.request_review');
       expect(plugin.manifest.tools).toContain('humancy.request_decision');
       expect(plugin.manifest.tools).toContain('humancy.notify');
+      expect(plugin.manifest.tools).toContain('humancy.get_decision_outcome');
+      expect(plugin.manifest.tools).toContain('humancy.report_decision_result');
     });
 
     it('should list the humancy channel', () => {
@@ -63,15 +65,17 @@ describe('HumancyPlugin', () => {
   });
 
   describe('initialize', () => {
-    it('should register all 4 tools', async () => {
+    it('should register all 6 tools', async () => {
       await plugin.initialize(mockCoreAPI);
 
-      expect(registeredTools).toHaveLength(4);
+      expect(registeredTools).toHaveLength(6);
       expect(registeredTools.map((t) => t.name)).toEqual([
         'humancy.ask_question',
         'humancy.request_review',
         'humancy.request_decision',
         'humancy.notify',
+        'humancy.get_decision_outcome',
+        'humancy.report_decision_result',
       ]);
     });
 
@@ -96,11 +100,13 @@ describe('HumancyPlugin', () => {
       await plugin.initialize(mockCoreAPI);
       await plugin.shutdown();
 
-      expect(mockCoreAPI.unregisterTool).toHaveBeenCalledTimes(4);
+      expect(mockCoreAPI.unregisterTool).toHaveBeenCalledTimes(6);
       expect(mockCoreAPI.unregisterTool).toHaveBeenCalledWith('humancy.ask_question');
       expect(mockCoreAPI.unregisterTool).toHaveBeenCalledWith('humancy.request_review');
       expect(mockCoreAPI.unregisterTool).toHaveBeenCalledWith('humancy.request_decision');
       expect(mockCoreAPI.unregisterTool).toHaveBeenCalledWith('humancy.notify');
+      expect(mockCoreAPI.unregisterTool).toHaveBeenCalledWith('humancy.get_decision_outcome');
+      expect(mockCoreAPI.unregisterTool).toHaveBeenCalledWith('humancy.report_decision_result');
     });
 
     it('should handle errors during shutdown gracefully', async () => {

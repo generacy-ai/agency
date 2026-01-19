@@ -31,3 +31,39 @@ export {
   type HumancyResponse,
   type TimeoutError,
 } from './responses.js';
+
+// Three-layer decision model types
+export {
+  type Recommendation,
+  type ProtegeRecommendation,
+  type HumanDecision,
+  type ThreeLayerBreakdown,
+  recommendationSchema,
+  protegeRecommendationSchema,
+  humanDecisionSchema,
+  threeLayerBreakdownSchema,
+  type RecommendationData,
+  type ProtegeRecommendationData,
+  type HumanDecisionData,
+  type ThreeLayerBreakdownData,
+} from './three-layer.js';
+
+// Decision record types for outcome tracking
+export {
+  type DecisionContext,
+  type DecisionOutcome,
+  type StoredDecisionOption,
+  type DecisionRecord,
+  decisionContextSchema,
+  decisionOutcomeSchema,
+  tradeoffsSchema,
+  storedDecisionOptionSchema,
+  decisionRecordSchema,
+  reportDecisionResultParamsSchema,
+  getDecisionOutcomeParamsSchema,
+  type DecisionContextData,
+  type DecisionOutcomeData,
+  type DecisionRecordData,
+  type ReportDecisionResultParams,
+  type GetDecisionOutcomeParams,
+} from './decision-record.js';

@@ -10,39 +10,39 @@
 
 ## Phase 1: Schema Foundation
 
-- [ ] T001 [AC1] Create `src/types/three-layer.ts` with Recommendation, ProtegeRecommendation, HumanDecision, and ThreeLayerBreakdown interfaces and Zod schemas
-- [ ] T002 [P] [AC3] Create `src/types/decision-record.ts` with DecisionRecord, DecisionOutcome, and DecisionContext interfaces and Zod schemas
-- [ ] T003 [P] Update `src/types/index.ts` to export new types from three-layer.ts and decision-record.ts
+- [X] T001 [AC1] Create `src/types/three-layer.ts` with Recommendation, ProtegeRecommendation, HumanDecision, and ThreeLayerBreakdown interfaces and Zod schemas
+- [X] T002 [P] [AC3] Create `src/types/decision-record.ts` with DecisionRecord, DecisionOutcome, and DecisionContext interfaces and Zod schemas
+- [X] T003 [P] Update `src/types/index.ts` to export new types from three-layer.ts and decision-record.ts
 
 ## Phase 2: Request/Response Enhancement
 
-- [ ] T004 [AC1] Extend `src/types/requests.ts` with enhanced DecisionOption (tradeoffs), domain, decisionContext, and includeRecommendations fields
-- [ ] T005 [AC2] Extend `src/types/responses.ts` with decisionId, baseline, protege, and human fields for three-layer response
+- [X] T004 [AC1] Extend `src/types/requests.ts` with enhanced DecisionOption (tradeoffs), domain, decisionContext, and includeRecommendations fields
+- [X] T005 [AC2] Extend `src/types/responses.ts` with decisionId, baseline, protege, and human fields for three-layer response
 
 ## Phase 3: Decision Storage
 
-- [ ] T006 [AC3] Create `src/storage/decision-store.ts` with in-memory DecisionStore class (store, get, update by decisionId)
-- [ ] T007 [P] Create `src/storage/index.ts` to export DecisionStore
+- [X] T006 [AC3] Create `src/storage/decision-store.ts` with in-memory DecisionStore class (store, get, update by decisionId)
+- [X] T007 [P] Create `src/storage/index.ts` to export DecisionStore
 
 ## Phase 4: Tool Enhancement
 
-- [ ] T008 [AC1,AC2,AC4] Update `src/tools/request-decision.ts` to handle new optional parameters (domain, decisionContext, includeRecommendations) and return enhanced response with three-layer breakdown when requested
-- [ ] T009 Update `src/tools/index.ts` to inject DecisionStore dependency into request-decision tool
+- [X] T008 [AC1,AC2,AC4] Update `src/tools/request-decision.ts` to handle new optional parameters (domain, decisionContext, includeRecommendations) and return enhanced response with three-layer breakdown when requested
+- [X] T009 Update `src/tools/index.ts` to inject DecisionStore dependency into request-decision tool
 
 ## Phase 5: New Tools
 
-- [ ] T010 [AC3] Create `src/tools/get-decision-outcome.ts` with tool to retrieve decision record by decisionId
-- [ ] T011 [P] [AC3] Create `src/tools/report-decision-result.ts` with tool to report outcome (success/failure/mixed) for a decision
-- [ ] T012 Update `src/tools/index.ts` to export new tools (get-decision-outcome, report-decision-result)
-- [ ] T013 Update `src/plugin.ts` to register new tools and manage DecisionStore lifecycle
+- [X] T010 [AC3] Create `src/tools/get-decision-outcome.ts` with tool to retrieve decision record by decisionId
+- [X] T011 [P] [AC3] Create `src/tools/report-decision-result.ts` with tool to report outcome (success/failure/mixed) for a decision
+- [X] T012 Update `src/tools/index.ts` to export new tools (get-decision-outcome, report-decision-result)
+- [X] T013 Update `src/plugin.ts` to register new tools and manage DecisionStore lifecycle
 
 ## Phase 6: Testing
 
-- [ ] T014 [AC5] Create `src/__tests__/types/three-layer.test.ts` with unit tests for new Zod schemas
-- [ ] T015 [P] [AC5] Create `src/__tests__/storage/decision-store.test.ts` with unit tests for DecisionStore
-- [ ] T016 [AC4,AC5] Update `src/__tests__/tools/request-decision.test.ts` with tests for enhanced parameters and backward compatibility
-- [ ] T017 [P] [AC5] Create `src/__tests__/tools/get-decision-outcome.test.ts` with tests for outcome retrieval
-- [ ] T018 [P] [AC5] Create `src/__tests__/tools/report-decision-result.test.ts` with tests for outcome reporting
+- [X] T014 [AC5] Create `src/__tests__/types/three-layer.test.ts` with unit tests for new Zod schemas
+- [X] T015 [P] [AC5] Create `src/__tests__/storage/decision-store.test.ts` with unit tests for DecisionStore
+- [X] T016 [AC4,AC5] Update `src/__tests__/tools/request-decision.test.ts` with tests for enhanced parameters and backward compatibility
+- [X] T017 [P] [AC5] Create `src/__tests__/tools/get-decision-outcome.test.ts` with tests for outcome retrieval
+- [X] T018 [P] [AC5] Create `src/__tests__/tools/report-decision-result.test.ts` with tests for outcome reporting
 
 ## Dependencies & Execution Order
 

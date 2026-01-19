@@ -7,11 +7,14 @@
 import type { AgencyPlugin, AgencyCoreAPI, PluginManifest } from '@generacy-ai/agency';
 import { manifest } from './manifest.js';
 import { ConnectionModeDetector } from './connection/index.js';
+import { DecisionStore } from './storage/index.js';
 import {
   createAskQuestionTool,
   createRequestReviewTool,
   createRequestDecisionTool,
   createNotifyTool,
+  createGetDecisionOutcomeTool,
+  createReportDecisionResultTool,
 } from './tools/index.js';
 
 /**
@@ -20,18 +23,22 @@ import {
  * Provides tools for agents to request human input:
  * - humancy.ask_question: Freeform questions
  * - humancy.request_review: Artifact review
- * - humancy.request_decision: Structured options
+ * - humancy.request_decision: Structured options (with three-layer support)
  * - humancy.notify: Fire-and-forget notifications
+ * - humancy.get_decision_outcome: Retrieve decision records
+ * - humancy.report_decision_result: Report decision outcomes
  */
 export class HumancyPlugin implements AgencyPlugin {
   readonly manifest: PluginManifest = manifest;
 
   private coreAPI?: AgencyCoreAPI;
   private detector: ConnectionModeDetector;
+  private decisionStore: DecisionStore;
   private cleanups: Array<() => void> = [];
 
   constructor() {
     this.detector = new ConnectionModeDetector();
+    this.decisionStore = new DecisionStore();
   }
 
   /**
@@ -50,8 +57,11 @@ export class HumancyPlugin implements AgencyPlugin {
     const tools = [
       createAskQuestionTool(core, this.detector),
       createRequestReviewTool(core, this.detector),
-      createRequestDecisionTool(core, this.detector),
+      createRequestDecisionTool(core, this.detector, this.decisionStore),
       createNotifyTool(core, this.detector),
+      // Three-layer decision model tools
+      createGetDecisionOutcomeTool(this.decisionStore),
+      createReportDecisionResultTool(this.decisionStore),
     ];
 
     for (const tool of tools) {
@@ -78,6 +88,9 @@ export class HumancyPlugin implements AgencyPlugin {
       }
     }
     this.cleanups = [];
+
+    // Shutdown the decision store (clears cleanup interval)
+    this.decisionStore.shutdown();
 
     // Unregister tools
     if (this.coreAPI) {
@@ -106,6 +119,13 @@ export class HumancyPlugin implements AgencyPlugin {
    */
   getDetector(): ConnectionModeDetector {
     return this.detector;
+  }
+
+  /**
+   * Get the decision store for testing
+   */
+  getDecisionStore(): DecisionStore {
+    return this.decisionStore;
   }
 }
 
