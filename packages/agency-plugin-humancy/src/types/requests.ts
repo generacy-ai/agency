@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { tradeoffsSchema, decisionContextSchema } from './decision-record.js';
 
 /**
  * Urgency levels for human interaction requests
@@ -53,7 +54,17 @@ export interface ReviewRequest extends BaseRequest {
 }
 
 /**
- * Option for decision requests
+ * Tradeoffs for decision options
+ */
+export interface Tradeoffs {
+  /** Advantages of this option */
+  pros: string[];
+  /** Disadvantages of this option */
+  cons: string[];
+}
+
+/**
+ * Option for decision requests (enhanced with tradeoffs)
  */
 export interface DecisionOption {
   /** Unique identifier for selection */
@@ -62,10 +73,24 @@ export interface DecisionOption {
   label: string;
   /** Optional explanation */
   description?: string;
+  /** Optional tradeoff analysis for this option */
+  tradeoffs?: Tradeoffs;
 }
 
 /**
- * Request for humancy.request_decision tool
+ * Structured context for decision requests
+ */
+export interface RequestDecisionContext {
+  /** Project-level constraints that may apply */
+  projectConstraints?: string[];
+  /** Related issue reference */
+  relatedIssue?: string;
+  /** Additional context fields */
+  [key: string]: unknown;
+}
+
+/**
+ * Request for humancy.request_decision tool (enhanced with three-layer support)
  */
 export interface DecisionRequest extends BaseRequest {
   type: 'decision';
@@ -73,6 +98,12 @@ export interface DecisionRequest extends BaseRequest {
   question: string;
   /** Available choices */
   options: DecisionOption[];
+  /** Domain tags for principle matching */
+  domain?: string[];
+  /** Structured context for decision */
+  decisionContext?: RequestDecisionContext;
+  /** Whether to include baseline/protégé recommendations in response */
+  includeRecommendations?: boolean;
 }
 
 /**
@@ -113,6 +144,7 @@ export const decisionOptionSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   description: z.string().optional(),
+  tradeoffs: tradeoffsSchema.optional(),
 });
 
 export const askQuestionParamsSchema = z.object({
@@ -135,6 +167,10 @@ export const requestDecisionParamsSchema = z.object({
   context: z.string().max(50000).optional(),
   urgency: urgencySchema.default('blocking_soon'),
   timeout: z.number().positive().max(300000).optional(),
+  // Enhanced three-layer fields (all optional for backward compatibility)
+  domain: z.array(z.string()).optional(),
+  decisionContext: decisionContextSchema.optional(),
+  includeRecommendations: z.boolean().optional(),
 });
 
 export const notifyParamsSchema = z.object({

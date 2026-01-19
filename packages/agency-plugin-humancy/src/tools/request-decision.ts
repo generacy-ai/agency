@@ -2,6 +2,7 @@
  * humancy.request_decision tool
  *
  * Present structured options to a human and get their selection.
+ * Enhanced with three-layer decision model support.
  */
 
 import {
@@ -16,11 +17,13 @@ import {
 import {
   type RequestDecisionParams,
   type DecisionRequest,
+  type DecisionRecord,
   requestDecisionParamsSchema,
   Urgency,
 } from '../types/index.js';
 import type { DecisionResponse } from '../types/responses.js';
 import { ConnectionModeDetector, ConnectionMode } from '../connection/index.js';
+import type { DecisionStore } from '../storage/index.js';
 
 const CHANNEL_NAME = 'agency.humancy';
 const DEFAULT_TIMEOUT = 60000;
@@ -30,12 +33,13 @@ const DEFAULT_TIMEOUT = 60000;
  */
 export function createRequestDecisionTool(
   coreAPI: AgencyCoreAPI,
-  detector: ConnectionModeDetector
+  detector: ConnectionModeDetector,
+  store?: DecisionStore
 ): AgencyTool {
   return {
     name: 'humancy.request_decision',
     description:
-      'Present structured options to a human and get their selection. Use this when multiple valid approaches exist and you need human guidance.',
+      'Present structured options to a human and get their selection. Use this when multiple valid approaches exist and you need human guidance. Supports three-layer decision model with baseline/protégé recommendations.',
     namespace: 'humancy',
     outputPattern: 'terse',
     inputSchema: {
@@ -63,6 +67,22 @@ export function createRequestDecisionTool(
                 type: 'string',
                 description: 'Optional explanation of the option',
               },
+              tradeoffs: {
+                type: 'object',
+                description: 'Optional tradeoff analysis',
+                properties: {
+                  pros: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Advantages of this option',
+                  },
+                  cons: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Disadvantages of this option',
+                  },
+                },
+              },
             },
             required: ['id', 'label'],
           },
@@ -79,6 +99,31 @@ export function createRequestDecisionTool(
         timeout: {
           type: 'number',
           description: 'Maximum time to wait in milliseconds (default: 60000)',
+        },
+        // Enhanced three-layer fields
+        domain: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Domain tags for principle matching (e.g., ["architecture", "backend"])',
+        },
+        decisionContext: {
+          type: 'object',
+          description: 'Structured context for decision',
+          properties: {
+            projectConstraints: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Project-level constraints that may apply',
+            },
+            relatedIssue: {
+              type: 'string',
+              description: 'Related issue reference',
+            },
+          },
+        },
+        includeRecommendations: {
+          type: 'boolean',
+          description: 'Whether to include baseline/protégé recommendations in response',
         },
       },
       required: ['question', 'options'],
@@ -108,7 +153,7 @@ export function createRequestDecisionTool(
         );
       }
 
-      // Build request
+      // Build request (enhanced with three-layer fields)
       const request: DecisionRequest = {
         id: crypto.randomUUID(),
         type: 'decision',
@@ -118,6 +163,10 @@ export function createRequestDecisionTool(
         urgency: validParams.urgency as Urgency ?? Urgency.BLOCKING_SOON,
         timeout,
         timestamp: new Date(),
+        // Include enhanced fields if provided
+        domain: validParams.domain,
+        decisionContext: validParams.decisionContext,
+        includeRecommendations: validParams.includeRecommendations,
       };
 
       // Create message envelope
@@ -152,8 +201,66 @@ export function createRequestDecisionTool(
           );
         }
 
+        // Store decision record if store is available and we have a decisionId
+        if (store && response.decisionId) {
+          const record: DecisionRecord = {
+            decisionId: response.decisionId,
+            request: {
+              question: validParams.question,
+              options: validParams.options,
+              domain: validParams.domain,
+              context: validParams.decisionContext,
+              timestamp: request.timestamp,
+            },
+            threeLayer: response.baseline && response.protege && response.human
+              ? {
+                  baseline: response.baseline,
+                  protege: response.protege,
+                  human: response.human,
+                }
+              : undefined,
+            selectedOption: response.selectedOption,
+            decidedAt: response.respondedAt,
+          };
+          store.store(record);
+        }
+
+        // Build enhanced response output
+        const outputData: Record<string, unknown> = {
+          selectedOption: response.selectedOption,
+        };
+
+        // Include decisionId if present (for outcome reporting)
+        if (response.decisionId) {
+          outputData['decisionId'] = response.decisionId;
+        }
+
+        // Include three-layer breakdown if requested and present
+        if (validParams.includeRecommendations) {
+          if (response.baseline) {
+            outputData['baseline'] = response.baseline;
+          }
+          if (response.protege) {
+            outputData['protege'] = response.protege;
+          }
+          if (response.human) {
+            outputData['human'] = response.human;
+          }
+        }
+
+        // Format message: basic for simple, extended for three-layer
+        const message = response.decisionId
+          ? `Selected: ${response.selectedOption} (decisionId: ${response.decisionId})`
+          : `Selected: ${response.selectedOption}`;
+
+        // For terse output, include JSON data for machine parsing when three-layer data exists
+        const hasThreeLayerData = response.decisionId && validParams.includeRecommendations;
+        const outputMessage = hasThreeLayerData
+          ? `${message}\n${JSON.stringify(outputData)}`
+          : message;
+
         return terseToMcpToolResult(
-          TerseOutput.success(`Selected: ${response.selectedOption}`)
+          TerseOutput.success(outputMessage)
         );
       } catch (error) {
         detector.updateConnectionState(false, String(error));

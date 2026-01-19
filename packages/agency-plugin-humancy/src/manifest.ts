@@ -17,6 +17,8 @@ export const manifest: PluginManifest = {
     'humancy.request_review',
     'humancy.request_decision',
     'humancy.notify',
+    'humancy.get_decision_outcome',
+    'humancy.report_decision_result',
   ],
   channels: ['agency.humancy'],
   critical: false,

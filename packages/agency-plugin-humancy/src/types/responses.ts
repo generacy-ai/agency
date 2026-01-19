@@ -4,6 +4,12 @@
  * Defines the message types received from humans in response to requests.
  */
 
+import type {
+  Recommendation,
+  ProtegeRecommendation,
+  HumanDecision,
+} from './three-layer.js';
+
 /**
  * Response to ask_question
  */
@@ -42,7 +48,7 @@ export interface ReviewResponse {
 }
 
 /**
- * Response to request_decision
+ * Response to request_decision (enhanced with three-layer support)
  */
 export interface DecisionResponse {
   /** Correlation with request */
@@ -52,6 +58,16 @@ export interface DecisionResponse {
   selectedOption: string;
   /** When human responded */
   respondedAt: Date;
+
+  // Enhanced three-layer fields (present when includeRecommendations was true)
+  /** Unique decision identifier for outcome reporting */
+  decisionId?: string;
+  /** System baseline recommendation */
+  baseline?: Recommendation;
+  /** Protégé recommendation with applied principles */
+  protege?: ProtegeRecommendation;
+  /** Human's final decision with coaching metadata */
+  human?: HumanDecision;
 }
 
 /**
