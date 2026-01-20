@@ -20,7 +20,7 @@ export function createRunIntegrationTool(config: NpmPluginConfig): AgencyTool {
     inputSchema: zodToJsonSchema(RunIntegrationSchema),
     namespace: 'test',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['default', 'coding'],
 
     async execute(params: unknown): Promise<ToolResult> {
       const parsed = RunIntegrationSchema.safeParse(params);

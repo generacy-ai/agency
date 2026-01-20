@@ -16,7 +16,7 @@ export function createBranchTool(config: GitPluginConfig): AgencyTool {
     description: 'Create, list, or delete branches',
     namespace: 'source_control',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['default', 'coding'],
     inputSchema: {
       type: 'object',
       properties: {

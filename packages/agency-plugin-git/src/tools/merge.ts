@@ -18,7 +18,7 @@ export function createMergeTool(config: GitPluginConfig): AgencyTool {
     description: 'Merge branches',
     namespace: 'source_control',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['default', 'coding'],
     inputSchema: {
       type: 'object',
       properties: {

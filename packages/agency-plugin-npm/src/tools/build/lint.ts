@@ -20,7 +20,7 @@ export function createLintTool(config: NpmPluginConfig): AgencyTool {
     inputSchema: zodToJsonSchema(LintSchema),
     namespace: 'build',
     outputPattern: 'terse',
-    modes: ['coding', 'review'],
+    modes: ['default', 'coding', 'review'],
 
     async execute(params: unknown): Promise<ToolResult> {
       const parsed = LintSchema.safeParse(params);

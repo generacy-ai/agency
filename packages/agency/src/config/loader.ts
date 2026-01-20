@@ -176,6 +176,14 @@ export class ConfigLoader {
       result.plugins = source.plugins;
     }
 
+    if (source.pluginPaths !== undefined) {
+      result.pluginPaths = source.pluginPaths;
+    }
+
+    if (source.pluginOptions !== undefined) {
+      result.pluginOptions = { ...target.pluginOptions, ...source.pluginOptions };
+    }
+
     if (source.modes !== undefined) {
       result.modes = { ...target.modes, ...source.modes };
     }

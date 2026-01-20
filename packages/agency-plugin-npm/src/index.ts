@@ -40,10 +40,9 @@ export const plugin: AgencyPlugin = {
       core.registerTool(tool);
     }
 
-    // Register modes
-    for (const mode of manifest.modes ?? []) {
-      core.registerMode(mode);
-    }
+    // Note: Modes in manifest are declarative - they indicate which modes
+    // this plugin's tools are available in. The modes themselves should be
+    // configured in the Agency config, not registered by plugins.
   },
 
   async shutdown(): Promise<void> {

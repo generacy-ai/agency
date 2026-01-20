@@ -16,7 +16,7 @@ export function createStashTool(config: GitPluginConfig): AgencyTool {
     description: 'Stash/unstash changes',
     namespace: 'source_control',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['default', 'coding'],
     inputSchema: {
       type: 'object',
       properties: {

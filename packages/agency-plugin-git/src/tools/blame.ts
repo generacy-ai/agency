@@ -17,7 +17,7 @@ export function createBlameTool(config: GitPluginConfig): AgencyTool {
     description: 'Show line-by-line authorship',
     namespace: 'source_control',
     outputPattern: 'terse',
-    modes: ['research', 'coding', 'review'],
+    modes: ['default', 'research', 'coding', 'review'],
     inputSchema: {
       type: 'object',
       properties: {

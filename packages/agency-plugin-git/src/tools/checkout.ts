@@ -16,7 +16,7 @@ export function createCheckoutTool(config: GitPluginConfig): AgencyTool {
     description: 'Switch branches or restore files',
     namespace: 'source_control',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['default', 'coding'],
     inputSchema: {
       type: 'object',
       properties: {

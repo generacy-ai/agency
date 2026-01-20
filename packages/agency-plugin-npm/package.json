@@ -33,5 +33,22 @@
     "@types/node": "^20.17.0",
     "typescript": "^5.7.3",
     "vitest": "^3.0.4"
+  },
+  "agency": {
+    "id": "@generacy-ai/agency-plugin-npm",
+    "name": "NPM Plugin",
+    "tools": [
+      "build.install_dependencies",
+      "build.compile",
+      "build.lint",
+      "build.format",
+      "test.run_unit",
+      "test.run_integration",
+      "test.run_e2e",
+      "test.run_coverage"
+    ],
+    "modes": ["coding", "review"],
+    "dependencies": [],
+    "critical": false
   }
 }

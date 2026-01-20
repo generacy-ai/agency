@@ -19,7 +19,7 @@ export function createPushTool(
     description: 'Push to remote',
     namespace: 'source_control',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['default', 'coding'],
     inputSchema: {
       type: 'object',
       properties: {

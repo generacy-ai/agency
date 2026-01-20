@@ -16,7 +16,7 @@ export function createCommitTool(config: GitPluginConfig): AgencyTool {
     description: 'Create a commit',
     namespace: 'source_control',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['default', 'coding'],
     inputSchema: {
       type: 'object',
       properties: {

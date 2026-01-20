@@ -17,7 +17,7 @@ export function createLogTool(config: GitPluginConfig): AgencyTool {
     description: 'View commit history',
     namespace: 'source_control',
     outputPattern: 'terse',
-    modes: ['research', 'coding', 'review'],
+    modes: ['default', 'research', 'coding', 'review'],
     inputSchema: {
       type: 'object',
       properties: {

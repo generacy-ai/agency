@@ -19,7 +19,7 @@ export function createInstallDependenciesTool(config: NpmPluginConfig): AgencyTo
     inputSchema: zodToJsonSchema(InstallDependenciesSchema),
     namespace: 'build',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['default', 'coding'],
 
     async execute(params: unknown): Promise<ToolResult> {
       const parsed = InstallDependenciesSchema.safeParse(params);

@@ -20,7 +20,7 @@ export function createRunE2ETool(config: NpmPluginConfig): AgencyTool {
     inputSchema: zodToJsonSchema(RunE2ESchema),
     namespace: 'test',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['default', 'coding'],
 
     async execute(params: unknown): Promise<ToolResult> {
       const parsed = RunE2ESchema.safeParse(params);

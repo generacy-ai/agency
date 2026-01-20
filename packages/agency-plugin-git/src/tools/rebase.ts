@@ -18,7 +18,7 @@ export function createRebaseTool(config: GitPluginConfig): AgencyTool {
     description: 'Rebase current branch',
     namespace: 'source_control',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['default', 'coding'],
     inputSchema: {
       type: 'object',
       properties: {

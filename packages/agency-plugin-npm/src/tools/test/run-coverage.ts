@@ -20,7 +20,7 @@ export function createRunCoverageTool(config: NpmPluginConfig): AgencyTool {
     inputSchema: zodToJsonSchema(RunCoverageSchema),
     namespace: 'test',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['default', 'coding'],
 
     async execute(params: unknown): Promise<ToolResult> {
       const parsed = RunCoverageSchema.safeParse(params);

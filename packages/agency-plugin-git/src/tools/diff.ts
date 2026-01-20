@@ -17,7 +17,7 @@ export function createDiffTool(config: GitPluginConfig): AgencyTool {
     description: 'Show changes (staged, unstaged, or between refs)',
     namespace: 'source_control',
     outputPattern: 'terse',
-    modes: ['research', 'coding', 'review'],
+    modes: ['default', 'research', 'coding', 'review'],
     inputSchema: {
       type: 'object',
       properties: {

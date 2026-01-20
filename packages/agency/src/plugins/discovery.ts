@@ -12,9 +12,9 @@ import { safeParseManifest } from './manifest.js';
 
 /**
  * Default plugin name pattern for node_modules scanning
- * Matches: @generacy-ai/agency-plugin-*
+ * Matches: @generacy-ai/agency-plugin-* or agency-plugin-* (for local dev)
  */
-const DEFAULT_PLUGIN_PATTERN = /^@generacy-ai\/agency-plugin-[\w-]+$/;
+const DEFAULT_PLUGIN_PATTERN = /^(@generacy-ai\/)?agency-plugin-[\w-]+$/;
 
 /**
  * Agency manifest field name in package.json
@@ -249,15 +249,24 @@ export async function findNodeModules(startPath: string): Promise<string | null>
  * Create default discovery options for a project
  *
  * @param projectRoot Root directory of the project
- * @param additionalPlugins Optional additional plugin paths
+ * @param additionalSearchPaths Optional additional paths to scan for plugins
+ * @param additionalPlugins Optional explicit plugin paths
  * @returns Discovery options
  */
 export function createDiscoveryOptions(
   projectRoot: string,
+  additionalSearchPaths?: string[],
   additionalPlugins?: string[]
 ): DiscoveryOptions {
+  const searchPaths = [join(projectRoot, 'node_modules')];
+
+  // Add additional search paths if provided
+  if (additionalSearchPaths) {
+    searchPaths.push(...additionalSearchPaths);
+  }
+
   return {
-    searchPaths: [join(projectRoot, 'node_modules')],
+    searchPaths,
     additionalPlugins,
     pattern: DEFAULT_PLUGIN_PATTERN,
   };

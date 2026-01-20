@@ -38,27 +38,24 @@
     "vitest": "^3.0.4"
   },
   "agency": {
-    "manifest": {
-      "id": "@generacy-ai/agency-plugin-git",
-      "name": "Git Plugin",
-      "description": "Source control operations for agents",
-      "tools": [
-        "source_control.status",
-        "source_control.diff",
-        "source_control.log",
-        "source_control.commit",
-        "source_control.push",
-        "source_control.pull",
-        "source_control.checkout",
-        "source_control.branch",
-        "source_control.stash",
-        "source_control.blame",
-        "source_control.merge",
-        "source_control.rebase"
-      ],
-      "modes": ["research", "coding", "review"],
-      "dependencies": [],
-      "critical": false
-    }
+    "id": "@generacy-ai/agency-plugin-git",
+    "name": "Git Plugin",
+    "tools": [
+      "source_control.status",
+      "source_control.diff",
+      "source_control.log",
+      "source_control.commit",
+      "source_control.push",
+      "source_control.pull",
+      "source_control.checkout",
+      "source_control.branch",
+      "source_control.stash",
+      "source_control.blame",
+      "source_control.merge",
+      "source_control.rebase"
+    ],
+    "modes": ["research", "coding", "review"],
+    "dependencies": [],
+    "critical": false
   }
 }

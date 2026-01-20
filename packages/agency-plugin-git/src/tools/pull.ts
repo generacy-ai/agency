@@ -18,7 +18,7 @@ export function createPullTool(config: GitPluginConfig): AgencyTool {
     description: 'Pull from remote',
     namespace: 'source_control',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['default', 'coding'],
     inputSchema: {
       type: 'object',
       properties: {
