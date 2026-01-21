@@ -14,7 +14,7 @@
 ## Phase 1: Foundation & Extension Scaffold
 <!-- Phase boundary: Must complete before Phase 2 -->
 
-### TG-001 [P] Extension Package Setup
+### TG-001 [#40] [P] Extension Package Setup
 **Scope**: 2-4 hours
 **Files**:
 - `packages/agency-extension/package.json`
@@ -35,7 +35,7 @@
 
 ---
 
-### TG-002 [P] Extension Entry Point & Core Infrastructure
+### TG-002 [#41] [P] Extension Entry Point & Core Infrastructure
 **Scope**: 3-4 hours
 **Files**:
 - `packages/agency-extension/src/extension.ts`
@@ -55,7 +55,7 @@
 
 ---
 
-### TG-003 [P] Type Definitions
+### TG-003 [#42] [P] Type Definitions
 **Scope**: 2-3 hours
 **Files**:
 - `packages/agency-extension/src/types/index.ts`
@@ -74,7 +74,7 @@
 
 ---
 
-### TG-004 [P] Static Assets & Icons
+### TG-004 [#43] [P] Static Assets & Icons
 **Scope**: 1-2 hours
 **Files**:
 - `packages/agency-extension/media/icons/agency.svg`
@@ -97,7 +97,7 @@
 ## Phase 2: Configuration System
 <!-- Phase boundary: Complete Phase 1 before starting -->
 
-### TG-005 [US1] Configuration Schema & File Management
+### TG-005 [#44] [US1] Configuration Schema & File Management
 **Scope**: 3-4 hours
 **Files**:
 - `packages/agency-extension/src/config/index.ts`
@@ -114,7 +114,7 @@
 
 ---
 
-### TG-006 [US1] ConfigService Implementation
+### TG-006 [#45] [US1] ConfigService Implementation
 **Scope**: 3-4 hours
 **Files**:
 - `packages/agency-extension/src/services/index.ts`
@@ -133,7 +133,7 @@
 ## Phase 3: Plugin Configuration UI
 <!-- Phase boundary: Complete Phase 2 before starting -->
 
-### TG-007 [US1] PluginTreeProvider
+### TG-007 [#46] [US1] PluginTreeProvider
 **Scope**: 2-3 hours
 **Files**:
 - `packages/agency-extension/src/providers/index.ts`
@@ -148,7 +148,7 @@
 
 ---
 
-### TG-008 [US1] Plugin Configuration Commands
+### TG-008 [#47] [US1] Plugin Configuration Commands
 **Scope**: 2-3 hours
 **Files**:
 - `packages/agency-extension/src/commands/index.ts`
@@ -163,7 +163,7 @@
 
 ---
 
-### TG-009 [US1] Plugin Configuration Webview
+### TG-009 [#48] [US1] Plugin Configuration Webview
 **Scope**: 4-5 hours
 **Files**:
 - `packages/agency-extension/src/views/index.ts`
@@ -184,7 +184,7 @@
 ## Phase 4: MCP Client & Tool Testing
 <!-- Phase boundary: Complete Phase 3 before starting -->
 
-### TG-010 [US2] MCP Transport Layer
+### TG-010 [#49] [US2] MCP Transport Layer
 **Scope**: 4-5 hours
 **Files**:
 - `packages/agency-extension/src/mcp/index.ts`
@@ -202,7 +202,7 @@
 
 ---
 
-### TG-011 [US2] McpClientService
+### TG-011 [#50] [US2] McpClientService
 **Scope**: 3-4 hours
 **Files**:
 - `packages/agency-extension/src/services/McpClientService.ts`
@@ -217,7 +217,7 @@
 
 ---
 
-### TG-012 [US2] ToolTreeProvider
+### TG-012 [#51] [US2] ToolTreeProvider
 **Scope**: 2-3 hours
 **Files**:
 - `packages/agency-extension/src/providers/ToolTreeProvider.ts`
@@ -231,7 +231,7 @@
 
 ---
 
-### TG-013 [US2] Tool Execution Commands
+### TG-013 [#52] [US2] Tool Execution Commands
 **Scope**: 2-3 hours
 **Files**:
 - `packages/agency-extension/src/commands/tool-commands.ts`
@@ -245,7 +245,7 @@
 
 ---
 
-### TG-014 [US2] Tool Execution Webview
+### TG-014 [#53] [US2] Tool Execution Webview
 **Scope**: 4-5 hours
 **Files**:
 - `packages/agency-extension/src/views/tool-browser/ToolExecutionPanel.ts`
@@ -264,7 +264,7 @@
 ## Phase 5: Activity Monitoring
 <!-- Phase boundary: Complete Phase 4 before starting -->
 
-### TG-015 [US3] ActivityService
+### TG-015 [#54] [US3] ActivityService
 **Scope**: 3-4 hours
 **Files**:
 - `packages/agency-extension/src/services/ActivityService.ts`
@@ -279,7 +279,7 @@
 
 ---
 
-### TG-016 [US3] ActivityTreeProvider
+### TG-016 [#55] [US3] ActivityTreeProvider
 **Scope**: 2-3 hours
 **Files**:
 - `packages/agency-extension/src/providers/ActivityTreeProvider.ts`
@@ -293,7 +293,7 @@
 
 ---
 
-### TG-017 [US3] Activity Feed Webview
+### TG-017 [#56] [US3] Activity Feed Webview
 **Scope**: 4-5 hours
 **Files**:
 - `packages/agency-extension/src/views/activity/ActivityFeedPanel.ts`
@@ -312,7 +312,7 @@
 ## Phase 6: Container Management
 <!-- Phase boundary: Complete Phase 5 before starting -->
 
-### TG-018 ContainerService
+### TG-018 [#57] ContainerService
 **Scope**: 4-5 hours
 **Files**:
 - `packages/agency-extension/src/services/ContainerService.ts`
@@ -327,7 +327,7 @@
 
 ---
 
-### TG-019 ContainerTreeProvider & Commands
+### TG-019 [#58] ContainerTreeProvider & Commands
 **Scope**: 2-3 hours
 **Files**:
 - `packages/agency-extension/src/providers/ContainerTreeProvider.ts`
@@ -343,7 +343,7 @@
 
 ---
 
-### TG-020 Container Detail Webview
+### TG-020 [#59] Container Detail Webview
 **Scope**: 3-4 hours
 **Files**:
 - `packages/agency-extension/src/views/containers/ContainerDetailPanel.ts`
@@ -361,7 +361,7 @@
 ## Phase 7: Mode Management
 <!-- Phase boundary: Complete Phase 6 before starting -->
 
-### TG-021 ModeService
+### TG-021 [#60] ModeService
 **Scope**: 2-3 hours
 **Files**:
 - `packages/agency-extension/src/services/ModeService.ts`
@@ -375,7 +375,7 @@
 
 ---
 
-### TG-022 ModeTreeProvider & Commands
+### TG-022 [#61] ModeTreeProvider & Commands
 **Scope**: 2-3 hours
 **Files**:
 - `packages/agency-extension/src/providers/ModeTreeProvider.ts`
@@ -394,7 +394,7 @@
 ## Phase 8: Polish & Marketplace
 <!-- Phase boundary: Complete Phase 7 before starting -->
 
-### TG-023 [P] Performance Optimization
+### TG-023 [#62] [P] Performance Optimization
 **Scope**: 2-3 hours
 **Files**: Various service and provider files
 **Tests**: Performance benchmarks
@@ -407,7 +407,7 @@
 
 ---
 
-### TG-024 [P] Error Handling & UX Polish
+### TG-024 [#63] [P] Error Handling & UX Polish
 **Scope**: 2-3 hours
 **Files**: Various files across extension
 **Tests**: Error scenario tests
@@ -420,7 +420,7 @@
 
 ---
 
-### TG-025 Marketplace Publishing
+### TG-025 [#64] Marketplace Publishing
 **Scope**: 2-3 hours
 **Files**:
 - `packages/agency-extension/README.md`
