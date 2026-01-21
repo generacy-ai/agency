@@ -19,13 +19,13 @@
 **Tests**: Build verification, package.json validation
 
 ## Tasks
-- [ ] Create `packages/agency-extension/` directory structure
-- [ ] Configure `package.json` with VS Code extension manifest (activation events, contributes)
-- [ ] Set up `tsconfig.json` extending monorepo base config
-- [ ] Configure `esbuild.config.mjs` for extension bundling
-- [ ] Set up `vitest.config.ts` for unit testing
-- [ ] Create `.vscodeignore` for marketplace packaging
-- [ ] Update root `pnpm-workspace.yaml` and `turbo.json` to include new package
+- [x] Create `packages/agency-extension/` directory structure
+- [x] Configure `package.json` with VS Code extension manifest (activation events, contributes)
+- [x] Set up `tsconfig.json` extending monorepo base config
+- [x] Configure `esbuild.config.mjs` for extension bundling
+- [x] Set up `vitest.config.ts` for unit testing
+- [x] Create `.vscodeignore` for marketplace packaging
+- [x] Update root `pnpm-workspace.yaml` and `turbo.json` to include new package
 
 ## Source
 <!-- task-group-id: TG-001 -->
