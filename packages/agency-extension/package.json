@@ -1,0 +1,176 @@
+{
+  "name": "@generacy-ai/agency-extension",
+  "displayName": "Agency",
+  "description": "Plugin configuration, in-situ MCP testing, and activity monitoring for AI development agents",
+  "version": "0.0.0",
+  "publisher": "generacy-ai",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/generacy-ai/agency"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Debuggers"
+  ],
+  "keywords": [
+    "mcp",
+    "agent",
+    "generacy",
+    "ai",
+    "development"
+  ],
+  "activationEvents": [
+    "workspaceContains:.agency/agency.config.json"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agency",
+          "title": "Agency",
+          "icon": "media/icons/agency.svg"
+        }
+      ]
+    },
+    "views": {
+      "agency": [
+        {
+          "id": "agency.plugins",
+          "name": "Plugins"
+        },
+        {
+          "id": "agency.tools",
+          "name": "Tools"
+        },
+        {
+          "id": "agency.activity",
+          "name": "Activity"
+        },
+        {
+          "id": "agency.containers",
+          "name": "Containers"
+        },
+        {
+          "id": "agency.modes",
+          "name": "Modes"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "agency.configurePlugin",
+        "title": "Configure Plugin",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.enablePlugin",
+        "title": "Enable Plugin",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.disablePlugin",
+        "title": "Disable Plugin",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.refreshPlugins",
+        "title": "Refresh Plugins",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.testTool",
+        "title": "Test Tool",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.refreshTools",
+        "title": "Refresh Tools",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.connectMcp",
+        "title": "Connect to MCP Server",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.disconnectMcp",
+        "title": "Disconnect from MCP Server",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.switchMode",
+        "title": "Switch Mode",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.viewModeTools",
+        "title": "View Mode Tools",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.startContainer",
+        "title": "Start Container",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.stopContainer",
+        "title": "Stop Container",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.rebuildContainer",
+        "title": "Rebuild Container",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.viewContainerLogs",
+        "title": "View Container Logs",
+        "category": "Agency"
+      }
+    ],
+    "configuration": {
+      "title": "Agency",
+      "properties": {
+        "agency.configPath": {
+          "type": "string",
+          "default": ".agency/agency.config.json",
+          "description": "Path to Agency configuration file"
+        },
+        "agency.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically connect to MCP server on startup"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run build",
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "test": "vitest run",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "package": "vsce package --no-dependencies",
+    "publish": "vsce publish --no-dependencies"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.5.0",
+    "execa": "^8.0.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
