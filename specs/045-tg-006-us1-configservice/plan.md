@@ -1,0 +1,148 @@
+# Implementation Plan: ConfigService Implementation
+
+**Feature**: ConfigService singleton service for managing Agency configuration
+**Branch**: `045-tg-006-us1-configservice`
+**Status**: In Progress
+
+## Summary
+
+Implement the ConfigService class that provides a centralized, singleton interface for accessing and modifying the Agency configuration. The service wraps the lower-level ConfigFile operations and provides event-based notifications for configuration changes.
+
+## Technical Context
+
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| TypeScript | 5.x | Primary language |
+| VS Code Extension API | 1.85+ | Extension framework |
+| zod | 3.x | Runtime schema validation |
+
+## Dependencies
+
+This task depends on TG-005 (Configuration Schema & File Management) which provides:
+- `ConfigSchema.ts` - Zod schemas for config validation
+- `ConfigFile.ts` - Low-level file read/write operations
+- `defaults.ts` - Default configuration values
+
+## Architecture
+
+```
+┌────────────────────────────────────────────────┐
+│              ConfigService (Singleton)          │
+├────────────────────────────────────────────────┤
+│ - _instance: ConfigService                      │
+│ - _config: AgencyConfig | null                  │
+│ - _onConfigChange: EventEmitter                 │
+│ - _watcher: Disposable                          │
+├────────────────────────────────────────────────┤
+│ + getInstance(): ConfigService                  │
+│ + initialize(): Promise<void>                   │
+│ + getConfig(): AgencyConfig | null              │
+│ + getPlugins(): PluginConfig[]                  │
+│ + getModes(): ModeConfig[]                      │
+│ + getContainers(): ContainerConfig[]            │
+│ + savePluginConfig(plugin): Promise<void>       │
+│ + saveModeConfig(mode): Promise<void>           │
+│ + saveContainerConfig(container): Promise<void> │
+│ + onConfigChange: Event<AgencyConfig | null>    │
+│ + dispose(): void                               │
+└────────────────────────────────────────────────┘
+            │
+            │ uses
+            ▼
+┌────────────────────────────────────────────────┐
+│              ConfigFile (from TG-005)           │
+├────────────────────────────────────────────────┤
+│ + readConfig()                                  │
+│ + writeConfig()                                 │
+│ + watchConfig()                                 │
+│ + initializeConfig()                            │
+└────────────────────────────────────────────────┘
+```
+
+## Key Interfaces
+
+### ConfigService Class
+
+```typescript
+class ConfigService implements Disposable {
+  private static _instance: ConfigService | undefined;
+  private _config: AgencyConfig | null = null;
+  private _onConfigChange: EventEmitter<AgencyConfig | null>;
+  private _disposables: DisposableManager;
+  private _vscodeModule: typeof vscode | null = null;
+  private _initialized: boolean = false;
+
+  private constructor() {}
+
+  static getInstance(): ConfigService;
+
+  async initialize(vscodeModule: typeof vscode): Promise<void>;
+  isInitialized(): boolean;
+
+  getConfig(): AgencyConfig | null;
+  getPlugins(): PluginConfig[];
+  getModes(): ModeConfig[];
+  getContainers(): ContainerConfig[];
+
+  getPlugin(id: string): PluginConfig | undefined;
+  getMode(id: string): ModeConfig | undefined;
+  getContainer(id: string): ContainerConfig | undefined;
+
+  async savePluginConfig(plugin: PluginConfig): Promise<void>;
+  async saveModeConfig(mode: ModeConfig): Promise<void>;
+  async saveContainerConfig(container: ContainerConfig): Promise<void>;
+
+  async removePlugin(id: string): Promise<void>;
+  async removeMode(id: string): Promise<void>;
+  async removeContainer(id: string): Promise<void>;
+
+  get onConfigChange(): Event<AgencyConfig | null>;
+
+  dispose(): void;
+  static reset(): void; // For testing
+}
+```
+
+### Config Migration
+
+```typescript
+interface ConfigMigration {
+  fromVersion: string;
+  toVersion: string;
+  migrate(config: unknown): AgencyConfig;
+}
+
+function migrateConfig(config: unknown, currentVersion: string): AgencyConfig;
+```
+
+## Implementation Steps
+
+1. Create services directory structure with index.ts
+2. Implement ConfigService singleton with initialization
+3. Add getter methods for config sections
+4. Add save methods with validation
+5. Implement event emitter for config changes
+6. Add config migration support
+7. Write comprehensive unit tests
+
+## Testing Strategy
+
+| Test Type | Description |
+|-----------|-------------|
+| Unit | ConfigService singleton pattern |
+| Unit | Getter methods return correct data |
+| Unit | Save methods update config and emit events |
+| Unit | Migration from older versions |
+| Integration | File watcher triggers config reload |
+
+## Success Criteria
+
+- [ ] ConfigService singleton works correctly
+- [ ] All getter methods return expected data
+- [ ] Save methods persist changes and emit events
+- [ ] Config migration handles version changes
+- [ ] All unit tests pass
+
+---
+
+*Generated by speckit*
