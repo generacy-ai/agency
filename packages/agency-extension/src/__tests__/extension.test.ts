@@ -14,14 +14,68 @@ const mockCommands = {
   })),
 };
 
+const mockTreeView = {
+  dispose: vi.fn(),
+};
+
 const mockWindow = {
   createOutputChannel: vi.fn(() => mockOutputChannel),
   showInformationMessage: vi.fn(),
+  createTreeView: vi.fn(() => mockTreeView),
+};
+
+const mockWorkspace = {
+  workspaceFolders: [
+    {
+      uri: { fsPath: '/workspace', path: '/workspace' },
+      name: 'workspace',
+      index: 0,
+    },
+  ],
 };
 
 vi.mock('vscode', () => ({
   window: mockWindow,
   commands: mockCommands,
+  workspace: mockWorkspace,
+  TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+  TreeItem: class {},
+  ThemeIcon: class { constructor(public id: string, public color?: unknown) {} },
+  ThemeColor: class { constructor(public id: string) {} },
+  EventEmitter: class {
+    private _listeners = new Set<(data: unknown) => void>();
+    get event() {
+      return ((listener: (data: unknown) => void) => {
+        this._listeners.add(listener);
+        return { dispose: () => this._listeners.delete(listener) };
+      });
+    }
+    fire(data?: unknown) {
+      for (const listener of this._listeners) {
+        listener(data);
+      }
+    }
+    dispose() {
+      this._listeners.clear();
+    }
+  },
+}));
+
+// Mock ConfigService
+vi.mock('../services', () => ({
+  ConfigService: {
+    getInstance: vi.fn(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      getPlugins: vi.fn(() => []),
+      onConfigChange: vi.fn(() => ({ dispose: vi.fn() })),
+    })),
+    reset: vi.fn(),
+  },
+}));
+
+// Mock providers
+vi.mock('../providers', () => ({
+  registerPluginTreeView: vi.fn().mockResolvedValue({ dispose: vi.fn() }),
 }));
 
 // Import after mocking
