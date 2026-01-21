@@ -18,12 +18,12 @@
 **Tests**: Type compilation verification
 
 ## Tasks
-- [ ] Define plugin types (`PluginConfig`, `PluginManifest`, `PluginState`)
-- [ ] Define tool types (`ToolInfo`, `ToolExecutionRequest`, `ToolResult`, `JsonSchema`)
-- [ ] Define activity types (`ToolCallEvent`, `ActivityFilter`, `ActivityStats`)
-- [ ] Define container types (`ContainerInfo`, `ContainerStatus`, `ContainerActionResult`)
-- [ ] Define mode types (`ModeInfo`, `ModeConfig`, `ModeTreeNode`)
-- [ ] Create central type exports in `index.ts`
+- [x] Define plugin types (`PluginConfig`, `PluginManifest`, `PluginState`)
+- [x] Define tool types (`ToolInfo`, `ToolExecutionRequest`, `ToolResult`, `JsonSchema`)
+- [x] Define activity types (`ToolCallEvent`, `ActivityFilter`, `ActivityStats`)
+- [x] Define container types (`ContainerInfo`, `ContainerStatus`, `ContainerActionResult`)
+- [x] Define mode types (`ModeInfo`, `ModeConfig`, `ModeTreeNode`)
+- [x] Create central type exports in `index.ts`
 
 ## Source
 <!-- task-group-id: TG-003 -->
