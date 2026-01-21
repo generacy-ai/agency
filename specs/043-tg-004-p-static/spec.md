@@ -19,12 +19,12 @@
 **Tests**: Manual visual verification
 
 ## Tasks
-- [X] Create `agency.svg` extension icon for activity bar
-- [X] Create `plugin.svg` icon for plugin tree items
-- [X] Create `tool.svg` icon for tool tree items
-- [X] Create `activity.svg` icon for activity feed items
-- [X] Create `container.svg` icon for container tree items
-- [X] Create `webview.css` with shared webview styles (VS Code theme variables)
+- [ ] Create `agency.svg` extension icon for activity bar
+- [ ] Create `plugin.svg` icon for plugin tree items
+- [ ] Create `tool.svg` icon for tool tree items
+- [ ] Create `activity.svg` icon for activity feed items
+- [ ] Create `container.svg` icon for container tree items
+- [ ] Create `webview.css` with shared webview styles (VS Code theme variables)
 
 ## Source
 <!-- task-group-id: TG-004 -->
