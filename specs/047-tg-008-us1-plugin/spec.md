@@ -15,11 +15,11 @@ Plugin Configuration Commands
 **Tests**: Command registration tests
 
 ## Tasks
-- [ ] Implement `agency.configurePlugin` command to open plugin config panel
-- [ ] Implement `agency.enablePlugin` command
-- [ ] Implement `agency.disablePlugin` command
-- [ ] Implement `agency.refreshPlugins` command
-- [ ] Register all commands in extension activation
+- [x] Implement `agency.configurePlugin` command to open plugin config panel
+- [x] Implement `agency.enablePlugin` command
+- [x] Implement `agency.disablePlugin` command
+- [x] Implement `agency.refreshPlugins` command
+- [x] Register all commands in extension activation
 
 ## Source
 <!-- task-group-id: TG-008 -->
