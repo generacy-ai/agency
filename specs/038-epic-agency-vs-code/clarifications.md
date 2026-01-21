@@ -12,7 +12,7 @@ Questions and answers to clarify the feature specification.
 - B: HTTP/WebSocket - expose an HTTP endpoint from the MCP server for the extension to connect
 - C: VS Code Remote API - leverage VS Code's existing remote container connection
 
-**Answer**: *Pending*
+**Answer**: **A (stdio transport)** - The architecture doc explicitly shows `MCP Protocol (stdio via docker exec)` in the communication diagrams. This aligns with the standard MCP protocol transport and keeps things simple - no need to expose additional HTTP endpoints from the container. The extension will spawn/exec into the container and communicate over stdin/stdout.
 
 ### Q2: Activity Feed Data Source
 **Context**: Real-time monitoring of agent tool invocations requires a data source. This affects whether Agency core needs modifications.
@@ -22,7 +22,7 @@ Questions and answers to clarify the feature specification.
 - B: Poll a status endpoint on the MCP server
 - C: Intercept MCP traffic as a proxy between Claude and Agency
 
-**Answer**: *Pending*
+**Answer**: **A (Subscribe to events emitted by Agency core)** - The architecture specifies "Activity Feed: Watch agent tool invocations in real-time." This requires Agency core to expose an event stream for tool invocations. This could be implemented as MCP notifications/subscriptions or a separate event stream within the existing MCP connection. Note: This will require corresponding work in Agency core to emit tool invocation events.
 
 ### Q3: Configuration Storage Location
 **Context**: Plugin enable/disable state and settings need to persist. Storage location affects portability and team sharing.
@@ -32,7 +32,7 @@ Questions and answers to clarify the feature specification.
 - B: Dedicated config file in .agency/ directory - explicit, versionable
 - C: User-level VS Code settings - personal preferences, not shared
 
-**Answer**: *Pending*
+**Answer**: **B (Dedicated config file in .agency/ directory)** - The architecture consistently references `agency.config.json` as the primary configuration file. This approach makes configs explicit and versionable, shareable across team members via git, and separate from VS Code editor preferences.
 
 ### Q4: Dev Container Discovery
 **Context**: The extension needs to find running dev containers to connect to. Discovery method affects supported environments.
@@ -42,7 +42,7 @@ Questions and answers to clarify the feature specification.
 - B: VS Code Remote Containers extension API - integrates with existing workflows
 - C: Manual configuration - user specifies container ID or URL
 
-**Answer**: *Pending*
+**Answer**: **B (VS Code Remote Containers extension API)** - The architecture shows tight integration with VS Code's dev container workflow. Using the Remote Containers extension API integrates with existing VS Code workflows, handles container lifecycle complexity, and is future-proof for VS Code container implementation changes. Fallback to Docker API directly can be considered for environments without the Remote Containers extension.
 
 ### Q5: Epic Decomposition Strategy
 **Context**: This is a large epic with multiple features. Breaking it into child issues affects parallelization and delivery.
@@ -52,5 +52,5 @@ Questions and answers to clarify the feature specification.
 - B: By layer (one for extension scaffold, one for views, one for MCP client, etc.)
 - C: By vertical slice (minimal viable extension first, then incremental features)
 
-**Answer**: *Pending*
+**Answer**: **C (Vertical slice - minimal viable extension first, then incremental features)** - Given the scope and dependencies on Agency core modifications, a vertical slice approach allows faster value delivery: 1) MVP: Extension scaffold + basic plugin config UI + tool listing, 2) Tool Testing: MCP connection + in-situ tool execution, 3) Activity Feed: Real-time monitoring (requires Agency core event stream), 4) Dev Containers: Container management and templates, 5) Polish: Mode visualization, advanced features.
 
