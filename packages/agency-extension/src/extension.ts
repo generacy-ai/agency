@@ -1,6 +1,8 @@
 import type * as vscode from 'vscode';
 import { EXTENSION_NAME, OUTPUT_CHANNEL_NAME } from './constants';
 import { DisposableManager, Logger, createScopedLogger } from './utils';
+import { ConfigService } from './services';
+import { registerPluginTreeView } from './providers';
 
 /**
  * Extension state container.
@@ -97,6 +99,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(disposables);
 
   try {
+    // Initialize ConfigService
+    const configService = ConfigService.getInstance();
+    await configService.initialize(vscodeModule);
+    disposables.add({ dispose: () => ConfigService.reset() });
+
+    // Register tree views
+    const pluginTreeDisposable = await registerPluginTreeView(vscodeModule);
+    disposables.add(pluginTreeDisposable);
+
     // Register commands
     registerCommands(vscodeModule, extensionState, log);
 

@@ -70,17 +70,20 @@
       {
         "command": "agency.enablePlugin",
         "title": "Enable Plugin",
-        "category": "Agency"
+        "category": "Agency",
+        "icon": "$(check)"
       },
       {
         "command": "agency.disablePlugin",
         "title": "Disable Plugin",
-        "category": "Agency"
+        "category": "Agency",
+        "icon": "$(x)"
       },
       {
         "command": "agency.refreshPlugins",
         "title": "Refresh Plugins",
-        "category": "Agency"
+        "category": "Agency",
+        "icon": "$(refresh)"
       },
       {
         "command": "agency.testTool",
@@ -147,6 +150,32 @@
           "description": "Automatically connect to MCP server on startup"
         }
       }
+    },
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "agency.configurePlugin",
+          "when": "view == agency.plugins && viewItem =~ /^plugin/",
+          "group": "navigation"
+        },
+        {
+          "command": "agency.enablePlugin",
+          "when": "view == agency.plugins && viewItem == pluginDisabled",
+          "group": "inline"
+        },
+        {
+          "command": "agency.disablePlugin",
+          "when": "view == agency.plugins && viewItem == pluginEnabled",
+          "group": "inline"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "agency.refreshPlugins",
+          "when": "view == agency.plugins",
+          "group": "navigation"
+        }
+      ]
     }
   },
   "scripts": {
