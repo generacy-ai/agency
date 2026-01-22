@@ -131,7 +131,10 @@ class RingBuffer<T> {
     // Re-add items (will evict if new size is smaller)
     const startIndex = items.length > newMaxSize ? items.length - newMaxSize : 0;
     for (let i = startIndex; i < items.length; i++) {
-      this.push(items[i]);
+      const item = items[i];
+      if (item !== undefined) {
+        this.push(item);
+      }
     }
   }
 }
@@ -446,7 +449,10 @@ export class ActivityService {
     if (durations.length > 0) {
       const sorted = [...durations].sort((a, b) => a - b);
       const mid = Math.floor(sorted.length / 2);
-      medianDuration = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+      medianDuration =
+        sorted.length % 2 !== 0
+          ? sorted[mid]
+          : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
     }
 
     // Calculate time range
