@@ -36,31 +36,35 @@ function createMockEvent(overrides: Partial<ToolCallEvent> = {}): ToolCallEvent 
 
 // Mock ActivityService
 vi.mock('../../services/ActivityService', () => {
-  const eventListeners: Set<(event: unknown) => void> = new Set();
-  let mockEventsByTimePeriod = {
-    lastMinute: [] as ToolCallEvent[],
-    lastFiveMinutes: [] as ToolCallEvent[],
-    older: [] as ToolCallEvent[],
-  };
+  const toolCallListeners: Set<(event: ToolCallEvent) => void> = new Set();
+  const batchListeners: Set<() => void> = new Set();
+  let mockEvents: ToolCallEvent[] = [];
 
   return {
     ActivityService: {
       getInstance: vi.fn(() => ({
-        get onActivityUpdate() {
-          return (listener: (event: unknown) => void) => {
-            eventListeners.add(listener);
-            return { dispose: () => eventListeners.delete(listener) };
-          };
+        onToolCall: (listener: (event: ToolCallEvent) => void) => {
+          toolCallListeners.add(listener);
+          return { dispose: () => toolCallListeners.delete(listener) };
         },
-        getEventsByTimePeriod: vi.fn(() => mockEventsByTimePeriod),
+        onBatch: (listener: () => void) => {
+          batchListeners.add(listener);
+          return { dispose: () => batchListeners.delete(listener) };
+        },
+        getEvents: vi.fn(() => mockEvents),
         // Test helpers
-        _triggerUpdate: (event: unknown) => {
-          for (const listener of eventListeners) {
+        _triggerToolCall: (event: ToolCallEvent) => {
+          for (const listener of toolCallListeners) {
             listener(event);
           }
         },
-        _setEventsByTimePeriod: (events: typeof mockEventsByTimePeriod) => {
-          mockEventsByTimePeriod = events;
+        _triggerBatch: () => {
+          for (const listener of batchListeners) {
+            listener();
+          }
+        },
+        _setEvents: (events: ToolCallEvent[]) => {
+          mockEvents = events;
         },
       })),
       reset: vi.fn(),
@@ -142,17 +146,9 @@ describe('ActivityTreeProvider', () => {
 
     // Reset mock data
     const mockService = ActivityService.getInstance() as unknown as {
-      _setEventsByTimePeriod: (events: {
-        lastMinute: ToolCallEvent[];
-        lastFiveMinutes: ToolCallEvent[];
-        older: ToolCallEvent[];
-      }) => void;
+      _setEvents: (events: ToolCallEvent[]) => void;
     };
-    mockService._setEventsByTimePeriod({
-      lastMinute: [],
-      lastFiveMinutes: [],
-      older: [],
-    });
+    mockService._setEvents([]);
   });
 
   afterEach(() => {
@@ -205,22 +201,15 @@ describe('ActivityTreeProvider', () => {
 
     it('should return activities for time group', async () => {
       const mockService = ActivityService.getInstance() as unknown as {
-        _setEventsByTimePeriod: (events: {
-          lastMinute: ToolCallEvent[];
-          lastFiveMinutes: ToolCallEvent[];
-          older: ToolCallEvent[];
-        }) => void;
+        _setEvents: (events: ToolCallEvent[]) => void;
       };
 
       const now = Date.now();
-      mockService._setEventsByTimePeriod({
-        lastMinute: [
-          createMockEvent({ id: 'event-1', startedAt: now - 30 * 1000 }),
-          createMockEvent({ id: 'event-2', startedAt: now - 45 * 1000 }),
-        ],
-        lastFiveMinutes: [],
-        older: [],
-      });
+      // Set events that will be in the "last minute" group
+      mockService._setEvents([
+        createMockEvent({ id: 'event-1', startedAt: now - 30 * 1000 }),
+        createMockEvent({ id: 'event-2', startedAt: now - 45 * 1000 }),
+      ]);
 
       const provider = new ActivityTreeProvider();
       await provider.initialize(mockVscode);
@@ -421,21 +410,13 @@ describe('ActivityTreeProvider', () => {
 
     it('should return correct time group parent for activity', async () => {
       const mockService = ActivityService.getInstance() as unknown as {
-        _setEventsByTimePeriod: (events: {
-          lastMinute: ToolCallEvent[];
-          lastFiveMinutes: ToolCallEvent[];
-          older: ToolCallEvent[];
-        }) => void;
+        _setEvents: (events: ToolCallEvent[]) => void;
       };
 
       const now = Date.now();
       const event = createMockEvent({ startedAt: now - 30 * 1000 }); // 30 seconds ago
 
-      mockService._setEventsByTimePeriod({
-        lastMinute: [event],
-        lastFiveMinutes: [],
-        older: [],
-      });
+      mockService._setEvents([event]);
 
       const provider = new ActivityTreeProvider();
       await provider.initialize(mockVscode);
@@ -468,18 +449,22 @@ describe('ActivityTreeProvider', () => {
   describe('getTotalEventCount', () => {
     it('should return total count across all groups', async () => {
       const mockService = ActivityService.getInstance() as unknown as {
-        _setEventsByTimePeriod: (events: {
-          lastMinute: ToolCallEvent[];
-          lastFiveMinutes: ToolCallEvent[];
-          older: ToolCallEvent[];
-        }) => void;
+        _setEvents: (events: ToolCallEvent[]) => void;
       };
 
-      mockService._setEventsByTimePeriod({
-        lastMinute: [createMockEvent(), createMockEvent()],
-        lastFiveMinutes: [createMockEvent()],
-        older: [createMockEvent(), createMockEvent(), createMockEvent()],
-      });
+      const now = Date.now();
+      // Create events in different time groups
+      mockService._setEvents([
+        // Last minute (2 events)
+        createMockEvent({ startedAt: now - 30 * 1000 }),
+        createMockEvent({ startedAt: now - 45 * 1000 }),
+        // Last 5 minutes (1 event)
+        createMockEvent({ startedAt: now - 2 * 60 * 1000 }),
+        // Older (3 events)
+        createMockEvent({ startedAt: now - 10 * 60 * 1000 }),
+        createMockEvent({ startedAt: now - 15 * 60 * 1000 }),
+        createMockEvent({ startedAt: now - 20 * 60 * 1000 }),
+      ]);
 
       const provider = new ActivityTreeProvider();
       await provider.initialize(mockVscode);

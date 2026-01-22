@@ -1,6 +1,6 @@
 import type * as vscode from 'vscode';
 import type { ToolCallEvent, ToolCallStatus } from '../types';
-import { ActivityService, type ActivityServiceEvent } from '../services/ActivityService';
+import { ActivityService } from '../services/ActivityService';
 import { VIEW_IDS } from '../constants';
 import { createScopedLogger, DisposableManager } from '../utils';
 
@@ -298,16 +298,21 @@ export class ActivityTreeProvider implements vscode.TreeDataProvider<TreeItemDat
     // Get ActivityService instance
     this._activityService = ActivityService.getInstance();
 
-    // Subscribe to activity updates
-    const activityUpdateDisposable = this._activityService.onActivityUpdate;
-    if (activityUpdateDisposable) {
-      const subscription = activityUpdateDisposable((event: ActivityServiceEvent) => {
-        log.debug(`Activity update: ${event.type}`);
-        this._refreshEventGroups();
-        this.refresh();
-      });
-      this._disposables.add(subscription);
-    }
+    // Subscribe to individual tool call events
+    const toolCallSubscription = this._activityService.onToolCall((event: ToolCallEvent) => {
+      log.debug(`Tool call: ${event.toolName}`);
+      this._refreshEventGroups();
+      this.refresh();
+    });
+    this._disposables.add(toolCallSubscription);
+
+    // Subscribe to batch events
+    const batchSubscription = this._activityService.onBatch(() => {
+      log.debug('Batch update received');
+      this._refreshEventGroups();
+      this.refresh();
+    });
+    this._disposables.add(batchSubscription);
 
     // Initial load of events
     this._refreshEventGroups();
@@ -317,12 +322,36 @@ export class ActivityTreeProvider implements vscode.TreeDataProvider<TreeItemDat
 
   /**
    * Refresh the event groupings from the activity service.
+   * Groups events by time: last minute, last 5 minutes, older.
    */
   private _refreshEventGroups(): void {
     if (!this._activityService) {
       return;
     }
-    this._eventsByGroup = this._activityService.getEventsByTimePeriod();
+
+    // Get all events from the service (newest first)
+    const events = this._activityService.getEvents();
+    const now = Date.now();
+    const oneMinuteAgo = now - 60 * 1000;
+    const fiveMinutesAgo = now - 5 * 60 * 1000;
+
+    // Reset groups
+    this._eventsByGroup = {
+      lastMinute: [],
+      lastFiveMinutes: [],
+      older: [],
+    };
+
+    // Group events by time
+    for (const event of events) {
+      if (event.startedAt >= oneMinuteAgo) {
+        this._eventsByGroup.lastMinute.push(event);
+      } else if (event.startedAt >= fiveMinutesAgo) {
+        this._eventsByGroup.lastFiveMinutes.push(event);
+      } else {
+        this._eventsByGroup.older.push(event);
+      }
+    }
   }
 
   /**
