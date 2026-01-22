@@ -109,6 +109,8 @@ This repository uses spec-driven development:
 
 ## Recent Changes
 
+- 060-tg-021-modeservice: Added configuration
+
 - 058-tg-019-containertreeprovider-commands: Added configuration
 
 - 056-tg-017-us3-activity: Added configuration

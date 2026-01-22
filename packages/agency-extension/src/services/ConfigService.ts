@@ -324,6 +324,22 @@ export class ConfigService {
   }
 
   /**
+   * Set the current active mode ID.
+   *
+   * @param modeId The mode ID to set as current
+   */
+  async setCurrentModeId(modeId: string): Promise<void> {
+    this._ensureInitialized();
+    if (!this._config) {
+      throw new Error('No configuration loaded');
+    }
+
+    this._config.currentModeId = modeId;
+    await this._saveConfig();
+    log.debug(`Current mode set: ${modeId}`);
+  }
+
+  /**
    * Remove a plugin by ID.
    *
    * @param id The plugin ID to remove
