@@ -10,58 +10,58 @@
 
 ## Phase 1: Setup & Error Infrastructure
 
-- [ ] T001 Create error types and base classes in `src/errors/ErrorTypes.ts`
-  - [ ] Create abstract `AgencyError` base class with category, getUserMessage(), getAction()
-  - [ ] Create `ErrorCategory` enum (DOCKER, MCP, CONFIG, NETWORK, VALIDATION, PERMISSION, UNKNOWN)
-  - [ ] Create `ErrorAction` interface (label, command, args)
-  - [ ] Implement `DockerNotRunningError` with user message and action
-  - [ ] Implement `ContainerNotFoundError` with user message and action
-  - [ ] Implement `McpConnectionError` with user message and action
-  - [ ] Implement `ConfigValidationError` with user message and action
-  - [ ] Implement `PermissionDeniedError` with user message and action
+- [X] T001 Create error types and base classes in `src/errors/ErrorTypes.ts`
+  - [X] Create abstract `AgencyError` base class with category, getUserMessage(), getAction()
+  - [X] Create `ErrorCategory` enum (DOCKER, MCP, CONFIG, NETWORK, VALIDATION, PERMISSION, UNKNOWN)
+  - [X] Create `ErrorAction` interface (label, command, args)
+  - [X] Implement `DockerNotRunningError` with user message and action
+  - [X] Implement `ContainerNotFoundError` with user message and action
+  - [X] Implement `McpConnectionError` with user message and action
+  - [X] Implement `ConfigValidationError` with user message and action
+  - [X] Implement `PermissionDeniedError` with user message and action
 
-- [ ] T002 [P] Create error notification service in `src/errors/ErrorNotificationService.ts`
-  - [ ] Implement `showError(error: Error)` method
-  - [ ] Add error categorization logic (detect error type)
-  - [ ] Integrate with VS Code `window.showErrorMessage()` API
-  - [ ] Add logging to output channel for detailed errors
-  - [ ] Implement action button handling
-  - [ ] Add "View Logs" default action for all errors
+- [X] T002 [P] Create error notification service in `src/errors/ErrorNotificationService.ts`
+  - [X] Implement `showError(error: Error)` method
+  - [X] Add error categorization logic (detect error type)
+  - [X] Integrate with VS Code `window.showErrorMessage()` API
+  - [X] Add logging to output channel for detailed errors
+  - [X] Implement action button handling
+  - [X] Add "View Logs" default action for all errors
 
-- [ ] T003 [P] Create error module index in `src/errors/index.ts`
-  - [ ] Export all error types
-  - [ ] Export ErrorNotificationService
-  - [ ] Export ErrorCategory enum
-  - [ ] Export ErrorAction interface
+- [X] T003 [P] Create error module index in `src/errors/index.ts`
+  - [X] Export all error types
+  - [X] Export ErrorNotificationService
+  - [X] Export ErrorCategory enum
+  - [X] Export ErrorAction interface
 
 ## Phase 2: Status Bar Implementation
 
-- [ ] T004 Create ConnectionStatus type in `src/types/status.ts`
-  - [ ] Define union type for connection states (connected, disconnected, connecting, error)
-  - [ ] Add metadata fields (connectedAt, reason, error, startedAt, occurredAt)
-  - [ ] Create StatusBarState interface (text, tooltip, icon, color, command)
+- [X] T004 Create ConnectionStatus type in `src/types/status.ts`
+  - [X] Define union type for connection states (connected, disconnected, connecting, error)
+  - [X] Add metadata fields (connectedAt, reason, error, startedAt, occurredAt)
+  - [X] Create StatusBarState interface (text, tooltip, icon, color, command)
 
-- [ ] T005 Implement StatusBarManager in `src/status/StatusBarManager.ts`
-  - [ ] Create singleton class with initialization method
-  - [ ] Create MCP status bar item (right-aligned, priority 100)
-  - [ ] Create Container status bar item (right-aligned, priority 99)
-  - [ ] Implement `updateMcpStatus(status: ConnectionStatus)` method
-  - [ ] Implement `updateContainerStatus(status: ConnectionStatus)` method
-  - [ ] Implement status-to-statusbar-state mapping functions
-  - [ ] Add click handlers for status items
-  - [ ] Add dispose method for cleanup
+- [X] T005 Implement StatusBarManager in `src/status/StatusBarManager.ts`
+  - [X] Create singleton class with initialization method
+  - [X] Create MCP status bar item (right-aligned, priority 100)
+  - [X] Create Container status bar item (right-aligned, priority 99)
+  - [X] Implement `updateMcpStatus(status: ConnectionStatus)` method
+  - [X] Implement `updateContainerStatus(status: ConnectionStatus)` method
+  - [X] Implement status-to-statusbar-state mapping functions
+  - [X] Add click handlers for status items
+  - [X] Add dispose method for cleanup
 
-- [ ] T006 [P] Create status module index in `src/status/index.ts`
-  - [ ] Export StatusBarManager
-  - [ ] Export ConnectionStatus type
-  - [ ] Export StatusBarState interface
+- [X] T006 [P] Create status module index in `src/status/index.ts`
+  - [X] Export StatusBarManager
+  - [X] Export ConnectionStatus type
+  - [X] Export StatusBarState interface
 
 ## Phase 3: Welcome View Implementation
 
-- [ ] T007 Create WelcomeItem interface in `src/types/welcome.ts`
-  - [ ] Define WelcomeItem extending TreeItem
-  - [ ] Add id, label, description, command, iconPath properties
-  - [ ] Export WelcomeItem type
+- [X] T007 Create WelcomeItem interface in `src/types/welcome.ts`
+  - [X] Define WelcomeItem extending TreeItem
+  - [X] Add id, label, description, command, iconPath properties
+  - [X] Export WelcomeItem type
 
 - [ ] T008 Implement WelcomeViewProvider in `src/welcome/WelcomeViewProvider.ts`
   - [ ] Create class implementing TreeDataProvider<WelcomeItem>
