@@ -15,12 +15,12 @@ ModeTreeProvider & Commands
 **Tests**: Provider and command tests
 
 ## Tasks
-- [ ] Implement `ModeTreeProvider` showing modes as tree (with inheritance)
-- [ ] Highlight current active mode
-- [ ] Show tool count per mode
-- [ ] Implement `agency.switchMode` command
-- [ ] Implement `agency.viewModeTools` command
-- [ ] Add mode inheritance visualization
+- [X] Implement `ModeTreeProvider` showing modes as tree (with inheritance)
+- [X] Highlight current active mode
+- [X] Show tool count per mode
+- [X] Implement `agency.switchMode` command
+- [X] Implement `agency.viewModeTools` command
+- [X] Add mode inheritance visualization
 
 ## Source
 <!-- task-group-id: TG-022 -->
