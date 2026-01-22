@@ -17,4 +17,5 @@ export {
   connectMcp,
   disconnectMcp,
   registerToolCommands,
+  initializeToolCommands,
 } from './tool-commands';
