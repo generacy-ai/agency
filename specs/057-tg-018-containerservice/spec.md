@@ -14,12 +14,12 @@ ContainerService
 **Tests**: `packages/agency-extension/src/__tests__/services/ContainerService.test.ts`
 
 ## Tasks
-- [ ] Implement `ContainerService` with VS Code Remote Containers API integration
-- [ ] Implement Docker API fallback (via `dockerode` or raw CLI)
-- [ ] Add methods: `listContainers()`, `getContainer()`, `getContainerStatus()`
-- [ ] Add methods: `startContainer()`, `stopContainer()`, `rebuildContainer()`
-- [ ] Implement `getContainerLogs()` as async iterable
-- [ ] Detect dev containers by labels/config paths
+- [x] Implement `ContainerService` with VS Code Remote Containers API integration
+- [x] Implement Docker API fallback (via `dockerode` or raw CLI)
+- [x] Add methods: `listContainers()`, `getContainer()`, `getContainerStatus()`
+- [x] Add methods: `startContainer()`, `stopContainer()`, `rebuildContainer()`
+- [x] Implement `getContainerLogs()` as async iterable
+- [x] Detect dev containers by labels/config paths
 
 ## Source
 <!-- task-group-id: TG-018 -->
