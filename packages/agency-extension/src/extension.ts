@@ -5,6 +5,9 @@ import { ConfigService, ModeService } from './services';
 import { registerPluginTreeView, registerModeTreeView } from './providers';
 import { registerPluginCommands, initializePluginCommands, registerToolCommands, initializeToolCommands, switchMode, viewModeTools, initializeModeCommands } from './commands';
 import { McpClientService } from './services';
+import { ErrorNotificationService } from './errors';
+import { StatusBarManager } from './status';
+import { WelcomeViewProvider } from './welcome';
 
 /**
  * Extension state container.
@@ -114,19 +117,37 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   try {
     // Initialize ConfigService
-    const configService = ConfigService.getInstance();
-    await configService.initialize(vscodeModule);
-    disposables.add({ dispose: () => ConfigService.reset() });
+    try {
+      const configService = ConfigService.getInstance();
+      await configService.initialize(vscodeModule);
+      disposables.add({ dispose: () => ConfigService.reset() });
+    } catch (error) {
+      log.error('Failed to initialize ConfigService', error);
+      await ErrorNotificationService.showError(error as Error);
+      throw error;
+    }
 
     // Initialize McpClientService
-    const mcpService = McpClientService.getInstance();
-    await mcpService.initialize(vscodeModule);
-    disposables.add({ dispose: () => McpClientService.reset() });
+    try {
+      const mcpService = McpClientService.getInstance();
+      await mcpService.initialize(vscodeModule);
+      disposables.add({ dispose: () => McpClientService.reset() });
+    } catch (error) {
+      log.error('Failed to initialize McpClientService', error);
+      await ErrorNotificationService.showError(error as Error);
+      throw error;
+    }
 
     // Initialize ModeService
-    const modeService = ModeService.getInstance();
-    await modeService.initialize(vscodeModule);
-    disposables.add({ dispose: () => ModeService.reset() });
+    try {
+      const modeService = ModeService.getInstance();
+      await modeService.initialize(vscodeModule);
+      disposables.add({ dispose: () => ModeService.reset() });
+    } catch (error) {
+      log.error('Failed to initialize ModeService', error);
+      await ErrorNotificationService.showError(error as Error);
+      throw error;
+    }
 
     // Initialize plugin commands with extension URI for webview access
     initializePluginCommands(context.extensionUri);
@@ -136,6 +157,71 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Initialize mode commands
     initializeModeCommands();
+
+    // Initialize StatusBarManager
+    const statusBarManager = StatusBarManager.getInstance();
+    statusBarManager.initialize(vscodeModule);
+    disposables.add(statusBarManager);
+
+    // Register status bar click commands
+    disposables.add(
+      vscodeModule.commands.registerCommand('agency.showMcpStatus', () => {
+        log.info('Showing MCP status');
+        // TODO: Implement MCP status view
+      })
+    );
+    disposables.add(
+      vscodeModule.commands.registerCommand('agency.connectMcp', () => {
+        log.info('Connecting to MCP');
+        // TODO: Trigger MCP connection
+      })
+    );
+    disposables.add(
+      vscodeModule.commands.registerCommand('agency.showMcpError', () => {
+        log.info('Showing MCP error');
+        // TODO: Show MCP error details
+      })
+    );
+    disposables.add(
+      vscodeModule.commands.registerCommand('agency.showContainerStatus', () => {
+        log.info('Showing container status');
+        // TODO: Implement container status view
+      })
+    );
+
+    // Register WelcomeViewProvider
+    const configService = ConfigService.getInstance();
+    const welcomeProvider = new WelcomeViewProvider(context, {
+      hasConfig: () => configService.getConfig() !== null,
+    });
+    const welcomeTreeView = vscodeModule.window.createTreeView('agency.welcome', {
+      treeDataProvider: welcomeProvider,
+      showCollapseAll: false,
+    });
+    disposables.add(welcomeTreeView);
+
+    // Register welcome view commands
+    disposables.add(
+      vscodeModule.commands.registerCommand('agency.initConfig', async () => {
+        log.info('Initializing configuration');
+        // TODO: Implement config initialization
+        welcomeProvider.refresh();
+      })
+    );
+    disposables.add(
+      vscodeModule.commands.registerCommand('agency.showPlugins', () => {
+        log.info('Showing plugins');
+        vscodeModule.commands.executeCommand('agency.focusPlugins');
+      })
+    );
+    disposables.add(
+      vscodeModule.commands.registerCommand('agency.openDocs', (section?: string) => {
+        log.info(`Opening documentation: ${section || 'main'}`);
+        const baseUrl = 'https://github.com/generacy-ai/agency';
+        const url = section ? `${baseUrl}#${section}` : baseUrl;
+        vscodeModule.env.openExternal(vscodeModule.Uri.parse(url));
+      })
+    );
 
     // Register tree views
     const pluginTreeDisposable = await registerPluginTreeView(vscodeModule);
@@ -150,6 +236,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     log.info(`${EXTENSION_NAME} extension activated successfully`);
   } catch (error) {
     log.error('Failed to activate extension', error);
+    await ErrorNotificationService.showError(error as Error);
     throw error;
   }
 }
@@ -163,12 +250,17 @@ export function deactivate(): void {
     const log = createScopedLogger('Extension');
     log.info(`${EXTENSION_NAME} extension is deactivating...`);
 
-    // The DisposableManager is registered with context.subscriptions,
-    // so VS Code will call dispose() on it automatically.
-    // We just need to clear our reference.
-    extensionState = null;
+    try {
+      // The DisposableManager is registered with context.subscriptions,
+      // so VS Code will call dispose() on it automatically.
+      // We just need to clear our reference.
+      extensionState = null;
 
-    log.info(`${EXTENSION_NAME} extension deactivated`);
+      log.info(`${EXTENSION_NAME} extension deactivated`);
+    } catch (error) {
+      log.error('Error during deactivation', error);
+      // Don't throw during deactivation to ensure cleanup completes
+    }
   }
 }
 
