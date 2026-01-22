@@ -114,6 +114,8 @@ This repository uses spec-driven development:
 
 - 096-tg-006-45-us1: Added configuration
 
+- 095-tg-005-44-us1: Added configuration
+
 - 094-tg-004-43-p: Added configuration
 
 - 093-tg-003-42-p: Added configuration
