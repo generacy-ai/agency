@@ -14,11 +14,11 @@ Tool Execution Commands
 **Tests**: Command tests
 
 ## Tasks
-- [ ] Implement `agency.testTool` command to open tool execution panel
-- [ ] Implement `agency.refreshTools` command to refresh tool list
-- [ ] Implement `agency.connectMcp` command to connect to MCP server
-- [ ] Implement `agency.disconnectMcp` command
-- [ ] Register commands with proper enablement conditions
+- [x] Implement `agency.testTool` command to open tool execution panel
+- [x] Implement `agency.refreshTools` command to refresh tool list
+- [x] Implement `agency.connectMcp` command to connect to MCP server
+- [x] Implement `agency.disconnectMcp` command
+- [x] Register commands with proper enablement conditions
 
 ## Source
 <!-- task-group-id: TG-013 -->
