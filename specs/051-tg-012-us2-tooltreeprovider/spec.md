@@ -14,11 +14,11 @@ ToolTreeProvider
 **Tests**: Provider unit tests
 
 ## Tasks
-- [ ] Implement `ToolTreeProvider` for tool browser tree view
-- [ ] Group tools by namespace in tree hierarchy
-- [ ] Display tool name, description, and parameter schema preview
-- [ ] Wire up to `McpClientService` for tool list refresh
-- [ ] Show connection status in tree view header
+- [X] Implement `ToolTreeProvider` for tool browser tree view
+- [X] Group tools by namespace in tree hierarchy
+- [X] Display tool name, description, and parameter schema preview
+- [X] Wire up to `McpClientService` for tool list refresh
+- [X] Show connection status in tree view header
 
 ## Source
 <!-- task-group-id: TG-012 -->

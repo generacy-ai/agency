@@ -3,3 +3,4 @@
  */
 
 export { PluginTreeProvider, registerPluginTreeView } from './PluginTreeProvider';
+export { ToolTreeProvider, registerToolTreeView } from './ToolTreeProvider';
