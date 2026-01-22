@@ -3,7 +3,7 @@ import { EXTENSION_NAME, OUTPUT_CHANNEL_NAME } from './constants';
 import { DisposableManager, Logger, createScopedLogger } from './utils';
 import { ConfigService } from './services';
 import { registerPluginTreeView } from './providers';
-import { registerPluginCommands, initializePluginCommands, registerToolCommands } from './commands';
+import { registerPluginCommands, initializePluginCommands, registerToolCommands, initializeToolCommands } from './commands';
 import { McpClientService } from './services';
 
 /**
@@ -118,6 +118,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Initialize plugin commands with extension URI for webview access
     initializePluginCommands(context.extensionUri);
+
+    // Initialize tool commands with extension URI for webview access
+    initializeToolCommands(context.extensionUri);
 
     // Register tree views
     const pluginTreeDisposable = await registerPluginTreeView(vscodeModule);

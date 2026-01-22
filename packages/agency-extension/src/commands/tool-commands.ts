@@ -2,9 +2,24 @@ import type * as vscode from 'vscode';
 import type { ToolInfo } from '../types';
 import { COMMANDS, CONTEXT_KEYS } from '../constants';
 import { McpClientService } from '../services';
+import { ToolExecutionPanel } from '../views';
 import { createScopedLogger } from '../utils';
 
 const log = createScopedLogger('ToolCommands');
+
+/** Store the extension URI for webview resource access */
+let extensionUri: vscode.Uri | null = null;
+
+/**
+ * Initialize tool commands with extension context.
+ * Must be called before using testTool with webview.
+ *
+ * @param uri The extension's URI for resource resolution
+ */
+export function initializeToolCommands(uri: vscode.Uri): void {
+  extensionUri = uri;
+  log.debug('Tool commands initialized with extension URI');
+}
 
 /**
  * Tool command handlers for the Agency extension.
@@ -24,26 +39,27 @@ export async function testTool(
 ): Promise<void> {
   const mcpService = McpClientService.getInstance();
 
-  if (!mcpService.isConnected()) {
-    const action = await vscodeModule.window.showWarningMessage(
-      'Not connected to MCP server. Connect first?',
-      'Connect',
-      'Cancel'
-    );
-    if (action === 'Connect') {
-      await connectMcp(vscodeModule);
-      // Re-check connection after attempting to connect
-      if (!mcpService.isConnected()) {
-        return;
-      }
-    } else {
-      return;
-    }
-  }
-
   // Get selected tool or show picker
   let selectedTool: ToolInfo | undefined = tool;
   if (!selectedTool) {
+    // Check connection only when we need to list tools
+    if (!mcpService.isConnected()) {
+      const action = await vscodeModule.window.showWarningMessage(
+        'Not connected to MCP server. Connect first?',
+        'Connect',
+        'Cancel'
+      );
+      if (action === 'Connect') {
+        await connectMcp(vscodeModule);
+        // Re-check connection after attempting to connect
+        if (!mcpService.isConnected()) {
+          return;
+        }
+      } else {
+        return;
+      }
+    }
+
     try {
       const tools = await mcpService.listTools();
 
@@ -79,8 +95,45 @@ export async function testTool(
     }
   }
 
+  // Open the tool execution panel (webview)
+  if (extensionUri) {
+    ToolExecutionPanel.createOrShow(vscodeModule, extensionUri, selectedTool);
+    log.info(`Opened execution panel for tool: ${selectedTool.name}`);
+  } else {
+    // Fallback to simple input box if extension URI not available
+    log.warn('Extension URI not available, falling back to input box');
+    await testToolFallback(vscodeModule, selectedTool);
+  }
+}
+
+/**
+ * Fallback tool testing using simple input box.
+ * Used when webview is not available.
+ */
+async function testToolFallback(
+  vscodeModule: typeof vscode,
+  selectedTool: ToolInfo
+): Promise<void> {
+  const mcpService = McpClientService.getInstance();
+
+  // Check connection for execution
+  if (!mcpService.isConnected()) {
+    const action = await vscodeModule.window.showWarningMessage(
+      'Not connected to MCP server. Connect first?',
+      'Connect',
+      'Cancel'
+    );
+    if (action === 'Connect') {
+      await connectMcp(vscodeModule);
+      if (!mcpService.isConnected()) {
+        return;
+      }
+    } else {
+      return;
+    }
+  }
+
   // Show input for tool parameters
-  const schema = selectedTool.inputSchema;
   const params = await promptForToolParameters(vscodeModule, selectedTool);
 
   if (params === undefined) {
@@ -96,13 +149,13 @@ export async function testTool(
     },
     async () => {
       try {
-        const result = await mcpService.executeTool(selectedTool!.name, params);
+        const result = await mcpService.executeTool(selectedTool.name, params);
 
         if (result.isError) {
           vscodeModule.window.showErrorMessage(
             `Tool execution failed: ${result.errorMessage || 'Unknown error'}`
           );
-          log.error(`Tool ${selectedTool!.name} failed`, result.errorMessage);
+          log.error(`Tool ${selectedTool.name} failed`, result.errorMessage);
         } else {
           // Show result in output channel or as message
           const textContent = result.content
@@ -113,23 +166,23 @@ export async function testTool(
           // For small outputs, show in notification
           if (textContent.length < 500) {
             vscodeModule.window.showInformationMessage(
-              `Tool ${selectedTool!.name} completed (${result.duration}ms): ${textContent.substring(0, 200)}${textContent.length > 200 ? '...' : ''}`
+              `Tool ${selectedTool.name} completed (${result.duration}ms): ${textContent.substring(0, 200)}${textContent.length > 200 ? '...' : ''}`
             );
           } else {
             // For larger outputs, show in a new document
             const doc = await vscodeModule.workspace.openTextDocument({
-              content: `# Tool Execution Result: ${selectedTool!.name}\n\nDuration: ${result.duration}ms\n\n## Output\n\n${textContent}`,
+              content: `# Tool Execution Result: ${selectedTool.name}\n\nDuration: ${result.duration}ms\n\n## Output\n\n${textContent}`,
               language: 'markdown',
             });
             await vscodeModule.window.showTextDocument(doc, { preview: true });
           }
 
-          log.info(`Tool ${selectedTool!.name} executed successfully (${result.duration}ms)`);
+          log.info(`Tool ${selectedTool.name} executed successfully (${result.duration}ms)`);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error';
         vscodeModule.window.showErrorMessage(`Tool execution error: ${message}`);
-        log.error(`Tool ${selectedTool!.name} execution error`, error);
+        log.error(`Tool ${selectedTool.name} execution error`, error);
       }
     }
   );
