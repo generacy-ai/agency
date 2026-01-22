@@ -17,12 +17,12 @@ MCP Transport Layer
 **Tests**: `packages/agency-extension/src/__tests__/mcp/StdioClient.test.ts`, `DockerExecTransport.test.ts`
 
 ## Tasks
-- [ ] Define MCP-related types in `types.ts`
-- [ ] Implement `DockerExecTransport` using `execa` for `docker exec -i` communication
-- [ ] Implement `StdioClient` wrapping `@modelcontextprotocol/sdk` Client
-- [ ] Handle connection lifecycle (connect, disconnect, reconnect)
-- [ ] Implement timeout and error handling for tool execution
-- [ ] Write unit tests with mock stdio streams
+- [x] Define MCP-related types in `types.ts`
+- [x] Implement `DockerExecTransport` using `execa` for `docker exec -i` communication
+- [x] Implement `StdioClient` wrapping `@modelcontextprotocol/sdk` Client
+- [x] Handle connection lifecycle (connect, disconnect, reconnect)
+- [x] Implement timeout and error handling for tool execution
+- [x] Write unit tests with mock stdio streams
 
 ## Source
 <!-- task-group-id: TG-010 -->
