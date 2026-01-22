@@ -91,21 +91,6 @@ vi.mock('../services', () => ({
     })),
     reset: vi.fn(),
   },
-  ContainerService: {
-    getInstance: vi.fn(() => ({
-      initialize: vi.fn().mockResolvedValue(undefined),
-      listContainers: vi.fn(() => []),
-      onContainerChange: vi.fn(() => ({ dispose: vi.fn() })),
-    })),
-    reset: vi.fn(),
-  },
-  ModeService: {
-    getInstance: vi.fn(() => ({
-      getModes: vi.fn(() => []),
-      onModeChange: vi.fn(() => ({ dispose: vi.fn() })),
-    })),
-    reset: vi.fn(),
-  },
 }));
 
 // Mock providers
