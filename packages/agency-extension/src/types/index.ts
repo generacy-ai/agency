@@ -72,3 +72,15 @@ export type {
   ModeValidationWarning,
   ModeStateEvent,
 } from './mode';
+
+// MCP types
+export type {
+  McpConnectionStatus,
+  McpConnectionOptions,
+  McpConnectionStatusChangeEvent,
+  McpReconnectConfig,
+  McpConnectionInfo,
+  McpServerCapabilities,
+} from './mcp';
+
+export { DEFAULT_RECONNECT_CONFIG } from './mcp';
