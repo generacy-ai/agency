@@ -18,6 +18,8 @@ The `agency` repository contains agent-optimized MCP tooling:
 
 
 
+
+
 - TypeScript 5.x (Node.js 20+)
 - pnpm workspaces
 - turborepo for monorepo management
@@ -110,7 +112,25 @@ This repository uses spec-driven development:
 
 ## Recent Changes
 
+- 096-tg-006-45-us1: Added configuration
+
+- 095-tg-005-44-us1: Added configuration
+
+- 094-tg-004-43-p: Added configuration
+
 - 093-tg-003-42-p: Added configuration
+
+- 092-tg-002-41-p: Added configuration
+
+- 091-tg-001-40-p: Added configuration
+
+- 063-tg-024-p-error: Added configuration
+
+- 061-tg-022-modetreeprovider-commands: Added configuration
+
+- 060-tg-021-modeservice: Added configuration
+
+- 058-tg-019-containertreeprovider-commands: Added configuration
 
 - 056-tg-017-us3-activity: Added configuration
 
