@@ -61,13 +61,33 @@ vi.mock('vscode', () => ({
   },
 }));
 
-// Mock ConfigService
+// Mock services
 vi.mock('../services', () => ({
   ConfigService: {
     getInstance: vi.fn(() => ({
       initialize: vi.fn().mockResolvedValue(undefined),
       getPlugins: vi.fn(() => []),
       onConfigChange: vi.fn(() => ({ dispose: vi.fn() })),
+    })),
+    reset: vi.fn(),
+  },
+  McpClientService: {
+    getInstance: vi.fn(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      getConnectionStatus: vi.fn(() => 'disconnected'),
+      onConnectionStatusChange: vi.fn(() => ({ dispose: vi.fn() })),
+    })),
+    reset: vi.fn(),
+  },
+  ActivityService: {
+    getInstance: vi.fn(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      onActivityUpdate: vi.fn(() => ({ dispose: vi.fn() })),
+      getEventsByTimePeriod: vi.fn(() => ({
+        lastMinute: [],
+        lastFiveMinutes: [],
+        older: [],
+      })),
     })),
     reset: vi.fn(),
   },

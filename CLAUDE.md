@@ -109,6 +109,8 @@ This repository uses spec-driven development:
 
 - 054-tg-015-us3-activityservice: Added configuration
 
+- 053-tg-014-us2-tool: Added configuration
+
 - 049-tg-010-us2-mcp: Added configuration
 
 - 038-epic-agency-vs-code: Added configuration
