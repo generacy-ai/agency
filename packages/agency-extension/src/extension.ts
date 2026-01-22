@@ -3,6 +3,7 @@ import { EXTENSION_NAME, OUTPUT_CHANNEL_NAME } from './constants';
 import { DisposableManager, Logger, createScopedLogger } from './utils';
 import { ConfigService } from './services';
 import { registerPluginTreeView } from './providers';
+import { registerPluginCommands } from './commands';
 
 /**
  * Extension state container.
@@ -26,7 +27,7 @@ function initializeLogger(outputChannel: vscode.OutputChannel): void {
 
 /**
  * Register extension commands.
- * Commands are registered but implementations are stubs until later tasks.
+ * Plugin commands have real implementations, others are stubs.
  */
 function registerCommands(
   vscodeModule: typeof vscode,
@@ -35,14 +36,16 @@ function registerCommands(
 ): void {
   const { commands } = vscodeModule;
 
-  // Stub command registrations - implementations will be added in later tasks
-  // These are registered to prevent "command not found" errors
+  // Register plugin commands (fully implemented)
+  const pluginCommandDisposables = registerPluginCommands(vscodeModule);
+  for (const disposable of pluginCommandDisposables) {
+    state.disposables.add(disposable);
+  }
+  log.debug(`Registered ${pluginCommandDisposables.length} plugin commands`);
 
+  // Stub command registrations for commands not yet implemented
+  // These are registered to prevent "command not found" errors
   const stubCommands = [
-    'agency.configurePlugin',
-    'agency.enablePlugin',
-    'agency.disablePlugin',
-    'agency.refreshPlugins',
     'agency.testTool',
     'agency.refreshTools',
     'agency.connectMcp',
