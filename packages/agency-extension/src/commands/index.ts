@@ -8,4 +8,13 @@ export {
   disablePlugin,
   refreshPlugins,
   registerPluginCommands,
+  initializePluginCommands,
 } from './plugin-commands';
+
+export {
+  testTool,
+  refreshTools,
+  connectMcp,
+  disconnectMcp,
+  registerToolCommands,
+} from './tool-commands';

@@ -2,9 +2,24 @@ import type * as vscode from 'vscode';
 import type { PluginConfig } from '../types';
 import { COMMANDS } from '../constants';
 import { ConfigService } from '../services';
+import { PluginConfigPanel } from '../views';
 import { createScopedLogger } from '../utils';
 
 const log = createScopedLogger('PluginCommands');
+
+/** Store the extension URI for webview resource access */
+let extensionUri: vscode.Uri | null = null;
+
+/**
+ * Initialize plugin commands with extension context.
+ * Must be called before using configurePlugin with webview.
+ *
+ * @param uri The extension's URI for resource resolution
+ */
+export function initializePluginCommands(uri: vscode.Uri): void {
+  extensionUri = uri;
+  log.debug('Plugin commands initialized with extension URI');
+}
 
 /**
  * Plugin command handlers for the Agency extension.
@@ -12,8 +27,11 @@ const log = createScopedLogger('PluginCommands');
  */
 
 /**
- * Opens a quick pick to select a plugin, then shows its settings in a webview panel.
- * For now, opens the config file directly as a simpler implementation.
+ * Opens a webview panel to configure plugin settings.
+ * If no plugin is provided, shows a quick pick to select one.
+ *
+ * @param vscodeModule The VS Code module
+ * @param plugin Optional plugin to configure directly
  */
 export async function configurePlugin(
   vscodeModule: typeof vscode,
@@ -48,10 +66,30 @@ export async function configurePlugin(
     selectedPlugin = selected.plugin;
   }
 
-  // Show plugin settings in a quick input for editing
-  const settingsJson = JSON.stringify(selectedPlugin.settings, null, 2);
+  // Open the plugin configuration webview panel
+  if (extensionUri) {
+    PluginConfigPanel.createOrShow(vscodeModule, extensionUri, selectedPlugin);
+    log.info(`Opened config panel for plugin: ${selectedPlugin.id}`);
+  } else {
+    // Fallback to simple input box if extension URI not available
+    log.warn('Extension URI not available, falling back to input box');
+    await configurePluginFallback(vscodeModule, selectedPlugin);
+  }
+}
+
+/**
+ * Fallback configuration method using simple input box.
+ * Used when webview is not available.
+ */
+async function configurePluginFallback(
+  vscodeModule: typeof vscode,
+  plugin: PluginConfig
+): Promise<void> {
+  const configService = ConfigService.getInstance();
+  const settingsJson = JSON.stringify(plugin.settings, null, 2);
+
   const newSettings = await vscodeModule.window.showInputBox({
-    prompt: `Edit settings for ${selectedPlugin.id} (JSON format)`,
+    prompt: `Edit settings for ${plugin.id} (JSON format)`,
     value: settingsJson,
     validateInput: (value) => {
       try {
@@ -70,11 +108,11 @@ export async function configurePlugin(
   try {
     const parsedSettings = JSON.parse(newSettings) as Record<string, unknown>;
     await configService.savePluginConfig({
-      ...selectedPlugin,
+      ...plugin,
       settings: parsedSettings,
     });
-    vscodeModule.window.showInformationMessage(`Plugin ${selectedPlugin.id} settings updated.`);
-    log.info(`Plugin ${selectedPlugin.id} settings updated`);
+    vscodeModule.window.showInformationMessage(`Plugin ${plugin.id} settings updated.`);
+    log.info(`Plugin ${plugin.id} settings updated`);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     vscodeModule.window.showErrorMessage(`Failed to save plugin settings: ${message}`);

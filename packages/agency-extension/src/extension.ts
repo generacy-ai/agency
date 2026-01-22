@@ -3,7 +3,8 @@ import { EXTENSION_NAME, OUTPUT_CHANNEL_NAME } from './constants';
 import { DisposableManager, Logger, createScopedLogger } from './utils';
 import { ConfigService } from './services';
 import { registerPluginTreeView } from './providers';
-import { registerPluginCommands } from './commands';
+import { registerPluginCommands, initializePluginCommands, registerToolCommands } from './commands';
+import { McpClientService } from './services';
 
 /**
  * Extension state container.
@@ -27,7 +28,7 @@ function initializeLogger(outputChannel: vscode.OutputChannel): void {
 
 /**
  * Register extension commands.
- * Plugin commands have real implementations, others are stubs.
+ * Plugin and tool commands have real implementations, others are stubs.
  */
 function registerCommands(
   vscodeModule: typeof vscode,
@@ -43,13 +44,16 @@ function registerCommands(
   }
   log.debug(`Registered ${pluginCommandDisposables.length} plugin commands`);
 
+  // Register tool commands (fully implemented)
+  const toolCommandDisposables = registerToolCommands(vscodeModule);
+  for (const disposable of toolCommandDisposables) {
+    state.disposables.add(disposable);
+  }
+  log.debug(`Registered ${toolCommandDisposables.length} tool commands`);
+
   // Stub command registrations for commands not yet implemented
   // These are registered to prevent "command not found" errors
   const stubCommands = [
-    'agency.testTool',
-    'agency.refreshTools',
-    'agency.connectMcp',
-    'agency.disconnectMcp',
     'agency.switchMode',
     'agency.viewModeTools',
     'agency.startContainer',
@@ -106,6 +110,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const configService = ConfigService.getInstance();
     await configService.initialize(vscodeModule);
     disposables.add({ dispose: () => ConfigService.reset() });
+
+    // Initialize McpClientService
+    const mcpService = McpClientService.getInstance();
+    await mcpService.initialize(vscodeModule);
+    disposables.add({ dispose: () => McpClientService.reset() });
+
+    // Initialize plugin commands with extension URI for webview access
+    initializePluginCommands(context.extensionUri);
 
     // Register tree views
     const pluginTreeDisposable = await registerPluginTreeView(vscodeModule);
