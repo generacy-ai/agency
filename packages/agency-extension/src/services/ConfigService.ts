@@ -13,7 +13,11 @@ import {
   isCompatibleVersion,
   parseAgencyConfig,
 } from '../config';
+<<<<<<< HEAD
 import { createScopedLogger, DisposableManager, debounce } from '../utils';
+=======
+import { createScopedLogger, DisposableManager } from '../utils';
+>>>>>>> origin/038-epic-agency-vs-code
 
 const log = createScopedLogger('ConfigService');
 
@@ -112,12 +116,16 @@ export class ConfigService {
   private _initialized = false;
   private _disposables = new DisposableManager();
   private _onConfigChange = new EventEmitter<AgencyConfig | null>();
+<<<<<<< HEAD
   private _debouncedSaveConfig: (() => Promise<void>) & { cancel: () => void };
+=======
+>>>>>>> origin/038-epic-agency-vs-code
 
   /**
    * Private constructor to enforce singleton pattern.
    * Use ConfigService.getInstance() to get the instance.
    */
+<<<<<<< HEAD
   private constructor() {
     // Create debounced save function (300ms delay)
     this._debouncedSaveConfig = debounce(
@@ -125,6 +133,9 @@ export class ConfigService {
       300
     );
   }
+=======
+  private constructor() {}
+>>>>>>> origin/038-epic-agency-vs-code
 
   /**
    * Get the singleton ConfigService instance.
@@ -331,6 +342,7 @@ export class ConfigService {
   }
 
   /**
+<<<<<<< HEAD
    * Set the current active mode ID.
    *
    * @param modeId The mode ID to set as current
@@ -347,6 +359,8 @@ export class ConfigService {
   }
 
   /**
+=======
+>>>>>>> origin/038-epic-agency-vs-code
    * Remove a plugin by ID.
    *
    * @param id The plugin ID to remove
@@ -433,8 +447,11 @@ export class ConfigService {
    * Dispose of the ConfigService and clean up resources.
    */
   dispose(): void {
+<<<<<<< HEAD
     // Cancel any pending debounced saves
     this._debouncedSaveConfig.cancel();
+=======
+>>>>>>> origin/038-epic-agency-vs-code
     this._disposables.dispose();
     this._onConfigChange.dispose();
     this._config = null;
@@ -454,6 +471,7 @@ export class ConfigService {
   }
 
   /**
+<<<<<<< HEAD
    * Save the current config to file (debounced).
    * Multiple rapid calls will be coalesced into a single write operation.
    */
@@ -466,6 +484,11 @@ export class ConfigService {
    * This is the actual save implementation called by the debounced wrapper.
    */
   private async _saveConfigImmediate(): Promise<void> {
+=======
+   * Save the current config to file and emit change event.
+   */
+  private async _saveConfig(): Promise<void> {
+>>>>>>> origin/038-epic-agency-vs-code
     if (!this._vscodeModule || !this._config) {
       throw new Error('Cannot save: service not properly initialized');
     }

@@ -1,6 +1,7 @@
 import type * as vscode from 'vscode';
 import { EXTENSION_NAME, OUTPUT_CHANNEL_NAME } from './constants';
 import { DisposableManager, Logger, createScopedLogger } from './utils';
+<<<<<<< HEAD
 import { ConfigService, ModeService } from './services';
 import { registerPluginTreeView, registerModeTreeView } from './providers';
 import { registerPluginCommands, initializePluginCommands, registerToolCommands, initializeToolCommands, switchMode, viewModeTools, initializeModeCommands } from './commands';
@@ -8,6 +9,12 @@ import { McpClientService } from './services';
 import { ErrorNotificationService } from './errors';
 import { StatusBarManager } from './status';
 import { WelcomeViewProvider } from './welcome';
+=======
+import { ConfigService } from './services';
+import { registerPluginTreeView } from './providers';
+import { registerPluginCommands, initializePluginCommands, registerToolCommands, initializeToolCommands } from './commands';
+import { McpClientService } from './services';
+>>>>>>> origin/038-epic-agency-vs-code
 
 /**
  * Extension state container.
@@ -54,6 +61,7 @@ function registerCommands(
   }
   log.debug(`Registered ${toolCommandDisposables.length} tool commands`);
 
+<<<<<<< HEAD
   // Register mode commands (fully implemented)
   state.disposables.add(
     commands.registerCommand('agency.switchMode', (item) => switchMode(vscodeModule, item))
@@ -66,6 +74,13 @@ function registerCommands(
   // Stub command registrations for commands not yet implemented
   // These are registered to prevent "command not found" errors
   const stubCommands = [
+=======
+  // Stub command registrations for commands not yet implemented
+  // These are registered to prevent "command not found" errors
+  const stubCommands = [
+    'agency.switchMode',
+    'agency.viewModeTools',
+>>>>>>> origin/038-epic-agency-vs-code
     'agency.startContainer',
     'agency.stopContainer',
     'agency.rebuildContainer',
@@ -117,6 +132,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   try {
     // Initialize ConfigService
+<<<<<<< HEAD
     try {
       const configService = ConfigService.getInstance();
       await configService.initialize(vscodeModule);
@@ -148,6 +164,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await ErrorNotificationService.showError(error as Error);
       throw error;
     }
+=======
+    const configService = ConfigService.getInstance();
+    await configService.initialize(vscodeModule);
+    disposables.add({ dispose: () => ConfigService.reset() });
+
+    // Initialize McpClientService
+    const mcpService = McpClientService.getInstance();
+    await mcpService.initialize(vscodeModule);
+    disposables.add({ dispose: () => McpClientService.reset() });
+>>>>>>> origin/038-epic-agency-vs-code
 
     // Initialize plugin commands with extension URI for webview access
     initializePluginCommands(context.extensionUri);
@@ -155,6 +181,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Initialize tool commands with extension URI for webview access
     initializeToolCommands(context.extensionUri);
 
+<<<<<<< HEAD
     // Initialize mode commands
     initializeModeCommands();
 
@@ -223,20 +250,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       })
     );
 
+=======
+>>>>>>> origin/038-epic-agency-vs-code
     // Register tree views
     const pluginTreeDisposable = await registerPluginTreeView(vscodeModule);
     disposables.add(pluginTreeDisposable);
 
+<<<<<<< HEAD
     const modeTreeDisposable = registerModeTreeView(vscodeModule);
     disposables.add(modeTreeDisposable);
 
+=======
+>>>>>>> origin/038-epic-agency-vs-code
     // Register commands
     registerCommands(vscodeModule, extensionState, log);
 
     log.info(`${EXTENSION_NAME} extension activated successfully`);
   } catch (error) {
     log.error('Failed to activate extension', error);
+<<<<<<< HEAD
     await ErrorNotificationService.showError(error as Error);
+=======
+>>>>>>> origin/038-epic-agency-vs-code
     throw error;
   }
 }
@@ -250,6 +285,7 @@ export function deactivate(): void {
     const log = createScopedLogger('Extension');
     log.info(`${EXTENSION_NAME} extension is deactivating...`);
 
+<<<<<<< HEAD
     try {
       // The DisposableManager is registered with context.subscriptions,
       // so VS Code will call dispose() on it automatically.
@@ -261,6 +297,14 @@ export function deactivate(): void {
       log.error('Error during deactivation', error);
       // Don't throw during deactivation to ensure cleanup completes
     }
+=======
+    // The DisposableManager is registered with context.subscriptions,
+    // so VS Code will call dispose() on it automatically.
+    // We just need to clear our reference.
+    extensionState = null;
+
+    log.info(`${EXTENSION_NAME} extension deactivated`);
+>>>>>>> origin/038-epic-agency-vs-code
   }
 }
 

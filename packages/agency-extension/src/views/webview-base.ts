@@ -70,8 +70,11 @@ export abstract class WebviewBase {
   private readonly _enableScripts: boolean;
   private readonly _retainContextWhenHidden: boolean;
   private readonly _localResourceRoots: vscode.Uri[];
+<<<<<<< HEAD
   private _messageQueue: WebviewMessage[] = [];
   private _flushTimeout: ReturnType<typeof setTimeout> | null = null;
+=======
+>>>>>>> origin/038-epic-agency-vs-code
 
   /**
    * Create a new WebviewBase instance.
@@ -144,7 +147,10 @@ export abstract class WebviewBase {
 
   /**
    * Post a message to the webview.
+<<<<<<< HEAD
    * Messages are batched and sent on the next tick for better performance.
+=======
+>>>>>>> origin/038-epic-agency-vs-code
    *
    * @param message The message to send
    * @returns Promise that resolves when the message is posted
@@ -155,6 +161,7 @@ export abstract class WebviewBase {
       return false;
     }
 
+<<<<<<< HEAD
     // Add message to queue
     this._messageQueue.push(message);
 
@@ -189,12 +196,16 @@ export abstract class WebviewBase {
         payload: { messages },
       });
     }
+=======
+    return this._panel.webview.postMessage(message);
+>>>>>>> origin/038-epic-agency-vs-code
   }
 
   /**
    * Dispose of the webview panel and clean up resources.
    */
   dispose(): void {
+<<<<<<< HEAD
     // Clear any pending message flush
     if (this._flushTimeout !== null) {
       clearTimeout(this._flushTimeout);
@@ -202,6 +213,8 @@ export abstract class WebviewBase {
     }
     this._messageQueue = [];
 
+=======
+>>>>>>> origin/038-epic-agency-vs-code
     this._panel?.dispose();
     this._panel = null;
     this._disposables.dispose();

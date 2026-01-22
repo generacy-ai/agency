@@ -1,5 +1,6 @@
 {
   "name": "@generacy-ai/agency-extension",
+<<<<<<< HEAD
   "displayName": "Agency - AI Agent Development",
   "description": "FREE developer interface for Agency MCP server - configure plugins, test tools in-situ, monitor agent activity in real-time",
   "version": "0.1.0",
@@ -20,10 +21,22 @@
   },
   "homepage": "https://github.com/generacy-ai/agency#readme",
   "qna": "https://github.com/generacy-ai/agency/discussions",
+=======
+  "displayName": "Agency",
+  "description": "Plugin configuration, in-situ MCP testing, and activity monitoring for AI development agents",
+  "version": "0.0.0",
+  "publisher": "generacy-ai",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/generacy-ai/agency"
+  },
+>>>>>>> origin/038-epic-agency-vs-code
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
+<<<<<<< HEAD
     "Testing",
     "Debuggers",
     "Other"
@@ -43,6 +56,17 @@
     "docker",
     "devcontainer",
     "dev container"
+=======
+    "Other",
+    "Debuggers"
+  ],
+  "keywords": [
+    "mcp",
+    "agent",
+    "generacy",
+    "ai",
+    "development"
+>>>>>>> origin/038-epic-agency-vs-code
   ],
   "activationEvents": [
     "workspaceContains:.agency/agency.config.json"
@@ -79,11 +103,14 @@
         {
           "id": "agency.modes",
           "name": "Modes"
+<<<<<<< HEAD
         },
         {
           "id": "agency.welcome",
           "name": "Getting Started",
           "when": "!config.agency.configExists"
+=======
+>>>>>>> origin/038-epic-agency-vs-code
         }
       ]
     },
@@ -160,6 +187,7 @@
         "command": "agency.viewContainerLogs",
         "title": "View Container Logs",
         "category": "Agency"
+<<<<<<< HEAD
       },
       {
         "command": "agency.showMcpStatus",
@@ -190,6 +218,8 @@
         "command": "agency.openDocs",
         "title": "Open Documentation",
         "category": "Agency"
+=======
+>>>>>>> origin/038-epic-agency-vs-code
       }
     ],
     "configuration": {
@@ -232,6 +262,7 @@
           "group": "navigation"
         }
       ]
+<<<<<<< HEAD
     },
     "walkthroughs": [
       {
@@ -295,6 +326,9 @@
         ]
       }
     ]
+=======
+    }
+>>>>>>> origin/038-epic-agency-vs-code
   },
   "scripts": {
     "vscode:prepublish": "pnpm run build",

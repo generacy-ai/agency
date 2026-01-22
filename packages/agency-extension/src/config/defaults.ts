@@ -34,9 +34,13 @@ export function createDefaultConfig(): AgencyConfig {
       {
         id: 'default',
         name: 'Default',
+<<<<<<< HEAD
         includedTools: [],
         excludedTools: [],
         isDefault: true,
+=======
+        tools: [],
+>>>>>>> origin/038-epic-agency-vs-code
       },
     ],
     containers: [],
