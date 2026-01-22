@@ -109,6 +109,8 @@ This repository uses spec-driven development:
 
 ## Recent Changes
 
+- 058-tg-019-containertreeprovider-commands: Added configuration
+
 - 056-tg-017-us3-activity: Added configuration
 
 - 054-tg-015-us3-activityservice: Added configuration
