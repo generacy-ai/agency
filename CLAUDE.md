@@ -1,6 +1,6 @@
 # Agency Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-01-21
+Auto-generated from all feature plans. Last updated: 2026-01-22
 
 ## Project Overview
 
@@ -117,6 +117,8 @@ This repository uses spec-driven development:
 - **generacy**: Orchestration services + plugins - workflow engine
 
 ## Recent Changes
+
+- 049-tg-010-us2-mcp: Added configuration
 
 - 038-epic-agency-vs-code: Added configuration
 
