@@ -70,6 +70,8 @@ export abstract class WebviewBase {
   private readonly _enableScripts: boolean;
   private readonly _retainContextWhenHidden: boolean;
   private readonly _localResourceRoots: vscode.Uri[];
+  private _messageQueue: WebviewMessage[] = [];
+  private _flushTimeout: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Create a new WebviewBase instance.
@@ -142,6 +144,7 @@ export abstract class WebviewBase {
 
   /**
    * Post a message to the webview.
+   * Messages are batched and sent on the next tick for better performance.
    *
    * @param message The message to send
    * @returns Promise that resolves when the message is posted
@@ -152,13 +155,53 @@ export abstract class WebviewBase {
       return false;
     }
 
-    return this._panel.webview.postMessage(message);
+    // Add message to queue
+    this._messageQueue.push(message);
+
+    // Schedule flush if not already scheduled
+    if (this._flushTimeout === null) {
+      this._flushTimeout = setTimeout(() => this._flushMessages(), 0);
+    }
+
+    return true;
+  }
+
+  /**
+   * Flush all queued messages to the webview.
+   * Sends messages in a single batch for better performance.
+   */
+  private async _flushMessages(): Promise<void> {
+    this._flushTimeout = null;
+
+    if (this._messageQueue.length === 0 || !this._panel) {
+      return;
+    }
+
+    // Take all queued messages
+    const messages = this._messageQueue.splice(0);
+
+    // Send as a batch if multiple messages, or single message if only one
+    if (messages.length === 1) {
+      await this._panel.webview.postMessage(messages[0]);
+    } else {
+      await this._panel.webview.postMessage({
+        type: 'batch',
+        payload: { messages },
+      });
+    }
   }
 
   /**
    * Dispose of the webview panel and clean up resources.
    */
   dispose(): void {
+    // Clear any pending message flush
+    if (this._flushTimeout !== null) {
+      clearTimeout(this._flushTimeout);
+      this._flushTimeout = null;
+    }
+    this._messageQueue = [];
+
     this._panel?.dispose();
     this._panel = null;
     this._disposables.dispose();

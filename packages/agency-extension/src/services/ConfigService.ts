@@ -13,7 +13,7 @@ import {
   isCompatibleVersion,
   parseAgencyConfig,
 } from '../config';
-import { createScopedLogger, DisposableManager } from '../utils';
+import { createScopedLogger, DisposableManager, debounce } from '../utils';
 
 const log = createScopedLogger('ConfigService');
 
@@ -112,12 +112,19 @@ export class ConfigService {
   private _initialized = false;
   private _disposables = new DisposableManager();
   private _onConfigChange = new EventEmitter<AgencyConfig | null>();
+  private _debouncedSaveConfig: (() => Promise<void>) & { cancel: () => void };
 
   /**
    * Private constructor to enforce singleton pattern.
    * Use ConfigService.getInstance() to get the instance.
    */
-  private constructor() {}
+  private constructor() {
+    // Create debounced save function (300ms delay)
+    this._debouncedSaveConfig = debounce(
+      () => this._saveConfigImmediate(),
+      300
+    );
+  }
 
   /**
    * Get the singleton ConfigService instance.
@@ -426,6 +433,8 @@ export class ConfigService {
    * Dispose of the ConfigService and clean up resources.
    */
   dispose(): void {
+    // Cancel any pending debounced saves
+    this._debouncedSaveConfig.cancel();
     this._disposables.dispose();
     this._onConfigChange.dispose();
     this._config = null;
@@ -445,9 +454,18 @@ export class ConfigService {
   }
 
   /**
-   * Save the current config to file and emit change event.
+   * Save the current config to file (debounced).
+   * Multiple rapid calls will be coalesced into a single write operation.
    */
   private async _saveConfig(): Promise<void> {
+    this._debouncedSaveConfig();
+  }
+
+  /**
+   * Save the current config to file immediately and emit change event.
+   * This is the actual save implementation called by the debounced wrapper.
+   */
+  private async _saveConfigImmediate(): Promise<void> {
     if (!this._vscodeModule || !this._config) {
       throw new Error('Cannot save: service not properly initialized');
     }

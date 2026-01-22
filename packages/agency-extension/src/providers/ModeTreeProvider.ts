@@ -35,6 +35,7 @@ export class ModeTreeProvider implements vscode.TreeDataProvider<ModeTreeItem> {
   private _modeService: ModeService;
   private _disposables = new DisposableManager();
   private _vscodeModule: typeof vscode;
+  private _cachedTree: ModeInfo[] | null = null;
 
   constructor(vscodeModule: typeof vscode, modeService: ModeService) {
     this._vscodeModule = vscodeModule;
@@ -78,13 +79,18 @@ export class ModeTreeProvider implements vscode.TreeDataProvider<ModeTreeItem> {
 
   /**
    * Get children for a tree item.
+   * Uses cached tree to avoid rebuilding on every access.
    */
   getChildren(element?: ModeTreeItem): vscode.ProviderResult<ModeTreeItem[]> {
     try {
+      // Lazy-load tree on first access
+      if (!this._cachedTree) {
+        this._cachedTree = this._modeService.buildModeTree();
+      }
+
       if (!element) {
         // Root level: get all root modes
-        const tree = this._modeService.buildModeTree();
-        return tree.map((modeInfo) => this._createTreeItem(modeInfo));
+        return this._cachedTree.map((modeInfo) => this._createTreeItem(modeInfo));
       } else {
         // Get children of a specific mode
         const modeInfo = this._findModeInfo(element.modeId);
@@ -112,9 +118,11 @@ export class ModeTreeProvider implements vscode.TreeDataProvider<ModeTreeItem> {
 
   /**
    * Refresh the tree view.
+   * Invalidates cache to force rebuild on next access.
    */
   refresh(): void {
     log.debug('Refreshing mode tree');
+    this._cachedTree = null;
     this._onDidChangeTreeData.fire();
   }
 
@@ -166,9 +174,13 @@ export class ModeTreeProvider implements vscode.TreeDataProvider<ModeTreeItem> {
 
   /**
    * Find mode info by ID.
+   * Uses cached tree to avoid rebuilding.
    */
   private _findModeInfo(modeId: string): ModeInfo | undefined {
-    const tree = this._modeService.buildModeTree();
+    // Ensure tree is loaded
+    if (!this._cachedTree) {
+      this._cachedTree = this._modeService.buildModeTree();
+    }
 
     const search = (modes: ModeInfo[]): ModeInfo | undefined => {
       for (const mode of modes) {
@@ -183,7 +195,7 @@ export class ModeTreeProvider implements vscode.TreeDataProvider<ModeTreeItem> {
       return undefined;
     };
 
-    return search(tree);
+    return search(this._cachedTree);
   }
 
   /**
