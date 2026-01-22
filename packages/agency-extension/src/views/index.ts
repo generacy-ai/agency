@@ -6,3 +6,4 @@ export { WebviewBase, type WebviewMessage, type WebviewPanelOptions } from './we
 export { PluginConfigPanel } from './plugins/PluginConfigPanel';
 export { ToolExecutionPanel } from './tool-browser/ToolExecutionPanel';
 export { ActivityFeedPanel } from './activity/ActivityFeedPanel';
+export { ContainerDetailPanel } from './containers/ContainerDetailPanel';
