@@ -19,7 +19,6 @@ export {
   registerToolCommands,
   initializeToolCommands,
 } from './tool-commands';
-<<<<<<< HEAD
 
 export {
   switchMode,
@@ -27,5 +26,3 @@ export {
   refreshModes,
   initializeModeCommands,
 } from './mode-commands';
-=======
->>>>>>> origin/038-epic-agency-vs-code

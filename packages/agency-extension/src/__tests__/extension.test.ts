@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type * as vscode from 'vscode';
 
-<<<<<<< HEAD
 // Mock vscode module - all variables must be defined inline to avoid hoisting issues
 vi.mock('vscode', () => ({
   window: {
@@ -37,45 +36,6 @@ vi.mock('vscode', () => ({
   Uri: {
     parse: vi.fn((uri: string) => ({ toString: () => uri })),
   },
-=======
-// Mock vscode module
-const mockOutputChannel = {
-  appendLine: vi.fn(),
-  show: vi.fn(),
-  dispose: vi.fn(),
-};
-
-const mockCommands = {
-  registerCommand: vi.fn((command: string, callback: () => void) => ({
-    dispose: vi.fn(),
-  })),
-};
-
-const mockTreeView = {
-  dispose: vi.fn(),
-};
-
-const mockWindow = {
-  createOutputChannel: vi.fn(() => mockOutputChannel),
-  showInformationMessage: vi.fn(),
-  createTreeView: vi.fn(() => mockTreeView),
-};
-
-const mockWorkspace = {
-  workspaceFolders: [
-    {
-      uri: { fsPath: '/workspace', path: '/workspace' },
-      name: 'workspace',
-      index: 0,
-    },
-  ],
-};
-
-vi.mock('vscode', () => ({
-  window: mockWindow,
-  commands: mockCommands,
-  workspace: mockWorkspace,
->>>>>>> origin/038-epic-agency-vs-code
   TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
   TreeItem: class {},
   ThemeIcon: class { constructor(public id: string, public color?: unknown) {} },
@@ -105,10 +65,7 @@ vi.mock('../services', () => ({
     getInstance: vi.fn(() => ({
       initialize: vi.fn().mockResolvedValue(undefined),
       getPlugins: vi.fn(() => []),
-<<<<<<< HEAD
       getConfig: vi.fn(() => null),
-=======
->>>>>>> origin/038-epic-agency-vs-code
       onConfigChange: vi.fn(() => ({ dispose: vi.fn() })),
     })),
     reset: vi.fn(),
@@ -121,23 +78,11 @@ vi.mock('../services', () => ({
     })),
     reset: vi.fn(),
   },
-<<<<<<< HEAD
   ModeService: {
     getInstance: vi.fn(() => ({
       initialize: vi.fn().mockResolvedValue(undefined),
       getModes: vi.fn(() => []),
       onModeChange: vi.fn(() => ({ dispose: vi.fn() })),
-=======
-  ActivityService: {
-    getInstance: vi.fn(() => ({
-      initialize: vi.fn().mockResolvedValue(undefined),
-      onActivityUpdate: vi.fn(() => ({ dispose: vi.fn() })),
-      getEventsByTimePeriod: vi.fn(() => ({
-        lastMinute: [],
-        lastFiveMinutes: [],
-        older: [],
-      })),
->>>>>>> origin/038-epic-agency-vs-code
     })),
     reset: vi.fn(),
   },
@@ -146,7 +91,6 @@ vi.mock('../services', () => ({
 // Mock providers
 vi.mock('../providers', () => ({
   registerPluginTreeView: vi.fn().mockResolvedValue({ dispose: vi.fn() }),
-<<<<<<< HEAD
   registerModeTreeView: vi.fn(() => ({ dispose: vi.fn() })),
 }));
 
@@ -183,24 +127,16 @@ vi.mock('../welcome', () => ({
   WelcomeViewProvider: vi.fn().mockImplementation(() => ({
     refresh: vi.fn(),
   })),
-=======
->>>>>>> origin/038-epic-agency-vs-code
 }));
 
 // Import after mocking
 import { activate, deactivate, getExtensionState } from '../extension';
-<<<<<<< HEAD
 import * as vscode from 'vscode';
 
 describe('Extension', () => {
   let mockContext: vscode.ExtensionContext;
   const mockWindow = vscode.window as unknown as { createOutputChannel: ReturnType<typeof vi.fn> };
   const mockCommands = vscode.commands as unknown as { registerCommand: ReturnType<typeof vi.fn> };
-=======
-
-describe('Extension', () => {
-  let mockContext: vscode.ExtensionContext;
->>>>>>> origin/038-epic-agency-vs-code
 
   beforeEach(() => {
     // Reset mocks
@@ -261,7 +197,6 @@ describe('Extension', () => {
       expect(mockContext.subscriptions.length).toBeGreaterThan(0);
     });
 
-<<<<<<< HEAD
     it('should register commands', async () => {
       await activate(mockContext);
 
@@ -291,36 +226,6 @@ describe('Extension', () => {
       expect(calls).toContain('agency.stopContainer');
       expect(calls).toContain('agency.rebuildContainer');
       expect(calls).toContain('agency.viewContainerLogs');
-=======
-    it('should register all stub commands', async () => {
-      await activate(mockContext);
-
-      const expectedCommands = [
-        'agency.configurePlugin',
-        'agency.enablePlugin',
-        'agency.disablePlugin',
-        'agency.refreshPlugins',
-        'agency.testTool',
-        'agency.refreshTools',
-        'agency.connectMcp',
-        'agency.disconnectMcp',
-        'agency.switchMode',
-        'agency.viewModeTools',
-        'agency.startContainer',
-        'agency.stopContainer',
-        'agency.rebuildContainer',
-        'agency.viewContainerLogs',
-      ];
-
-      expect(mockCommands.registerCommand).toHaveBeenCalledTimes(expectedCommands.length);
-
-      for (const command of expectedCommands) {
-        expect(mockCommands.registerCommand).toHaveBeenCalledWith(
-          command,
-          expect.any(Function)
-        );
-      }
->>>>>>> origin/038-epic-agency-vs-code
     });
 
     it('should set extension state after activation', async () => {
@@ -331,7 +236,6 @@ describe('Extension', () => {
       const state = getExtensionState();
       expect(state).not.toBeNull();
       expect(state?.context).toBe(mockContext);
-<<<<<<< HEAD
       expect(state?.outputChannel).toBeDefined();
     });
 
@@ -344,28 +248,6 @@ describe('Extension', () => {
 
       // Note: The actual logging verification would require access to the output channel instance
       // which is now created inside the mock. We verify the channel was created.
-=======
-      expect(state?.outputChannel).toBe(mockOutputChannel);
-    });
-
-    it('should log activation messages', async () => {
-      await activate(mockContext);
-
-      // Output channel should have received log messages
-      expect(mockOutputChannel.appendLine).toHaveBeenCalled();
-
-      // Check for activation message
-      const calls = mockOutputChannel.appendLine.mock.calls;
-      const activatingCall = calls.find((call: string[]) =>
-        call[0].includes('is activating')
-      );
-      const activatedCall = calls.find((call: string[]) =>
-        call[0].includes('activated successfully')
-      );
-
-      expect(activatingCall).toBeDefined();
-      expect(activatedCall).toBeDefined();
->>>>>>> origin/038-epic-agency-vs-code
     });
   });
 
@@ -384,30 +266,11 @@ describe('Extension', () => {
       expect(() => deactivate()).not.toThrow();
     });
 
-<<<<<<< HEAD
     it('should handle deactivation without errors', async () => {
       await activate(mockContext);
 
       // Deactivate should not throw
       expect(() => deactivate()).not.toThrow();
-=======
-    it('should log deactivation messages', async () => {
-      await activate(mockContext);
-      vi.clearAllMocks(); // Clear activation logs
-
-      deactivate();
-
-      const calls = mockOutputChannel.appendLine.mock.calls;
-      const deactivatingCall = calls.find((call: string[]) =>
-        call[0].includes('is deactivating')
-      );
-      const deactivatedCall = calls.find((call: string[]) =>
-        call[0].includes('deactivated')
-      );
-
-      expect(deactivatingCall).toBeDefined();
-      expect(deactivatedCall).toBeDefined();
->>>>>>> origin/038-epic-agency-vs-code
     });
   });
 

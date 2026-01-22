@@ -7,7 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-<<<<<<< HEAD
 ## [0.1.0] - 2026-01-22
 
 ### Added
@@ -33,10 +32,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TypeScript 5.x with strict mode
 - Zod schema validation
 - MCP SDK integration (@modelcontextprotocol/sdk)
-=======
-### Added
-- Initial extension scaffold
-- Package configuration with VS Code extension manifest
-- Build configuration with esbuild
-- Test configuration with vitest
->>>>>>> origin/038-epic-agency-vs-code

@@ -5,7 +5,4 @@
 export { PluginTreeProvider, registerPluginTreeView } from './PluginTreeProvider';
 export { ToolTreeProvider, registerToolTreeView } from './ToolTreeProvider';
 export { ActivityTreeProvider, registerActivityTreeView } from './ActivityTreeProvider';
-<<<<<<< HEAD
 export { ModeTreeProvider, ModeTreeItem, registerModeTreeView } from './ModeTreeProvider';
-=======
->>>>>>> origin/038-epic-agency-vs-code
