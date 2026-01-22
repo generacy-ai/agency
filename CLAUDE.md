@@ -107,6 +107,8 @@ This repository uses spec-driven development:
 
 ## Recent Changes
 
+- 054-tg-015-us3-activityservice: Added configuration
+
 - 053-tg-014-us2-tool: Added configuration
 
 - 049-tg-010-us2-mcp: Added configuration
