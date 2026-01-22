@@ -8,4 +8,5 @@ export {
   disablePlugin,
   refreshPlugins,
   registerPluginCommands,
+  initializePluginCommands,
 } from './plugin-commands';

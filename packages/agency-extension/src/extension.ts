@@ -3,7 +3,7 @@ import { EXTENSION_NAME, OUTPUT_CHANNEL_NAME } from './constants';
 import { DisposableManager, Logger, createScopedLogger } from './utils';
 import { ConfigService } from './services';
 import { registerPluginTreeView } from './providers';
-import { registerPluginCommands } from './commands';
+import { registerPluginCommands, initializePluginCommands } from './commands';
 
 /**
  * Extension state container.
@@ -106,6 +106,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const configService = ConfigService.getInstance();
     await configService.initialize(vscodeModule);
     disposables.add({ dispose: () => ConfigService.reset() });
+
+    // Initialize plugin commands with extension URI for webview access
+    initializePluginCommands(context.extensionUri);
 
     // Register tree views
     const pluginTreeDisposable = await registerPluginTreeView(vscodeModule);
