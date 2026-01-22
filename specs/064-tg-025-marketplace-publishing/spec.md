@@ -16,12 +16,12 @@ Marketplace Publishing
 **Tests**: Package validation with vsce
 
 ## Tasks
-- [ ] Write comprehensive README with features, screenshots, usage
-- [ ] Create extension gallery icon and banner
-- [ ] Configure marketplace categories and keywords
-- [ ] Set up automated publish workflow (GitHub Actions)
-- [ ] Publish to VS Code Marketplace
-- [ ] Verify marketplace listing and installation
+- [X] Write comprehensive README with features, screenshots, usage
+- [X] Create extension gallery icon and banner (SVG created, requires PNG conversion - see ICON-TODO.md)
+- [X] Configure marketplace categories and keywords
+- [X] Set up automated publish workflow (GitHub Actions)
+- [ ] [manual] Publish to VS Code Marketplace (requires PAT setup - see PUBLISHING.md)
+- [ ] [manual] Verify marketplace listing and installation
 
 ## Source
 <!-- task-group-id: TG-025 -->
