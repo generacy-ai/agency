@@ -78,6 +78,18 @@ vi.mock('../services', () => ({
     })),
     reset: vi.fn(),
   },
+  ActivityService: {
+    getInstance: vi.fn(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      onActivityUpdate: vi.fn(() => ({ dispose: vi.fn() })),
+      getEventsByTimePeriod: vi.fn(() => ({
+        lastMinute: [],
+        lastFiveMinutes: [],
+        older: [],
+      })),
+    })),
+    reset: vi.fn(),
+  },
   ModeService: {
     getInstance: vi.fn(() => ({
       initialize: vi.fn().mockResolvedValue(undefined),

@@ -19,11 +19,8 @@ export type PluginConfig = z.infer<typeof PluginConfigSchema>;
 export const ModeConfigSchema = z.object({
   id: z.string().min(1, 'Mode ID is required'),
   name: z.string().min(1, 'Mode name is required'),
-  description: z.string().optional(),
-  parentId: z.string().optional(),
-  includedTools: z.array(z.string()).default([]),
-  excludedTools: z.array(z.string()).default([]),
-  isDefault: z.boolean().optional(),
+  inherits: z.string().optional(),
+  tools: z.array(z.string()).default([]),
 });
 
 export type ModeConfig = z.infer<typeof ModeConfigSchema>;
@@ -47,7 +44,6 @@ export type ContainerConfig = z.infer<typeof ContainerConfigSchema>;
  */
 export const AgencyConfigSchema = z.object({
   version: z.string().default('1.0.0'),
-  currentModeId: z.string().optional(),
   plugins: z.array(PluginConfigSchema).default([]),
   modes: z.array(ModeConfigSchema).default([]),
   containers: z.array(ContainerConfigSchema).default([]),
