@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type * as vscode from 'vscode';
-import { ActivityService, type ActivityServiceEvent } from '../../services/ActivityService';
-import type { ToolCallEvent, ToolCallStatus } from '../../types';
+import { ActivityService } from '../../services/ActivityService';
+import type { ToolCallEvent, ActivityFilter, ToolCallStatus } from '../../types';
 
 // Mock the utils module
 vi.mock('../../utils', () => ({
@@ -18,17 +18,23 @@ vi.mock('../../utils', () => ({
 }));
 
 /**
- * Create a mock tool call event for testing.
+ * Helper function to create a test ToolCallEvent
  */
-function createMockEvent(overrides: Partial<ToolCallEvent> = {}): ToolCallEvent {
+function createTestEvent(overrides: Partial<ToolCallEvent> = {}): ToolCallEvent {
   return {
-    id: `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    toolName: 'testTool',
-    input: {},
+    id: `event-${Math.random().toString(36).substring(7)}`,
+    toolName: 'test_tool',
+    namespace: 'test',
+    pluginId: 'test-plugin',
+    agentId: 'agent-1',
+    input: { key: 'value' },
     output: null,
     isError: false,
-    status: 'success' as ToolCallStatus,
+    status: 'success',
     startedAt: Date.now(),
+    completedAt: Date.now() + 100,
+    duration: 100,
+    containerId: 'container-1',
     ...overrides,
   };
 }
@@ -37,418 +43,592 @@ describe('ActivityService', () => {
   let mockVscode: typeof vscode;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Reset the singleton before each test
     ActivityService.reset();
 
+    // Reset all mocks
+    vi.clearAllMocks();
+
     // Create mock VS Code module
-    mockVscode = {
-      EventEmitter: class MockEventEmitterClass {
-        private _listeners = new Set<(data: unknown) => void>();
-        get event() {
-          return ((listener: (data: unknown) => void) => {
-            this._listeners.add(listener);
-            return { dispose: () => this._listeners.delete(listener) };
-          }) as vscode.Event<unknown>;
-        }
-        fire(data?: unknown) {
-          for (const listener of this._listeners) {
-            listener(data);
-          }
-        }
-        dispose() {
-          this._listeners.clear();
-        }
-      },
-    } as unknown as typeof vscode;
+    mockVscode = {} as typeof vscode;
   });
 
   afterEach(() => {
     ActivityService.reset();
-    vi.clearAllMocks();
   });
 
-  describe('singleton', () => {
-    it('should return the same instance', () => {
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Singleton Pattern Tests
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('Singleton Pattern', () => {
+    it('should return the same instance on multiple calls', () => {
       const instance1 = ActivityService.getInstance();
       const instance2 = ActivityService.getInstance();
 
       expect(instance1).toBe(instance2);
     });
 
-    it('should reset instance on reset()', async () => {
+    it('should create new instance after reset', () => {
       const instance1 = ActivityService.getInstance();
-      await instance1.initialize(mockVscode);
-
       ActivityService.reset();
-
       const instance2 = ActivityService.getInstance();
+
       expect(instance1).not.toBe(instance2);
     });
   });
 
-  describe('initialization', () => {
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Initialization Tests
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('Initialization', () => {
     it('should initialize successfully', async () => {
       const service = ActivityService.getInstance();
+
+      expect(service.isInitialized()).toBe(false);
+
       await service.initialize(mockVscode);
 
-      expect(service.onActivityUpdate).toBeDefined();
+      expect(service.isInitialized()).toBe(true);
     });
 
-    it('should warn if already initialized', async () => {
+    it('should skip if already initialized', async () => {
       const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-      await service.initialize(mockVscode); // Second call should warn
 
-      // Should not throw
-      expect(service.onActivityUpdate).toBeDefined();
+      await service.initialize(mockVscode);
+      await service.initialize(mockVscode); // Should not throw
+
+      expect(service.isInitialized()).toBe(true);
+    });
+
+    it('should throw if methods called before initialization', () => {
+      const service = ActivityService.getInstance();
+
+      expect(() => service.addEvent(createTestEvent())).toThrow('ActivityService not initialized');
     });
   });
 
-  describe('addEvent', () => {
-    it('should add event to the buffer', async () => {
-      const service = ActivityService.getInstance();
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Ring Buffer Tests (T010)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('Ring Buffer', () => {
+    let service: ActivityService;
+
+    beforeEach(async () => {
+      service = ActivityService.getInstance();
       await service.initialize(mockVscode);
-
-      const event = createMockEvent({ toolName: 'myTool' });
-      service.addEvent(event);
-
-      const events = service.getEvents();
-      expect(events).toHaveLength(1);
-      expect(events[0].toolName).toBe('myTool');
     });
 
-    it('should add events in reverse chronological order (newest first)', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      const event1 = createMockEvent({ id: 'event-1', toolName: 'tool1' });
-      const event2 = createMockEvent({ id: 'event-2', toolName: 'tool2' });
+    it('should add events in insertion order', () => {
+      const event1 = createTestEvent({ id: 'event-1', startedAt: 1000 });
+      const event2 = createTestEvent({ id: 'event-2', startedAt: 2000 });
+      const event3 = createTestEvent({ id: 'event-3', startedAt: 3000 });
 
       service.addEvent(event1);
       service.addEvent(event2);
+      service.addEvent(event3);
 
       const events = service.getEvents();
-      expect(events[0].id).toBe('event-2'); // Newest first
-      expect(events[1].id).toBe('event-1');
-    });
 
-    it('should enforce maxEvents limit', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-      service.setConfig({ maxEvents: 3 });
-
-      for (let i = 0; i < 5; i++) {
-        service.addEvent(createMockEvent({ id: `event-${i}` }));
-      }
-
-      const events = service.getEvents();
+      // getEvents returns newest first
       expect(events).toHaveLength(3);
-      expect(events[0].id).toBe('event-4'); // Most recent
-      expect(events[2].id).toBe('event-2'); // Oldest (after trim)
+      expect(events[0].id).toBe('event-3');
+      expect(events[1].id).toBe('event-2');
+      expect(events[2].id).toBe('event-1');
     });
 
-    it('should emit tool_call event', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
+    it('should evict oldest events when buffer is full', () => {
+      // Set a small buffer size
+      service.setBufferSize(100);
 
-      const receivedEvents: ActivityServiceEvent[] = [];
-      service.onActivityUpdate?.((event) => {
-        receivedEvents.push(event);
-      });
-
-      const toolEvent = createMockEvent({ toolName: 'emittedTool' });
-      service.addEvent(toolEvent);
-
-      expect(receivedEvents).toHaveLength(1);
-      expect(receivedEvents[0].type).toBe('tool_call');
-      expect(receivedEvents[0].event?.toolName).toBe('emittedTool');
-    });
-  });
-
-  describe('updateEvent', () => {
-    it('should update an existing event', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      const event = createMockEvent({ id: 'update-me', status: 'pending' });
-      service.addEvent(event);
-
-      service.updateEvent('update-me', { status: 'success', duration: 100 });
-
-      const events = service.getEvents();
-      expect(events[0].status).toBe('success');
-      expect(events[0].duration).toBe(100);
-    });
-
-    it('should emit tool_call event on update', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      const event = createMockEvent({ id: 'update-me' });
-      service.addEvent(event);
-
-      const receivedEvents: ActivityServiceEvent[] = [];
-      service.onActivityUpdate?.((evt) => {
-        receivedEvents.push(evt);
-      });
-
-      service.updateEvent('update-me', { status: 'error' });
-
-      expect(receivedEvents).toHaveLength(1);
-      expect(receivedEvents[0].type).toBe('tool_call');
-    });
-
-    it('should warn if event not found', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      // Should not throw, just warn
-      service.updateEvent('non-existent', { status: 'error' });
-    });
-  });
-
-  describe('addBatch', () => {
-    it('should add batch of events', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      const events = [
-        createMockEvent({ id: 'batch-1' }),
-        createMockEvent({ id: 'batch-2' }),
-      ];
-
-      service.addBatch(events);
-
-      const allEvents = service.getEvents();
-      expect(allEvents).toHaveLength(2);
-    });
-
-    it('should replace all events on full refresh', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      service.addEvent(createMockEvent({ id: 'existing' }));
-
-      const newEvents = [
-        createMockEvent({ id: 'new-1' }),
-        createMockEvent({ id: 'new-2' }),
-      ];
-
-      service.addBatch(newEvents, true);
-
-      const allEvents = service.getEvents();
-      expect(allEvents).toHaveLength(2);
-      expect(allEvents.find((e) => e.id === 'existing')).toBeUndefined();
-    });
-
-    it('should emit batch_update event', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      const receivedEvents: ActivityServiceEvent[] = [];
-      service.onActivityUpdate?.((event) => {
-        receivedEvents.push(event);
-      });
-
-      service.addBatch([createMockEvent()], false);
-
-      expect(receivedEvents).toHaveLength(1);
-      expect(receivedEvents[0].type).toBe('batch_update');
-      expect(receivedEvents[0].batch?.isFullRefresh).toBe(false);
-    });
-  });
-
-  describe('getEvents', () => {
-    it('should filter by toolName', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      service.addEvent(createMockEvent({ toolName: 'toolA' }));
-      service.addEvent(createMockEvent({ toolName: 'toolB' }));
-      service.addEvent(createMockEvent({ toolName: 'toolAB' }));
-
-      const filtered = service.getEvents({ toolName: 'toolA' });
-      expect(filtered).toHaveLength(2); // toolA and toolAB (partial match)
-    });
-
-    it('should filter by status', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      service.addEvent(createMockEvent({ status: 'success' }));
-      service.addEvent(createMockEvent({ status: 'error' }));
-      service.addEvent(createMockEvent({ status: 'success' }));
-
-      const filtered = service.getEvents({ status: 'error' });
-      expect(filtered).toHaveLength(1);
-    });
-
-    it('should filter by multiple statuses', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      service.addEvent(createMockEvent({ status: 'success' }));
-      service.addEvent(createMockEvent({ status: 'error' }));
-      service.addEvent(createMockEvent({ status: 'timeout' }));
-
-      const filtered = service.getEvents({ status: ['error', 'timeout'] });
-      expect(filtered).toHaveLength(2);
-    });
-
-    it('should filter by time range', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      const now = Date.now();
-      service.addEvent(createMockEvent({ startedAt: now - 5000 }));
-      service.addEvent(createMockEvent({ startedAt: now - 3000 }));
-      service.addEvent(createMockEvent({ startedAt: now - 1000 }));
-
-      const filtered = service.getEvents({ startTime: now - 4000 });
-      expect(filtered).toHaveLength(2);
-    });
-
-    it('should apply limit and offset', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      for (let i = 0; i < 10; i++) {
-        service.addEvent(createMockEvent({ id: `event-${i}` }));
+      // Add more events than the buffer can hold
+      for (let i = 0; i < 105; i++) {
+        service.addEvent(createTestEvent({ id: `event-${i}` }));
       }
 
-      const filtered = service.getEvents({ offset: 2, limit: 3 });
-      expect(filtered).toHaveLength(3);
-      expect(filtered[0].id).toBe('event-7'); // After offset
-    });
-  });
+      const events = service.getEvents();
 
-  describe('getEventsByTimePeriod', () => {
-    it('should group events by time period', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      const now = Date.now();
-
-      // Last minute
-      service.addEvent(createMockEvent({ startedAt: now - 30 * 1000 }));
-      service.addEvent(createMockEvent({ startedAt: now - 45 * 1000 }));
-
-      // Last 5 minutes (but not last minute)
-      service.addEvent(createMockEvent({ startedAt: now - 2 * 60 * 1000 }));
-      service.addEvent(createMockEvent({ startedAt: now - 3 * 60 * 1000 }));
-
-      // Older
-      service.addEvent(createMockEvent({ startedAt: now - 10 * 60 * 1000 }));
-
-      const grouped = service.getEventsByTimePeriod();
-
-      expect(grouped.lastMinute).toHaveLength(2);
-      expect(grouped.lastFiveMinutes).toHaveLength(2);
-      expect(grouped.older).toHaveLength(1);
-    });
-  });
-
-  describe('getStats', () => {
-    it('should calculate basic statistics', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
-
-      service.addEvent(createMockEvent({ status: 'success', duration: 100 }));
-      service.addEvent(createMockEvent({ status: 'success', duration: 200 }));
-      service.addEvent(createMockEvent({ status: 'error', duration: 50 }));
-
-      const stats = service.getStats();
-
-      expect(stats.totalCalls).toBe(3);
-      expect(stats.successCount).toBe(2);
-      expect(stats.errorCount).toBe(1);
-      expect(stats.averageDuration).toBeCloseTo(116.67, 1);
+      expect(events).toHaveLength(100);
+      // Oldest events (0-4) should be evicted
+      expect(events.some((e) => e.id === 'event-0')).toBe(false);
+      expect(events.some((e) => e.id === 'event-4')).toBe(false);
+      // Newest events should be present
+      expect(events.some((e) => e.id === 'event-104')).toBe(true);
     });
 
-    it('should calculate top tools', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
+    it('should resize buffer correctly', () => {
+      // Add 50 events
+      for (let i = 0; i < 50; i++) {
+        service.addEvent(createTestEvent({ id: `event-${i}` }));
+      }
 
-      service.addEvent(createMockEvent({ toolName: 'tool1' }));
-      service.addEvent(createMockEvent({ toolName: 'tool1' }));
-      service.addEvent(createMockEvent({ toolName: 'tool1' }));
-      service.addEvent(createMockEvent({ toolName: 'tool2' }));
-      service.addEvent(createMockEvent({ toolName: 'tool2' }));
+      expect(service.getEventCount()).toBe(50);
 
-      const stats = service.getStats();
+      // Resize to smaller
+      service.setBufferSize(200);
+      expect(service.getBufferSize()).toBe(200);
+      expect(service.getEventCount()).toBe(50); // Events preserved
 
-      expect(stats.topTools[0].toolName).toBe('tool1');
-      expect(stats.topTools[0].callCount).toBe(3);
-      expect(stats.topTools[1].toolName).toBe('tool2');
-      expect(stats.topTools[1].callCount).toBe(2);
+      // Resize to even smaller (eviction)
+      service.setBufferSize(100); // Minimum size
+      expect(service.getBufferSize()).toBe(100);
     });
-  });
 
-  describe('clear', () => {
-    it('should clear all events', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
+    it('should enforce minimum buffer size', () => {
+      service.setBufferSize(50); // Below minimum
 
-      service.addEvent(createMockEvent());
-      service.addEvent(createMockEvent());
+      expect(service.getBufferSize()).toBe(100); // Should be minimum
+    });
+
+    it('should clear events correctly', () => {
+      service.addEvent(createTestEvent());
+      service.addEvent(createTestEvent());
 
       expect(service.getEventCount()).toBe(2);
 
-      service.clear();
+      service.clearEvents();
 
       expect(service.getEventCount()).toBe(0);
+      expect(service.getEvents()).toHaveLength(0);
     });
+  });
 
-    it('should emit clear event', async () => {
-      const service = ActivityService.getInstance();
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Event Filtering Tests (T011)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('Event Filtering', () => {
+    let service: ActivityService;
+
+    beforeEach(async () => {
+      service = ActivityService.getInstance();
       await service.initialize(mockVscode);
 
-      const receivedEvents: ActivityServiceEvent[] = [];
-      service.onActivityUpdate?.((event) => {
-        receivedEvents.push(event);
+      // Add a variety of test events
+      service.addEvent(
+        createTestEvent({
+          id: 'e1',
+          toolName: 'file_read',
+          namespace: 'file',
+          status: 'success',
+          isError: false,
+          startedAt: 1000,
+        })
+      );
+      service.addEvent(
+        createTestEvent({
+          id: 'e2',
+          toolName: 'file_write',
+          namespace: 'file',
+          status: 'error',
+          isError: true,
+          startedAt: 2000,
+        })
+      );
+      service.addEvent(
+        createTestEvent({
+          id: 'e3',
+          toolName: 'shell_execute',
+          namespace: 'shell',
+          status: 'running',
+          isError: false,
+          startedAt: 3000,
+        })
+      );
+      service.addEvent(
+        createTestEvent({
+          id: 'e4',
+          toolName: 'git_commit',
+          namespace: 'git',
+          pluginId: 'git-plugin',
+          status: 'success',
+          isError: false,
+          startedAt: 4000,
+        })
+      );
+      service.addEvent(
+        createTestEvent({
+          id: 'e5',
+          toolName: 'git_push',
+          namespace: 'git',
+          pluginId: 'git-plugin',
+          status: 'timeout',
+          isError: true,
+          startedAt: 5000,
+        })
+      );
+    });
+
+    it('should filter by toolName (partial, case-insensitive)', () => {
+      const events = service.getEvents({ toolName: 'file' });
+
+      expect(events).toHaveLength(2);
+      expect(events.every((e) => e.toolName.toLowerCase().includes('file'))).toBe(true);
+    });
+
+    it('should filter by toolName case-insensitively', () => {
+      const events = service.getEvents({ toolName: 'FILE' });
+
+      expect(events).toHaveLength(2);
+    });
+
+    it('should filter by namespace (exact match)', () => {
+      const events = service.getEvents({ namespace: 'git' });
+
+      expect(events).toHaveLength(2);
+      expect(events.every((e) => e.namespace === 'git')).toBe(true);
+    });
+
+    it('should filter by pluginId (exact match)', () => {
+      const events = service.getEvents({ pluginId: 'git-plugin' });
+
+      expect(events).toHaveLength(2);
+      expect(events.every((e) => e.pluginId === 'git-plugin')).toBe(true);
+    });
+
+    it('should filter by single status', () => {
+      const events = service.getEvents({ status: 'success' });
+
+      expect(events).toHaveLength(2);
+      expect(events.every((e) => e.status === 'success')).toBe(true);
+    });
+
+    it('should filter by multiple statuses', () => {
+      const events = service.getEvents({ status: ['success', 'error'] as ToolCallStatus[] });
+
+      expect(events).toHaveLength(3);
+      expect(events.every((e) => e.status === 'success' || e.status === 'error')).toBe(true);
+    });
+
+    it('should filter by isError', () => {
+      const errorEvents = service.getEvents({ isError: true });
+      const successEvents = service.getEvents({ isError: false });
+
+      expect(errorEvents).toHaveLength(2);
+      expect(successEvents).toHaveLength(3);
+    });
+
+    it('should filter by time range', () => {
+      const events = service.getEvents({ startTime: 2000, endTime: 4000 });
+
+      expect(events).toHaveLength(3);
+      expect(events.every((e) => e.startedAt >= 2000 && e.startedAt <= 4000)).toBe(true);
+    });
+
+    it('should filter by startTime only', () => {
+      const events = service.getEvents({ startTime: 3000 });
+
+      expect(events).toHaveLength(3);
+      expect(events.every((e) => e.startedAt >= 3000)).toBe(true);
+    });
+
+    it('should filter by endTime only', () => {
+      const events = service.getEvents({ endTime: 3000 });
+
+      expect(events).toHaveLength(3);
+      expect(events.every((e) => e.startedAt <= 3000)).toBe(true);
+    });
+
+    it('should apply multiple filters together', () => {
+      const events = service.getEvents({
+        namespace: 'git',
+        status: 'success',
       });
 
-      service.clear();
+      expect(events).toHaveLength(1);
+      expect(events[0].id).toBe('e4');
+    });
 
-      expect(receivedEvents).toHaveLength(1);
-      expect(receivedEvents[0].type).toBe('clear');
+    it('should apply pagination with limit', () => {
+      const events = service.getEvents({ limit: 2 });
+
+      expect(events).toHaveLength(2);
+    });
+
+    it('should apply pagination with offset', () => {
+      const allEvents = service.getEvents();
+      const offsetEvents = service.getEvents({ offset: 2 });
+
+      expect(offsetEvents).toHaveLength(3);
+      expect(offsetEvents[0].id).toBe(allEvents[2].id);
+    });
+
+    it('should apply pagination with limit and offset together', () => {
+      const events = service.getEvents({ limit: 2, offset: 1 });
+
+      expect(events).toHaveLength(2);
+    });
+
+    it('should return all events with empty filter', () => {
+      const events = service.getEvents({});
+
+      expect(events).toHaveLength(5);
+    });
+
+    it('should return all events with no filter', () => {
+      const events = service.getEvents();
+
+      expect(events).toHaveLength(5);
     });
   });
 
-  describe('config', () => {
-    it('should update configuration', async () => {
-      const service = ActivityService.getInstance();
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Statistics Calculation Tests (T012)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('Statistics Calculation', () => {
+    let service: ActivityService;
+
+    beforeEach(async () => {
+      service = ActivityService.getInstance();
       await service.initialize(mockVscode);
-
-      service.setConfig({ maxEvents: 500 });
-
-      const config = service.getConfig();
-      expect(config.maxEvents).toBe(500);
     });
 
-    it('should merge with existing config', async () => {
-      const service = ActivityService.getInstance();
-      await service.initialize(mockVscode);
+    it('should calculate correct status counts', () => {
+      service.addEvent(createTestEvent({ status: 'success' }));
+      service.addEvent(createTestEvent({ status: 'success' }));
+      service.addEvent(createTestEvent({ status: 'error' }));
+      service.addEvent(createTestEvent({ status: 'timeout' }));
+      service.addEvent(createTestEvent({ status: 'running' }));
+      service.addEvent(createTestEvent({ status: 'pending' }));
 
-      service.setConfig({ maxEvents: 500 });
-      service.setConfig({ autoScroll: false });
+      const stats = service.getStats();
 
-      const config = service.getConfig();
-      expect(config.maxEvents).toBe(500);
-      expect(config.autoScroll).toBe(false);
+      expect(stats.totalCalls).toBe(6);
+      expect(stats.successCount).toBe(2);
+      expect(stats.errorCount).toBe(1);
+      expect(stats.timeoutCount).toBe(1);
+      expect(stats.pendingCount).toBe(2);
+    });
+
+    it('should calculate average duration correctly', () => {
+      service.addEvent(createTestEvent({ duration: 100 }));
+      service.addEvent(createTestEvent({ duration: 200 }));
+      service.addEvent(createTestEvent({ duration: 300 }));
+
+      const stats = service.getStats();
+
+      expect(stats.averageDuration).toBe(200);
+    });
+
+    it('should calculate median duration correctly for odd count', () => {
+      service.addEvent(createTestEvent({ duration: 100 }));
+      service.addEvent(createTestEvent({ duration: 200 }));
+      service.addEvent(createTestEvent({ duration: 300 }));
+
+      const stats = service.getStats();
+
+      expect(stats.medianDuration).toBe(200);
+    });
+
+    it('should calculate median duration correctly for even count', () => {
+      service.addEvent(createTestEvent({ duration: 100 }));
+      service.addEvent(createTestEvent({ duration: 200 }));
+      service.addEvent(createTestEvent({ duration: 300 }));
+      service.addEvent(createTestEvent({ duration: 400 }));
+
+      const stats = service.getStats();
+
+      expect(stats.medianDuration).toBe(250);
+    });
+
+    it('should exclude undefined durations from average', () => {
+      service.addEvent(createTestEvent({ duration: 100 }));
+      service.addEvent(createTestEvent({ duration: undefined }));
+      service.addEvent(createTestEvent({ duration: 300 }));
+
+      const stats = service.getStats();
+
+      expect(stats.averageDuration).toBe(200);
+    });
+
+    it('should calculate calls per minute', () => {
+      const baseTime = Date.now();
+      service.addEvent(createTestEvent({ startedAt: baseTime }));
+      service.addEvent(createTestEvent({ startedAt: baseTime + 30000 })); // 30 seconds later
+      service.addEvent(createTestEvent({ startedAt: baseTime + 60000 })); // 1 minute later
+
+      const stats = service.getStats();
+
+      // 3 calls over 1 minute = 3 calls per minute
+      expect(stats.callsPerMinute).toBeGreaterThan(0);
+    });
+
+    it('should generate top tools ranking', () => {
+      service.addEvent(createTestEvent({ toolName: 'tool_a', status: 'success' }));
+      service.addEvent(createTestEvent({ toolName: 'tool_a', status: 'success' }));
+      service.addEvent(createTestEvent({ toolName: 'tool_a', status: 'error' }));
+      service.addEvent(createTestEvent({ toolName: 'tool_b', status: 'success' }));
+
+      const stats = service.getStats();
+
+      expect(stats.topTools).toHaveLength(2);
+      expect(stats.topTools[0].toolName).toBe('tool_a');
+      expect(stats.topTools[0].callCount).toBe(3);
+      expect(stats.topTools[0].successRate).toBeCloseTo(2 / 3, 2);
+      expect(stats.topTools[1].toolName).toBe('tool_b');
+      expect(stats.topTools[1].callCount).toBe(1);
+    });
+
+    it('should calculate time range correctly', () => {
+      const startTime = 1000;
+      const endTime = 5000;
+
+      service.addEvent(createTestEvent({ startedAt: startTime }));
+      service.addEvent(createTestEvent({ startedAt: 3000 }));
+      service.addEvent(createTestEvent({ startedAt: endTime }));
+
+      const stats = service.getStats();
+
+      expect(stats.timeRange.start).toBe(startTime);
+      expect(stats.timeRange.end).toBe(endTime);
+    });
+
+    it('should return empty stats for empty buffer', () => {
+      const stats = service.getStats();
+
+      expect(stats.totalCalls).toBe(0);
+      expect(stats.successCount).toBe(0);
+      expect(stats.averageDuration).toBe(0);
+      expect(stats.topTools).toHaveLength(0);
+    });
+
+    it('should apply filter to statistics', () => {
+      service.addEvent(createTestEvent({ toolName: 'tool_a', status: 'success' }));
+      service.addEvent(createTestEvent({ toolName: 'tool_a', status: 'error' }));
+      service.addEvent(createTestEvent({ toolName: 'tool_b', status: 'success' }));
+
+      const stats = service.getStats({ toolName: 'tool_a' });
+
+      expect(stats.totalCalls).toBe(2);
+      expect(stats.successCount).toBe(1);
+      expect(stats.errorCount).toBe(1);
     });
   });
 
-  describe('dispose', () => {
-    it('should clean up resources', async () => {
-      const service = ActivityService.getInstance();
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Event Emission Tests (T013)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('Event Emission', () => {
+    let service: ActivityService;
+
+    beforeEach(async () => {
+      service = ActivityService.getInstance();
       await service.initialize(mockVscode);
+    });
 
-      service.addEvent(createMockEvent());
+    it('should fire onToolCall event when addEvent is called', () => {
+      const listener = vi.fn();
+      service.onToolCall(listener);
 
-      service.dispose();
+      const event = createTestEvent({ id: 'test-event' });
+      service.addEvent(event);
 
-      expect(service.getEventCount()).toBe(0);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith(event);
+    });
+
+    it('should fire onBatch event when addEvents is called', () => {
+      const listener = vi.fn();
+      service.onBatch(listener);
+
+      const events = [createTestEvent({ id: 'e1' }), createTestEvent({ id: 'e2' })];
+      service.addEvents(events);
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith(
+        expect.objectContaining({
+          events,
+          isFullRefresh: false,
+          timestamp: expect.any(Number),
+        })
+      );
+    });
+
+    it('should fire onBatch with isFullRefresh=true when clearEvents is called', () => {
+      const listener = vi.fn();
+      service.addEvent(createTestEvent());
+      service.onBatch(listener);
+
+      service.clearEvents();
+
+      expect(listener).toHaveBeenCalledWith(
+        expect.objectContaining({
+          events: [],
+          isFullRefresh: true,
+        })
+      );
+    });
+
+    it('should support multiple listeners', () => {
+      const listener1 = vi.fn();
+      const listener2 = vi.fn();
+
+      service.onToolCall(listener1);
+      service.onToolCall(listener2);
+
+      service.addEvent(createTestEvent());
+
+      expect(listener1).toHaveBeenCalledTimes(1);
+      expect(listener2).toHaveBeenCalledTimes(1);
+    });
+
+    it('should dispose listener correctly', () => {
+      const listener = vi.fn();
+      const disposable = service.onToolCall(listener);
+
+      service.addEvent(createTestEvent());
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      disposable.dispose();
+
+      service.addEvent(createTestEvent());
+      expect(listener).toHaveBeenCalledTimes(1); // Still 1, not called again
+    });
+
+    it('should not fire event for invalid events', () => {
+      const listener = vi.fn();
+      service.onToolCall(listener);
+
+      // Event missing required fields
+      service.addEvent({ id: '', toolName: '' } as ToolCallEvent);
+      service.addEvent({ id: 'valid', toolName: '' } as ToolCallEvent);
+
+      expect(listener).toHaveBeenCalledTimes(0);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // getEventById Tests
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  describe('getEventById', () => {
+    let service: ActivityService;
+
+    beforeEach(async () => {
+      service = ActivityService.getInstance();
+      await service.initialize(mockVscode);
+    });
+
+    it('should find event by ID', () => {
+      const event = createTestEvent({ id: 'unique-id' });
+      service.addEvent(event);
+
+      const found = service.getEventById('unique-id');
+
+      expect(found).toBeDefined();
+      expect(found?.id).toBe('unique-id');
+    });
+
+    it('should return undefined for non-existent ID', () => {
+      service.addEvent(createTestEvent({ id: 'some-id' }));
+
+      const found = service.getEventById('non-existent');
+
+      expect(found).toBeUndefined();
     });
   });
 });
