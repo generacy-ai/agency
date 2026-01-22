@@ -108,6 +108,8 @@ This repository uses spec-driven development:
 
 - 092-tg-002-41-p: Added configuration
 
+- 091-tg-001-40-p: Added configuration
+
 - 063-tg-024-p-error: Added configuration
 
 - 061-tg-022-modetreeprovider-commands: Added configuration
