@@ -18,7 +18,6 @@ The `agency` repository contains agent-optimized MCP tooling:
 
 
 
-
 - TypeScript 5.x (Node.js 20+)
 - pnpm workspaces
 - turborepo for monorepo management
