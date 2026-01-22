@@ -58,6 +58,11 @@
         {
           "id": "agency.modes",
           "name": "Modes"
+        },
+        {
+          "id": "agency.welcome",
+          "name": "Getting Started",
+          "when": "!config.agency.configExists"
         }
       ]
     },
@@ -134,6 +139,36 @@
         "command": "agency.viewContainerLogs",
         "title": "View Container Logs",
         "category": "Agency"
+      },
+      {
+        "command": "agency.showMcpStatus",
+        "title": "Show MCP Status",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.showMcpError",
+        "title": "Show MCP Error",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.showContainerStatus",
+        "title": "Show Container Status",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.initConfig",
+        "title": "Create Configuration",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.showPlugins",
+        "title": "Show Plugins",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.openDocs",
+        "title": "Open Documentation",
+        "category": "Agency"
       }
     ],
     "configuration": {
@@ -176,7 +211,69 @@
           "group": "navigation"
         }
       ]
-    }
+    },
+    "walkthroughs": [
+      {
+        "id": "agency.gettingStarted",
+        "title": "Get Started with Agency",
+        "description": "Learn how to configure and use Agency for MCP development",
+        "steps": [
+          {
+            "id": "createConfig",
+            "title": "Create Configuration File",
+            "description": "Create your first Agency configuration file to get started.\n[Create Configuration](command:agency.initConfig)",
+            "media": {
+              "markdown": "Get started by creating a configuration file that defines your MCP plugins and development environment."
+            },
+            "completionEvents": [
+              "onCommand:agency.initConfig"
+            ]
+          },
+          {
+            "id": "configurePlugin",
+            "title": "Configure First Plugin",
+            "description": "Add and configure your first MCP plugin.\n[Browse Plugins](command:agency.showPlugins)",
+            "media": {
+              "markdown": "Browse available plugins and configure one to start testing MCP tools."
+            },
+            "completionEvents": [
+              "onCommand:agency.configurePlugin"
+            ]
+          },
+          {
+            "id": "connectContainer",
+            "title": "Connect to Container",
+            "description": "Connect to a development container to test your plugins.\n[Connect to MCP](command:agency.connectMcp)",
+            "media": {
+              "markdown": "Connect to a container where your MCP plugins are running to start testing tools."
+            },
+            "completionEvents": [
+              "onCommand:agency.connectMcp"
+            ]
+          },
+          {
+            "id": "testTool",
+            "title": "Test a Tool",
+            "description": "Test an MCP tool from your connected container.\n[View Tools](command:workbench.view.extension.agency)",
+            "media": {
+              "markdown": "Navigate to the Tools view and test a tool to see it in action."
+            },
+            "completionEvents": [
+              "onCommand:agency.testTool"
+            ]
+          },
+          {
+            "id": "viewActivity",
+            "title": "View Activity Feed",
+            "description": "Monitor MCP activity and tool executions in real-time.\n[View Activity](command:workbench.view.extension.agency)",
+            "media": {
+              "markdown": "Check the Activity view to see tool executions, responses, and errors."
+            },
+            "completionEvents": []
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "pnpm run build",

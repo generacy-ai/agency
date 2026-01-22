@@ -2,7 +2,7 @@
 
 **Input**: Design documents from `/specs/063-tg-024-p-error/`
 **Prerequisites**: plan.md (required), spec.md (required), research.md, data-model.md
-**Status**: Complete
+**Status**: Partial Implementation (Core infrastructure complete, service integration and tests deferred)
 
 ## Format: `[ID] [P?] [Story] Description`
 - **[P]**: Can run in parallel (different files, no dependencies)
@@ -63,49 +63,51 @@
   - [X] Add id, label, description, command, iconPath properties
   - [X] Export WelcomeItem type
 
-- [ ] T008 Implement WelcomeViewProvider in `src/welcome/WelcomeViewProvider.ts`
-  - [ ] Create class implementing TreeDataProvider<WelcomeItem>
-  - [ ] Implement getChildren() to return welcome items
-  - [ ] Add welcome items: Create Configuration, Browse Plugins, Connect to Container, View Documentation, Watch Tutorial
-  - [ ] Implement getTreeItem() method
-  - [ ] Add visibility logic based on config existence
-  - [ ] Integrate with VS Code global state for first-run detection
+- [X] T008 Implement WelcomeViewProvider in `src/welcome/WelcomeViewProvider.ts`
+  - [X] Create class implementing TreeDataProvider<WelcomeItem>
+  - [X] Implement getChildren() to return welcome items
+  - [X] Add welcome items: Create Configuration, Browse Plugins, Connect to Container, View Documentation, Watch Tutorial
+  - [X] Implement getTreeItem() method
+  - [X] Add visibility logic based on config existence
+  - [X] Integrate with VS Code global state for first-run detection
 
-- [ ] T009 [P] Create welcome module index in `src/welcome/index.ts`
-  - [ ] Export WelcomeViewProvider
-  - [ ] Export registration function
+- [X] T009 [P] Create welcome module index in `src/welcome/index.ts`
+  - [X] Export WelcomeViewProvider
+  - [X] Export registration function
 
 ## Phase 4: Integration with Extension
 
-- [ ] T010 Update extension.ts to initialize error handling
-  - [ ] Import ErrorNotificationService
-  - [ ] Wrap service initializations in try-catch blocks
-  - [ ] Replace generic error handling with ErrorNotificationService.showError()
-  - [ ] Add error handling to extension activation
-  - [ ] Add error handling to extension deactivation
+- [X] T010 Update extension.ts to initialize error handling
+  - [X] Import ErrorNotificationService
+  - [X] Wrap service initializations in try-catch blocks
+  - [X] Replace generic error handling with ErrorNotificationService.showError()
+  - [X] Add error handling to extension activation
+  - [X] Add error handling to extension deactivation
 
-- [ ] T011 [P] Update extension.ts to initialize StatusBarManager
-  - [ ] Import StatusBarManager
-  - [ ] Initialize StatusBarManager in activate()
-  - [ ] Add to disposables for cleanup
-  - [ ] Register status bar click commands
+- [X] T011 [P] Update extension.ts to initialize StatusBarManager
+  - [X] Import StatusBarManager
+  - [X] Initialize StatusBarManager in activate()
+  - [X] Add to disposables for cleanup
+  - [X] Register status bar click commands
 
-- [ ] T012 [P] Update extension.ts to register WelcomeViewProvider
-  - [ ] Import WelcomeViewProvider
-  - [ ] Register welcome tree view in activate()
-  - [ ] Add view contribution to disposables
-  - [ ] Check first-run state and show/hide welcome view
+- [X] T012 [P] Update extension.ts to register WelcomeViewProvider
+  - [X] Import WelcomeViewProvider
+  - [X] Register welcome tree view in activate()
+  - [X] Add view contribution to disposables
+  - [X] Check first-run state and show/hide welcome view
 
-## Phase 5: Service Integration
+## Phase 5: Service Integration (Deferred)
 
-- [ ] T013 Update ConfigService to use typed errors
+Note: Service integration requires extensive refactoring of ConfigService, McpClientService, and ContainerService. These services have complex error handling patterns with many throw statements. This work is deferred for a follow-up task.
+
+- [ ] T013 Update ConfigService to use typed errors (DEFERRED)
   - [ ] Import AgencyError types
   - [ ] Replace generic Error throws with ConfigValidationError
   - [ ] Replace generic Error throws with PermissionDeniedError for file access
   - [ ] Update error handling in initialize(), loadConfig(), saveConfig()
   - [ ] Add try-catch with ErrorNotificationService in public methods
 
-- [ ] T014 [P] Update McpClientService to use typed errors and status updates
+- [ ] T014 [P] Update McpClientService to use typed errors and status updates (DEFERRED)
   - [ ] Import McpConnectionError
   - [ ] Import StatusBarManager
   - [ ] Replace generic errors with McpConnectionError
@@ -113,7 +115,7 @@
   - [ ] Add status updates to disconnect() method
   - [ ] Add error handling with ErrorNotificationService
 
-- [ ] T015 [P] Update ContainerService to use typed errors and status updates
+- [ ] T015 [P] Update ContainerService to use typed errors and status updates (DEFERRED)
   - [ ] Import DockerNotRunningError, ContainerNotFoundError
   - [ ] Import StatusBarManager
   - [ ] Replace generic errors with typed errors
@@ -122,46 +124,48 @@
 
 ## Phase 6: Package Manifest Updates
 
-- [ ] T016 Update package.json with welcome view contribution
-  - [ ] Add welcome view to contributes.views.agency array
-  - [ ] Set view id: "agency.welcome"
-  - [ ] Set view name: "Getting Started"
-  - [ ] Set visibility condition based on config existence
+- [X] T016 Update package.json with welcome view contribution
+  - [X] Add welcome view to contributes.views.agency array
+  - [X] Set view id: "agency.welcome"
+  - [X] Set view name: "Getting Started"
+  - [X] Set visibility condition based on config existence
 
-- [ ] T017 [P] Update package.json with walkthrough contribution
-  - [ ] Add contributes.walkthroughs array
-  - [ ] Define walkthrough id: "agency.gettingStarted"
-  - [ ] Define walkthrough title: "Get Started with Agency"
-  - [ ] Add Step 1: Create configuration file
-  - [ ] Add Step 2: Configure first plugin
-  - [ ] Add Step 3: Connect to container
-  - [ ] Add Step 4: Test a tool
-  - [ ] Add Step 5: View activity feed
-  - [ ] Set completion events for each step
+- [X] T017 [P] Update package.json with walkthrough contribution
+  - [X] Add contributes.walkthroughs array
+  - [X] Define walkthrough id: "agency.gettingStarted"
+  - [X] Define walkthrough title: "Get Started with Agency"
+  - [X] Add Step 1: Create configuration file
+  - [X] Add Step 2: Configure first plugin
+  - [X] Add Step 3: Connect to container
+  - [X] Add Step 4: Test a tool
+  - [X] Add Step 5: View activity feed
+  - [X] Set completion events for each step
 
-- [ ] T018 [P] Add status bar commands to package.json
-  - [ ] Register agency.showMcpStatus command
-  - [ ] Register agency.connectMcp command
-  - [ ] Register agency.showMcpError command
-  - [ ] Register agency.showContainerStatus command
-  - [ ] Register agency.initConfig command (for welcome view)
+- [X] T018 [P] Add status bar commands to package.json
+  - [X] Register agency.showMcpStatus command
+  - [X] Register agency.connectMcp command
+  - [X] Register agency.showMcpError command
+  - [X] Register agency.showContainerStatus command
+  - [X] Register agency.initConfig command (for welcome view)
 
-## Phase 7: Testing
+## Phase 7: Testing (Deferred)
 
-- [ ] T019 Create error types tests in `src/__tests__/errors/ErrorTypes.test.ts`
+Note: Automated tests are deferred until after service integration (Phase 5) is complete.
+
+- [ ] T019 Create error types tests in `src/__tests__/errors/ErrorTypes.test.ts` (DEFERRED)
   - [ ] Test AgencyError base class structure
   - [ ] Test each concrete error class (getUserMessage, getAction)
   - [ ] Test error categorization
   - [ ] Verify action button data structure
 
-- [ ] T020 [P] Create ErrorNotificationService tests in `src/__tests__/errors/ErrorNotificationService.test.ts`
+- [ ] T020 [P] Create ErrorNotificationService tests in `src/__tests__/errors/ErrorNotificationService.test.ts` (DEFERRED)
   - [ ] Mock VS Code window API
   - [ ] Test showError with each error type
   - [ ] Verify correct notification method called
   - [ ] Verify logging to output channel
   - [ ] Test action button handling
 
-- [ ] T021 [P] Create StatusBarManager tests in `src/__tests__/status/StatusBarManager.test.ts`
+- [ ] T021 [P] Create StatusBarManager tests in `src/__tests__/status/StatusBarManager.test.ts` (DEFERRED)
   - [ ] Mock VS Code StatusBarItem API
   - [ ] Test updateMcpStatus for all states
   - [ ] Test updateContainerStatus for all states
@@ -169,7 +173,7 @@
   - [ ] Test click command registration
   - [ ] Test dispose cleanup
 
-- [ ] T022 [P] Create WelcomeViewProvider tests in `src/__tests__/welcome/WelcomeViewProvider.test.ts`
+- [ ] T022 [P] Create WelcomeViewProvider tests in `src/__tests__/welcome/WelcomeViewProvider.test.ts` (DEFERRED)
   - [ ] Test getChildren returns correct welcome items
   - [ ] Test getTreeItem returns proper TreeItem structure
   - [ ] Test visibility logic based on config state
