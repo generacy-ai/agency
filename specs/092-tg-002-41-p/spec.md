@@ -19,12 +19,12 @@
 **Tests**: `packages/agency-extension/src/__tests__/extension.test.ts`
 
 ## Tasks
-- [ ] Implement `extension.ts` with `activate()` and `deactivate()` functions
-- [ ] Create `constants.ts` with shared extension constants
-- [ ] Implement `logger.ts` utility for consistent logging
-- [ ] Implement `disposable.ts` helper for VS Code disposable management
-- [ ] Implement `debounce.ts` utility for event debouncing
-- [ ] Write extension activation tests
+- [x] Implement `extension.ts` with `activate()` and `deactivate()` functions
+- [x] Create `constants.ts` with shared extension constants
+- [x] Implement `logger.ts` utility for consistent logging
+- [x] Implement `disposable.ts` helper for VS Code disposable management
+- [x] Implement `debounce.ts` utility for event debouncing
+- [x] Write extension activation tests
 
 ## Source
 <!-- task-group-id: TG-002 -->
