@@ -1,9 +1,9 @@
 import type * as vscode from 'vscode';
 import { EXTENSION_NAME, OUTPUT_CHANNEL_NAME } from './constants';
 import { DisposableManager, Logger, createScopedLogger } from './utils';
-import { ConfigService, ContainerService } from './services';
-import { registerPluginTreeView, ContainerTreeProvider } from './providers';
-import { registerPluginCommands, initializePluginCommands, registerToolCommands, initializeToolCommands, startContainer, stopContainer, rebuildContainer, viewContainerLogs, initializeContainerCommands } from './commands';
+import { ConfigService, ModeService } from './services';
+import { registerPluginTreeView, registerModeTreeView } from './providers';
+import { registerPluginCommands, initializePluginCommands, registerToolCommands, initializeToolCommands, switchMode, viewModeTools, initializeModeCommands } from './commands';
 import { McpClientService } from './services';
 
 /**
@@ -51,27 +51,22 @@ function registerCommands(
   }
   log.debug(`Registered ${toolCommandDisposables.length} tool commands`);
 
-<<<<<<< HEAD
-  // Register container commands (fully implemented)
+  // Register mode commands (fully implemented)
   state.disposables.add(
-    commands.registerCommand('agency.startContainer', (item) => startContainer(vscodeModule, item))
+    commands.registerCommand('agency.switchMode', (item) => switchMode(vscodeModule, item))
   );
   state.disposables.add(
-    commands.registerCommand('agency.stopContainer', (item) => stopContainer(vscodeModule, item))
+    commands.registerCommand('agency.viewModeTools', (modeId) => viewModeTools(vscodeModule, modeId))
   );
-  state.disposables.add(
-    commands.registerCommand('agency.rebuildContainer', (item) => rebuildContainer(vscodeModule, item))
-  );
-  state.disposables.add(
-    commands.registerCommand('agency.viewContainerLogs', (item) => viewContainerLogs(vscodeModule, item))
-  );
-  log.debug('Registered 4 container commands');
+  log.debug('Registered 2 mode commands');
 
   // Stub command registrations for commands not yet implemented
   // These are registered to prevent "command not found" errors
   const stubCommands = [
-    'agency.switchMode',
-    'agency.viewModeTools',
+    'agency.startContainer',
+    'agency.stopContainer',
+    'agency.rebuildContainer',
+    'agency.viewContainerLogs',
   ];
 
   for (const command of stubCommands) {
@@ -128,10 +123,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await mcpService.initialize(vscodeModule);
     disposables.add({ dispose: () => McpClientService.reset() });
 
-    // Initialize ContainerService
-    const containerService = new ContainerService();
-    await containerService.initialize(vscodeModule);
-    disposables.add(containerService);
+    // Initialize ModeService
+    const modeService = ModeService.getInstance();
+    await modeService.initialize(vscodeModule);
+    disposables.add({ dispose: () => ModeService.reset() });
 
     // Initialize plugin commands with extension URI for webview access
     initializePluginCommands(context.extensionUri);
@@ -139,20 +134,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Initialize tool commands with extension URI for webview access
     initializeToolCommands(context.extensionUri);
 
+    // Initialize mode commands
+    initializeModeCommands();
+
     // Register tree views
     const pluginTreeDisposable = await registerPluginTreeView(vscodeModule);
     disposables.add(pluginTreeDisposable);
 
-    // Register container tree view
-    const containerTreeProvider = new ContainerTreeProvider(containerService);
-    const containerTreeDisposable = vscodeModule.window.registerTreeDataProvider(
-      'agency.containers',
-      containerTreeProvider
-    );
-    disposables.add(containerTreeDisposable);
-
-    // Initialize container commands with service and tree provider
-    initializeContainerCommands(containerService, containerTreeProvider);
+    const modeTreeDisposable = registerModeTreeView(vscodeModule);
+    disposables.add(modeTreeDisposable);
 
     // Register commands
     registerCommands(vscodeModule, extensionState, log);

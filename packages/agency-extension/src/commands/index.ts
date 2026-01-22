@@ -21,9 +21,8 @@ export {
 } from './tool-commands';
 
 export {
-  startContainer,
-  stopContainer,
-  rebuildContainer,
-  viewContainerLogs,
-  initializeContainerCommands,
-} from './container-commands';
+  switchMode,
+  viewModeTools,
+  refreshModes,
+  initializeModeCommands,
+} from './mode-commands';

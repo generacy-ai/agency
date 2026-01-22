@@ -1,17 +1,16 @@
 import type * as vscode from 'vscode';
 import type {
-  ModeConfig,
   ModeInfo,
-  ModeTreeNode,
-  ModeSwitchResult,
   ModeSwitchRequest,
-  ModeStateEvent,
+  ModeSwitchResult,
   ModeValidationResult,
   ModeValidationError,
   ModeValidationWarning,
+  ModeStateEvent,
 } from '../types/mode';
-import { createScopedLogger, DisposableManager } from '../utils';
+import type { ModeConfig } from '../config/ConfigSchema';
 import { ConfigService } from './ConfigService';
+import { createScopedLogger, DisposableManager } from '../utils';
 
 const log = createScopedLogger('ModeService');
 
@@ -37,7 +36,7 @@ class EventEmitter<T> {
       try {
         listener(value);
       } catch (error) {
-        log.error('Error in mode change listener', error);
+        log.error('Error in mode state listener', error);
       }
     }
   }
@@ -48,348 +47,207 @@ class EventEmitter<T> {
 }
 
 /**
- * ModeService manages modes in the Agency VS Code extension.
+ * ModeService manages mode configurations and switching.
  *
- * Modes control which MCP tools are available to agents. This service:
- * - Loads and resolves mode configurations
- * - Handles mode inheritance (parent/child relationships)
- * - Manages the current active mode
- * - Validates mode configurations
- * - Builds mode trees for UI visualization
- * - Emits events when modes change
+ * Modes control which tools are active. Modes support inheritance,
+ * allowing child modes to include/exclude tools from parent modes.
  *
  * @example
  * ```typescript
- * // Get the singleton instance
  * const modeService = ModeService.getInstance();
+ * await modeService.initialize(vscode);
  *
- * // Get all modes
- * const modes = modeService.getModes();
+ * // Get current mode
+ * const currentMode = modeService.getCurrentMode();
  *
  * // Switch mode
- * const result = await modeService.setCurrentMode('debug');
- * console.log(`Added tools: ${result.addedTools.join(', ')}`);
+ * const result = await modeService.setCurrentMode({ modeId: 'debug', persist: true });
+ *
+ * // Get mode tree
+ * const tree = modeService.buildModeTree();
  * ```
  */
 export class ModeService {
-  private static instance: ModeService | undefined;
-  private configService: ConfigService;
-  private modeChangeEmitter = new EventEmitter<ModeStateEvent>();
-  private disposables = new DisposableManager();
+  private static _instance: ModeService | undefined;
+
+  private _configService: ConfigService;
+  private _currentModeId: string = 'default';
+  private _initialized = false;
+  private _disposables = new DisposableManager();
+  private _onModeStateChange = new EventEmitter<ModeStateEvent>();
 
   /**
-   * Private constructor for singleton pattern.
+   * Private constructor to enforce singleton pattern.
    */
   private constructor() {
-    this.configService = ConfigService.getInstance();
-    this.disposables.add(this.modeChangeEmitter);
+    this._configService = ConfigService.getInstance();
   }
 
   /**
-   * Get the singleton instance of ModeService.
+   * Get the singleton ModeService instance.
    */
-  public static getInstance(): ModeService {
-    if (!ModeService.instance) {
-      ModeService.instance = new ModeService();
+  static getInstance(): ModeService {
+    if (!ModeService._instance) {
+      ModeService._instance = new ModeService();
     }
-    return ModeService.instance;
+    return ModeService._instance;
   }
 
   /**
-   * Event fired when the active mode changes.
+   * Reset the singleton instance (for testing).
    */
-  public get onModeChange(): (listener: (event: ModeStateEvent) => void) => vscode.Disposable {
-    return this.modeChangeEmitter.event;
+  static reset(): void {
+    if (ModeService._instance) {
+      ModeService._instance.dispose();
+      ModeService._instance = undefined;
+    }
   }
 
   /**
-   * Resolve mode inheritance to compute effective tools.
+   * Initialize the ModeService.
    *
-   * @param mode - The mode configuration to resolve
-   * @param allModes - All available mode configurations
-   * @param visited - Set of visited mode IDs (for circular dependency detection)
-   * @returns Array of effective tool names after inheritance resolution
-   * @throws Error if circular inheritance detected or parent mode not found
+   * @param vscodeModule The VS Code module
    */
-  private resolveInheritance(
-    mode: ModeConfig,
-    allModes: ModeConfig[],
-    visited: Set<string> = new Set()
-  ): string[] {
-    // Detect circular inheritance
-    if (visited.has(mode.id)) {
-      const chain = Array.from(visited).join(' → ');
-      throw new Error(`Circular inheritance detected: ${chain} → ${mode.id}`);
+  async initialize(vscodeModule: typeof vscode): Promise<void> {
+    if (this._initialized) {
+      log.debug('ModeService already initialized');
+      return;
     }
 
-    visited.add(mode.id);
-
-    // Base case: root mode (no parent)
-    if (!mode.parentId) {
-      return Array.from(new Set(mode.includedTools));
+    // Ensure ConfigService is initialized
+    if (!this._configService.isInitialized()) {
+      await this._configService.initialize(vscodeModule);
     }
 
-    // Find parent mode
-    const parent = allModes.find(m => m.id === mode.parentId);
-    if (!parent) {
-      throw new Error(`Missing parent mode: ${mode.parentId} (referenced by ${mode.id})`);
-    }
-
-    // Recursively resolve parent
-    const parentTools = this.resolveInheritance(parent, allModes, new Set(visited));
-
-    // Apply inheritance: start with parent tools
-    const effectiveTools = new Set(parentTools);
-
-    // Add included tools
-    for (const tool of mode.includedTools) {
-      effectiveTools.add(tool);
-    }
-
-    // Remove excluded tools
-    for (const tool of mode.excludedTools) {
-      effectiveTools.delete(tool);
-    }
-
-    return Array.from(effectiveTools);
-  }
-
-  /**
-   * Get all available modes with inheritance resolved.
-   *
-   * @returns Array of ModeInfo objects with effectiveTools computed
-   */
-  public getModes(): ModeInfo[] {
-    const config = this.configService.getConfig();
-    if (!config) {
-      return [];
-    }
-    const modeConfigs = config.modes || [];
-    const currentModeId = config.currentModeId;
-
-    // Build ModeInfo array with resolved inheritance
-    const modeInfos: ModeInfo[] = [];
-    const modeMap = new Map<string, ModeInfo>();
-
-    for (const modeConfig of modeConfigs) {
-      try {
-        const effectiveTools = this.resolveInheritance(modeConfig, modeConfigs);
-
-        const modeInfo: ModeInfo = {
-          config: modeConfig,
-          effectiveTools,
-          parent: undefined, // Will be set in second pass
-          children: [],
-          depth: 0, // Will be computed in second pass
-          isActive: modeConfig.id === currentModeId,
-        };
-
-        modeInfos.push(modeInfo);
-        modeMap.set(modeConfig.id, modeInfo);
-      } catch (error) {
-        log.error(`Failed to resolve inheritance for mode ${modeConfig.id}`, error);
-        // Skip this mode if inheritance resolution fails
-      }
-    }
-
-    // Second pass: build parent/child relationships and compute depth
-    for (const modeInfo of modeInfos) {
-      if (modeInfo.config.parentId) {
-        const parent = modeMap.get(modeInfo.config.parentId);
-        if (parent) {
-          modeInfo.parent = parent;
-          parent.children.push(modeInfo);
-          modeInfo.depth = parent.depth + 1;
+    // Load current mode from config (default to 'default' mode)
+    const modes = this._configService.getModes();
+    if (modes.length > 0) {
+      // Use first mode or 'default' if it exists
+      const defaultMode = modes.find((m) => m.id === 'default');
+      if (defaultMode) {
+        this._currentModeId = defaultMode.id;
+      } else {
+        const firstMode = modes[0];
+        if (firstMode) {
+          this._currentModeId = firstMode.id;
         }
       }
     }
 
-    return modeInfos;
+    // Listen for config changes
+    const configDisposable = this._configService.onConfigChange(() => {
+      this._onModeStateChange.fire({
+        type: 'updated',
+        modeId: this._currentModeId,
+        modeInfo: this._buildModeInfo(this._currentModeId),
+        timestamp: Date.now(),
+      });
+    });
+    this._disposables.add(configDisposable);
+
+    this._initialized = true;
+    log.info('ModeService initialized');
   }
 
   /**
-   * Get a specific mode by ID.
-   *
-   * @param id - The mode ID to retrieve
-   * @returns The ModeInfo object, or undefined if not found
+   * Get all mode configurations.
    */
-  public getMode(id: string): ModeInfo | undefined {
-    return this.getModes().find(m => m.config.id === id);
+  getModes(): ModeConfig[] {
+    this._ensureInitialized();
+    return this._configService.getModes();
   }
 
   /**
    * Get the currently active mode.
-   *
-   * @returns The active ModeInfo object
-   * @throws Error if no mode is active and no default mode exists
    */
-  public getCurrentMode(): ModeInfo {
-    const modes = this.getModes();
-
-    // First, try to find the active mode
-    const activeMode = modes.find(m => m.isActive);
-    if (activeMode) {
-      return activeMode;
-    }
-
-    // Fallback: find default mode
-    const defaultMode = modes.find(m => m.config.isDefault);
-    if (defaultMode) {
-      return defaultMode;
-    }
-
-    // Last resort: return first mode
-    if (modes.length > 0) {
-      return modes[0]!;
-    }
-
-    throw new Error('No modes configured');
+  getCurrentMode(): ModeInfo | undefined {
+    this._ensureInitialized();
+    return this._buildModeInfo(this._currentModeId);
   }
 
   /**
    * Set the current active mode.
    *
-   * @param modeId - The ID of the mode to activate
-   * @returns Result of the mode switch operation
+   * @param request Mode switch request
+   * @returns Result of the switch operation
    */
-  public async setCurrentMode(modeId: string): Promise<ModeSwitchResult> {
-    try {
-      // Validate that target mode exists
-      const targetMode = this.getMode(modeId);
-      if (!targetMode) {
-        return {
-          success: false,
-          previousModeId: this.getCurrentMode().config.id,
-          newModeId: modeId,
-          addedTools: [],
-          removedTools: [],
-          error: `Mode not found: ${modeId}`,
-          timestamp: Date.now(),
-        };
-      }
+  async setCurrentMode(request: ModeSwitchRequest): Promise<ModeSwitchResult> {
+    this._ensureInitialized();
 
-      // Get previous mode
-      const previousMode = this.getCurrentMode();
-      const previousModeId = previousMode.config.id;
+    const previousModeId = this._currentModeId;
+    const previousMode = this._buildModeInfo(previousModeId);
+    const newMode = this._buildModeInfo(request.modeId);
 
-      // Compute tool diff
-      const previousTools = new Set(previousMode.effectiveTools);
-      const newTools = new Set(targetMode.effectiveTools);
-
-      const addedTools = Array.from(newTools).filter(tool => !previousTools.has(tool));
-      const removedTools = Array.from(previousTools).filter(tool => !newTools.has(tool));
-
-      // Save to ConfigService
-      await this.configService.setCurrentModeId(modeId);
-
-      // Emit event
-      const event: ModeStateEvent = {
-        type: 'activated',
-        modeId,
-        modeInfo: targetMode,
-        timestamp: Date.now(),
-      };
-      this.modeChangeEmitter.fire(event);
-
-      log.info(`Mode switched: ${previousModeId} → ${modeId}`);
-
-      return {
-        success: true,
-        previousModeId,
-        newModeId: modeId,
-        addedTools,
-        removedTools,
-        timestamp: Date.now(),
-      };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      log.error(`Failed to switch mode to ${modeId}`, error);
-
+    if (!newMode) {
       return {
         success: false,
-        previousModeId: this.getCurrentMode().config.id,
-        newModeId: modeId,
+        previousModeId,
+        newModeId: request.modeId,
         addedTools: [],
         removedTools: [],
-        error: errorMessage,
+        error: `Mode '${request.modeId}' not found`,
         timestamp: Date.now(),
       };
     }
-  }
 
-  /**
-   * Build a hierarchical tree of modes for visualization.
-   *
-   * @returns Array of root ModeTreeNode objects with children
-   */
-  public buildModeTree(): ModeTreeNode[] {
-    const modes = this.getModes();
-    const modeMap = new Map<string, ModeInfo>();
+    // Calculate tool changes
+    const previousTools = new Set(previousMode?.effectiveTools ?? []);
+    const newTools = new Set(newMode.effectiveTools);
 
-    // Build mode map
-    for (const mode of modes) {
-      modeMap.set(mode.config.id, mode);
+    const addedTools = [...newTools].filter((t) => !previousTools.has(t));
+    const removedTools = [...previousTools].filter((t) => !newTools.has(t));
+
+    // Update current mode
+    this._currentModeId = request.modeId;
+
+    // Persist if requested (note: current schema doesn't support isDefault field)
+    // This would require extending the schema in the future
+    if (request.persist) {
+      // For now, we just keep the mode active in memory
+      // Future: extend schema to support isDefault field
     }
 
-    // Find root modes (no parent)
-    const rootModes = modes.filter(m => !m.config.parentId);
+    // Emit events
+    this._onModeStateChange.fire({
+      type: 'deactivated',
+      modeId: previousModeId,
+      modeInfo: previousMode,
+      timestamp: Date.now(),
+    });
+    this._onModeStateChange.fire({
+      type: 'activated',
+      modeId: request.modeId,
+      modeInfo: newMode,
+      timestamp: Date.now(),
+    });
 
-    // Recursively build tree
-    const buildNode = (mode: ModeInfo): ModeTreeNode => {
-      const children = modes.filter(m => m.config.parentId === mode.config.id);
+    log.info(`Switched mode: ${previousModeId} → ${request.modeId}`);
 
-      const inheritedToolCount = mode.parent ? mode.parent.effectiveTools.length : 0;
-      const addedToolCount = mode.config.includedTools.length;
-      const excludedToolCount = mode.config.excludedTools.length;
-
-      return {
-        id: mode.config.id,
-        name: mode.config.name,
-        description: mode.config.description,
-        toolCount: mode.effectiveTools.length,
-        inheritedToolCount,
-        addedToolCount,
-        excludedToolCount,
-        isActive: mode.isActive,
-        children: children.map(c => buildNode(c)),
-        parentId: mode.config.parentId,
-      };
+    return {
+      success: true,
+      previousModeId,
+      newModeId: request.modeId,
+      addedTools,
+      removedTools,
+      timestamp: Date.now(),
     };
-
-    return rootModes.map(root => buildNode(root));
   }
 
   /**
    * Validate all mode configurations.
    *
-   * Checks for:
-   * - Duplicate mode IDs
-   * - Missing parent modes
-   * - Circular inheritance
-   *
    * @returns Validation result with errors and warnings
    */
-  public validate(): ModeValidationResult {
-    const config = this.configService.getConfig();
-    if (!config) {
-      return {
-        valid: false,
-        errors: [{
-          modeId: '',
-          code: 'missing_parent',
-          message: 'No configuration loaded',
-        }],
-        warnings: [],
-      };
-    }
-    const modeConfigs = config.modes || [];
+  validateModes(): ModeValidationResult {
+    this._ensureInitialized();
 
+    const modes = this._configService.getModes();
     const errors: ModeValidationError[] = [];
     const warnings: ModeValidationWarning[] = [];
 
     // Check for duplicate IDs
     const idSet = new Set<string>();
-    for (const mode of modeConfigs) {
+    for (const mode of modes) {
       if (idSet.has(mode.id)) {
         errors.push({
           modeId: mode.id,
@@ -400,32 +258,36 @@ export class ModeService {
       idSet.add(mode.id);
     }
 
-    // Check for missing parents
-    for (const mode of modeConfigs) {
-      if (mode.parentId) {
-        const parentExists = modeConfigs.some(m => m.id === mode.parentId);
-        if (!parentExists) {
-          errors.push({
-            modeId: mode.id,
-            code: 'missing_parent',
-            message: `Mode ${mode.id} references non-existent parent: ${mode.parentId}`,
-          });
-        }
+    // Check for circular inheritance
+    for (const mode of modes) {
+      if (this._hasCircularInheritance(mode.id, modes)) {
+        errors.push({
+          modeId: mode.id,
+          code: 'circular_inheritance',
+          message: `Circular inheritance detected for mode: ${mode.id}`,
+        });
       }
     }
 
-    // Check for circular inheritance
-    for (const mode of modeConfigs) {
-      try {
-        this.resolveInheritance(mode, modeConfigs);
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('Circular inheritance')) {
-          errors.push({
-            modeId: mode.id,
-            code: 'circular_inheritance',
-            message: error.message,
-          });
-        }
+    // Check for missing parents
+    for (const mode of modes) {
+      if (mode.parentId && !modes.find((m) => m.id === mode.parentId)) {
+        errors.push({
+          modeId: mode.id,
+          code: 'missing_parent',
+          message: `Parent mode '${mode.parentId}' not found`,
+        });
+      }
+    }
+
+    // Check for empty modes
+    for (const mode of modes) {
+      if (mode.includedTools.length === 0 && !mode.parentId) {
+        warnings.push({
+          modeId: mode.id,
+          code: 'empty_mode',
+          message: `Mode '${mode.id}' has no tools and no parent`,
+        });
       }
     }
 
@@ -437,9 +299,176 @@ export class ModeService {
   }
 
   /**
-   * Dispose of resources used by the service.
+   * Build a mode inheritance tree.
+   *
+   * @returns Root modes with children populated
    */
-  public dispose(): void {
-    this.disposables.dispose();
+  buildModeTree(): ModeInfo[] {
+    this._ensureInitialized();
+
+    const modes = this._configService.getModes();
+    const modeInfoMap = new Map<string, ModeInfo>();
+
+    // First pass: create ModeInfo for each mode
+    for (const mode of modes) {
+      const modeInfo = this._buildModeInfo(mode.id);
+      if (modeInfo) {
+        modeInfoMap.set(mode.id, modeInfo);
+      }
+    }
+
+    // Second pass: build tree structure
+    const roots: ModeInfo[] = [];
+    for (const modeInfo of modeInfoMap.values()) {
+      if (modeInfo.config.parentId) {
+        const parent = modeInfoMap.get(modeInfo.config.parentId);
+        if (parent) {
+          parent.children.push(modeInfo);
+          modeInfo.parent = parent;
+        }
+      } else {
+        roots.push(modeInfo);
+      }
+    }
+
+    return roots;
+  }
+
+  /**
+   * Event fired when mode state changes.
+   */
+  get onModeStateChange(): (listener: (event: ModeStateEvent) => void) => vscode.Disposable {
+    return this._onModeStateChange.event;
+  }
+
+  /**
+   * Dispose of the service.
+   */
+  dispose(): void {
+    this._disposables.dispose();
+    this._onModeStateChange.dispose();
+    this._initialized = false;
+    log.debug('ModeService disposed');
+  }
+
+  /**
+   * Ensure the service is initialized.
+   */
+  private _ensureInitialized(): void {
+    if (!this._initialized) {
+      throw new Error('ModeService not initialized. Call initialize() first.');
+    }
+  }
+
+  /**
+   * Build ModeInfo for a given mode ID.
+   */
+  private _buildModeInfo(modeId: string): ModeInfo | undefined {
+    const modes = this._configService.getModes();
+    const mode = modes.find((m) => m.id === modeId);
+    if (!mode) {
+      return undefined;
+    }
+
+    // Resolve effective tools through inheritance
+    const effectiveTools = this._resolveEffectiveTools(mode, modes);
+
+    // Calculate depth
+    const depth = this._calculateDepth(mode, modes);
+
+    // Convert to ModeInfo format
+    const modeConfig = {
+      id: mode.id,
+      name: mode.name,
+      description: mode.description,
+      parentId: mode.parentId,
+      includedTools: mode.includedTools,
+      excludedTools: mode.excludedTools,
+      isDefault: mode.isDefault ?? mode.id === 'default',
+    };
+
+    return {
+      config: modeConfig,
+      effectiveTools,
+      parent: mode.parentId ? this._buildModeInfo(mode.parentId) : undefined,
+      children: [], // Populated by caller if needed
+      depth,
+      isActive: mode.id === this._currentModeId,
+    };
+  }
+
+  /**
+   * Resolve effective tools for a mode by walking the inheritance chain.
+   * With the current schema, modes inherit ALL tools from parents and add their own.
+   */
+  private _resolveEffectiveTools(mode: ModeConfig, allModes: ModeConfig[]): string[] {
+    const visited = new Set<string>();
+    const tools = new Set<string>();
+
+    const resolve = (currentMode: ModeConfig): void => {
+      if (visited.has(currentMode.id)) {
+        return; // Prevent infinite loops
+      }
+      visited.add(currentMode.id);
+
+      // Recursively resolve parent first
+      if (currentMode.parentId) {
+        const parent = allModes.find((m) => m.id === currentMode.parentId);
+        if (parent) {
+          resolve(parent);
+        }
+      }
+
+      // Add this mode's included tools
+      for (const tool of currentMode.includedTools) {
+        tools.add(tool);
+      }
+
+      // Remove excluded tools
+      for (const tool of currentMode.excludedTools) {
+        tools.delete(tool);
+      }
+    };
+
+    resolve(mode);
+    return Array.from(tools).sort();
+  }
+
+  /**
+   * Calculate the depth of a mode in the inheritance tree.
+   */
+  private _calculateDepth(mode: ModeConfig, allModes: ModeConfig[]): number {
+    const visited = new Set<string>();
+    let depth = 0;
+
+    let current: ModeConfig | undefined = mode;
+    while (current?.parentId) {
+      if (visited.has(current.id)) {
+        break; // Circular reference
+      }
+      visited.add(current.id);
+      depth++;
+      current = allModes.find((m) => m.id === current!.parentId);
+    }
+
+    return depth;
+  }
+
+  /**
+   * Check if a mode has circular inheritance.
+   */
+  private _hasCircularInheritance(modeId: string, allModes: ModeConfig[]): boolean {
+    const visited = new Set<string>();
+
+    let current = allModes.find((m) => m.id === modeId);
+    while (current?.parentId) {
+      if (visited.has(current.id)) {
+        return true; // Circular reference detected
+      }
+      visited.add(current.id);
+      current = allModes.find((m) => m.id === current!.parentId);
+    }
+
+    return false;
   }
 }

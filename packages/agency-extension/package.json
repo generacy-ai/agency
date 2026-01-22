@@ -167,26 +167,6 @@
           "command": "agency.disablePlugin",
           "when": "view == agency.plugins && viewItem == pluginEnabled",
           "group": "inline"
-        },
-        {
-          "command": "agency.startContainer",
-          "when": "view == agency.containers && viewItem == containerStopped",
-          "group": "navigation"
-        },
-        {
-          "command": "agency.stopContainer",
-          "when": "view == agency.containers && viewItem =~ /containerRunning|containerPaused/",
-          "group": "navigation"
-        },
-        {
-          "command": "agency.rebuildContainer",
-          "when": "view == agency.containers && viewItem =~ /container/",
-          "group": "navigation"
-        },
-        {
-          "command": "agency.viewContainerLogs",
-          "when": "view == agency.containers && viewItem =~ /container/",
-          "group": "navigation"
         }
       ],
       "view/title": [
