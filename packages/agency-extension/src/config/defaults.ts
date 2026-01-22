@@ -34,7 +34,9 @@ export function createDefaultConfig(): AgencyConfig {
       {
         id: 'default',
         name: 'Default',
-        tools: [],
+        includedTools: [],
+        excludedTools: [],
+        isDefault: true,
       },
     ],
     containers: [],
