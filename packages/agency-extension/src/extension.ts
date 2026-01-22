@@ -51,6 +51,7 @@ function registerCommands(
   }
   log.debug(`Registered ${toolCommandDisposables.length} tool commands`);
 
+<<<<<<< HEAD
   // Register container commands (fully implemented)
   state.disposables.add(
     commands.registerCommand('agency.startContainer', (item) => startContainer(vscodeModule, item))
