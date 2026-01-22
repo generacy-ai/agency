@@ -1,0 +1,229 @@
+# Quickstart: Type Definitions
+
+## Installation
+
+Types are internal to the `@generacy-ai/agency-extension` package. No separate installation needed.
+
+## Usage
+
+### Importing Types
+
+```typescript
+// Import all types from central index
+import {
+  PluginConfig,
+  PluginManifest,
+  PluginState,
+  ToolInfo,
+  ToolExecutionRequest,
+  ToolResult,
+  ToolCallEvent,
+  ActivityFilter,
+  ContainerInfo,
+  ContainerStatus,
+  ModeInfo
+} from '@generacy-ai/agency-extension'
+
+// Or import from specific modules
+import { PluginConfig } from '@generacy-ai/agency-extension/types/plugin'
+import { ToolInfo } from '@generacy-ai/agency-extension/types/tool'
+```
+
+### Using Plugin Types
+
+```typescript
+// Define a plugin configuration
+const pluginConfig: PluginConfig = {
+  id: '@agency/autodev' as PluginId,
+  enabled: true,
+  settings: {
+    autoCommit: true,
+    maxRetries: 3
+  }
+}
+
+// Handle plugin state
+function handlePluginState(state: PluginState) {
+  switch (state.status) {
+    case 'loading':
+      console.log('Plugin is loading...')
+      break
+    case 'ready':
+      console.log(`Plugin ready: ${state.manifest.name}`)
+      break
+    case 'error':
+      console.error(`Plugin error: ${state.error.message}`)
+      break
+  }
+}
+```
+
+### Using Tool Types
+
+```typescript
+// Create a tool execution request
+const request: ToolExecutionRequest = {
+  toolId: 'git-commit' as ToolId,
+  parameters: {
+    message: 'feat: Add new feature',
+    files: ['src/index.ts']
+  },
+  context: {
+    workspaceRoot: '/workspace/project'
+  }
+}
+
+// Handle tool result
+function handleToolResult(result: ToolResult) {
+  if (result.status === 'success') {
+    console.log('Tool executed successfully:', result.data)
+  } else {
+    console.error('Tool error:', result.error.message)
+  }
+}
+```
+
+### Using Activity Types
+
+```typescript
+// Filter activity events
+const filter: ActivityFilter = {
+  toolIds: ['git-commit', 'git-push'] as ToolId[],
+  status: 'success',
+  startDate: new Date('2026-01-01')
+}
+
+// Process tool call events
+function logToolCall(event: ToolCallEvent) {
+  console.log(`[${event.timestamp}] ${event.toolName}`)
+  console.log(`Duration: ${event.duration}ms`)
+  if (event.result?.status === 'success') {
+    console.log('✓ Success')
+  }
+}
+```
+
+### Using Container Types
+
+```typescript
+// Check container status
+function checkContainer(info: ContainerInfo) {
+  if (info.status.state === 'running') {
+    console.log(`Container running (uptime: ${info.status.uptime}s)`)
+  } else if (info.status.state === 'error') {
+    console.error(`Container error: ${info.status.error}`)
+  }
+}
+```
+
+### Using Mode Types
+
+```typescript
+// Build mode tree for visualization
+function renderModeTree(node: ModeTreeNode, indent: number = 0) {
+  const prefix = '  '.repeat(indent)
+  const marker = node.isActive ? '●' : '○'
+  console.log(`${prefix}${marker} ${node.mode.name}`)
+
+  for (const child of node.children) {
+    renderModeTree(child, indent + 1)
+  }
+}
+```
+
+## Type Guards
+
+Use type guards for narrowing discriminated unions:
+
+```typescript
+// Check plugin state
+if (isPluginReady(pluginState)) {
+  // TypeScript knows pluginState.manifest exists here
+  console.log(pluginState.manifest.name)
+}
+
+// Check tool result
+if (isToolSuccess(toolResult)) {
+  // TypeScript knows toolResult.data exists here
+  processData(toolResult.data)
+}
+```
+
+## Runtime Validation
+
+For external data, use Zod schemas:
+
+```typescript
+import { z } from 'zod'
+
+// Define schema
+const pluginConfigSchema = z.object({
+  id: z.string(),
+  enabled: z.boolean(),
+  settings: z.record(z.unknown())
+})
+
+// Validate at runtime
+function loadPluginConfig(data: unknown): PluginConfig {
+  return pluginConfigSchema.parse(data) as PluginConfig
+}
+```
+
+## Common Patterns
+
+### Branded Types
+
+Create branded type instances:
+
+```typescript
+// Helper function to create branded type
+function createPluginId(id: string): PluginId {
+  return id as PluginId
+}
+
+// Or use type assertion at creation
+const pluginId = '@agency/autodev' as PluginId
+```
+
+### Immutable Updates
+
+Use spread operators for immutable updates:
+
+```typescript
+// Update plugin config
+function updatePluginSetting(
+  config: PluginConfig,
+  key: string,
+  value: unknown
+): PluginConfig {
+  return {
+    ...config,
+    settings: {
+      ...config.settings,
+      [key]: value
+    }
+  }
+}
+```
+
+## Troubleshooting
+
+### Issue: Circular dependency errors
+
+**Solution**: Check import order. Base types should not import from dependent modules.
+
+### Issue: Type inference not working
+
+**Solution**: Ensure Zod schemas are defined with `as const` or use explicit type parameters.
+
+### Issue: Branded types causing type errors
+
+**Solution**: Use type assertions when creating branded types: `id as PluginId`
+
+### Issue: Discriminated union not narrowing
+
+**Solution**: Ensure discriminant property is checked with strict equality (`===`)
+
+---
+
+*Generated by speckit*
