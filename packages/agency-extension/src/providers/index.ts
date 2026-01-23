@@ -5,4 +5,5 @@
 export { PluginTreeProvider, registerPluginTreeView } from './PluginTreeProvider';
 export { ToolTreeProvider, registerToolTreeView } from './ToolTreeProvider';
 export { ActivityTreeProvider, registerActivityTreeView } from './ActivityTreeProvider';
+export { ModeTreeProvider, ModeTreeItem, registerModeTreeView } from './ModeTreeProvider';
 export { ContainerTreeProvider, ContainerTreeItem } from './ContainerTreeProvider';

@@ -21,6 +21,14 @@ export {
 } from './tool-commands';
 
 export {
+  switchMode,
+  viewModeTools,
+  refreshModes,
+  registerModeCommands,
+  initializeModeCommands,
+} from './mode-commands';
+
+export {
   startContainer,
   stopContainer,
   rebuildContainer,

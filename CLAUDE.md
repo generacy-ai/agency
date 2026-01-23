@@ -116,6 +116,8 @@ This repository uses spec-driven development:
 
 - 125-complete-container-operations-ui: Added configuration
 
+- 124-complete-mode-switching-ui: Added configuration
+
 - 096-tg-006-45-us1: Added configuration
 
 - 095-tg-005-44-us1: Added configuration
