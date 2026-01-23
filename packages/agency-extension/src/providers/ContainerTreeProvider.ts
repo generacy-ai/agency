@@ -147,7 +147,7 @@ export class ContainerTreeProvider implements vscode.TreeDataProvider<ContainerT
    */
   constructor(private readonly containerService: ContainerService) {
     // Subscribe to container state changes
-    this.containerService.onDidChangeState(() => {
+    this.containerService.onContainerStateChange(() => {
       this.refresh();
     });
   }

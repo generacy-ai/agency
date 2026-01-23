@@ -6,7 +6,7 @@
 import type * as vscode from 'vscode';
 import type { ContainerTreeItem } from '../providers/ContainerTreeProvider';
 import { ContainerService } from '../services/ContainerService';
-import { createScopedLogger } from '../utils';
+import { createScopedLogger, detectDevContainer } from '../utils';
 
 const log = createScopedLogger('ContainerCommands');
 
@@ -16,20 +16,58 @@ let containerServiceInstance: ContainerService | null = null;
 /** Tree provider for refreshing after operations */
 let treeProvider: any | null = null;
 
+/** Extension URI for webview access */
+let extensionUri: vscode.Uri | null = null;
+
+/** VS Code module reference */
+let vscodeModule: typeof vscode | null = null;
+
 /**
  * Initialize container commands with dependencies.
  * Must be called during extension activation.
  *
  * @param service The container service instance
  * @param provider The container tree provider for refresh
+ * @param extUri The extension URI for webview access
  */
 export function initializeContainerCommands(
   service: ContainerService,
-  provider: any
+  provider: any,
+  extUri?: vscode.Uri
 ): void {
   containerServiceInstance = service;
   treeProvider = provider;
+  if (extUri) {
+    extensionUri = extUri;
+  }
   log.debug('Container commands initialized');
+}
+
+/**
+ * Set the VS Code module reference for command handlers.
+ * @param vsModule The VS Code module
+ */
+export function setVscodeModule(vsModule: typeof vscode): void {
+  vscodeModule = vsModule;
+}
+
+/**
+ * Get the VS Code module reference.
+ * @throws Error if module is not set
+ */
+function getVscodeModule(): typeof vscode {
+  if (!vscodeModule) {
+    throw new Error('VS Code module not set. Call setVscodeModule first.');
+  }
+  return vscodeModule;
+}
+
+/**
+ * Get the extension URI.
+ * @returns The extension URI or null if not set
+ */
+export function getExtensionUri(): vscode.Uri | null {
+  return extensionUri;
 }
 
 /**
@@ -53,14 +91,52 @@ function refreshTree(): void {
 }
 
 /**
+ * Validate that devcontainer.json exists in the workspace.
+ * @param vsModule The VS Code module
+ * @param workspacePath The workspace path to check
+ * @returns True if devcontainer.json exists, false otherwise
+ */
+async function validateDevContainerConfig(
+  vsModule: typeof vscode,
+  workspacePath?: string
+): Promise<boolean> {
+  if (!workspacePath) {
+    // Try to get from workspace folders
+    const workspaceFolders = vsModule.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      log.warn('No workspace folder available for devcontainer.json validation');
+      return false;
+    }
+    const firstFolder = workspaceFolders[0];
+    if (!firstFolder) {
+      log.warn('No workspace folder available for devcontainer.json validation');
+      return false;
+    }
+    workspacePath = firstFolder.uri.fsPath;
+  }
+
+  const result = await detectDevContainer(workspacePath);
+  if (!result.found) {
+    log.warn(`No devcontainer.json found in ${workspacePath}: ${result.error}`);
+    return false;
+  }
+
+  log.debug(`Found devcontainer.json at: ${result.path}`);
+  return true;
+}
+
+/**
  * Start a stopped container.
+ * Validates that devcontainer.json exists before starting.
  *
- * @param vscodeModule The VS Code module
+ * @param vsModule The VS Code module
  * @param item Container tree item to start
+ * @param skipValidation Skip devcontainer.json validation (default: false)
  */
 export async function startContainer(
-  vscodeModule: typeof vscode,
-  item: ContainerTreeItem
+  vsModule: typeof vscode,
+  item: ContainerTreeItem,
+  skipValidation = false
 ): Promise<void> {
   const service = getContainerService();
   const containerId = item.container.id;
@@ -68,10 +144,29 @@ export async function startContainer(
 
   log.info(`Starting container: ${containerName} (${containerId})`);
 
+  // Validate devcontainer.json exists (only for dev containers)
+  if (!skipValidation && item.container.isDevContainer) {
+    const workspacePath = item.container.workspacePath;
+    const hasDevContainer = await validateDevContainerConfig(vsModule, workspacePath);
+
+    if (!hasDevContainer) {
+      const proceed = await vsModule.window.showWarningMessage(
+        `No devcontainer.json found for container "${containerName}". Start anyway?`,
+        'Start Anyway',
+        'Cancel'
+      );
+
+      if (proceed !== 'Start Anyway') {
+        log.debug('Container start cancelled - no devcontainer.json');
+        return;
+      }
+    }
+  }
+
   try {
-    await vscodeModule.window.withProgress(
+    await vsModule.window.withProgress(
       {
-        location: vscodeModule.ProgressLocation.Notification,
+        location: vsModule.ProgressLocation.Notification,
         title: `Starting container ${containerName}...`,
         cancellable: false,
       },
@@ -86,23 +181,24 @@ export async function startContainer(
       }
     );
 
-    vscodeModule.window.showInformationMessage(`Container ${containerName} started successfully.`);
+    vsModule.window.showInformationMessage(`Container ${containerName} started successfully.`);
     refreshTree();
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     log.error(`Failed to start container ${containerName}`, error);
-    vscodeModule.window.showErrorMessage(`Failed to start container ${containerName}: ${errorMsg}`);
+    vsModule.window.showErrorMessage(`Failed to start container ${containerName}: ${errorMsg}`);
   }
 }
 
 /**
  * Stop a running container.
+ * MCP disconnect is handled automatically via McpConnectionManager event subscription.
  *
- * @param vscodeModule The VS Code module
+ * @param vsModule The VS Code module
  * @param item Container tree item to stop
  */
 export async function stopContainer(
-  vscodeModule: typeof vscode,
+  vsModule: typeof vscode,
   item: ContainerTreeItem
 ): Promise<void> {
   const service = getContainerService();
@@ -112,9 +208,9 @@ export async function stopContainer(
   log.info(`Stopping container: ${containerName} (${containerId})`);
 
   try {
-    await vscodeModule.window.withProgress(
+    await vsModule.window.withProgress(
       {
-        location: vscodeModule.ProgressLocation.Notification,
+        location: vsModule.ProgressLocation.Notification,
         title: `Stopping container ${containerName}...`,
         cancellable: false,
       },
@@ -126,28 +222,34 @@ export async function stopContainer(
         }
 
         log.info(`Container stopped successfully: ${containerName}`);
+        // Note: MCP disconnect is handled automatically by McpConnectionManager
+        // when it receives the container state change event
       }
     );
 
-    vscodeModule.window.showInformationMessage(`Container ${containerName} stopped successfully.`);
+    vsModule.window.showInformationMessage(`Container ${containerName} stopped successfully.`);
     refreshTree();
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     log.error(`Failed to stop container ${containerName}`, error);
-    vscodeModule.window.showErrorMessage(`Failed to stop container ${containerName}: ${errorMsg}`);
+    vsModule.window.showErrorMessage(`Failed to stop container ${containerName}: ${errorMsg}`);
   }
 }
 
 /**
  * Rebuild a container from scratch.
  * This is a destructive operation that requires user confirmation.
+ * Validates that devcontainer.json exists before rebuild.
+ * MCP reconnection is handled automatically via McpConnectionManager.
  *
- * @param vscodeModule The VS Code module
+ * @param vsModule The VS Code module
  * @param item Container tree item to rebuild
+ * @param skipValidation Skip devcontainer.json validation (default: false)
  */
 export async function rebuildContainer(
-  vscodeModule: typeof vscode,
-  item: ContainerTreeItem
+  vsModule: typeof vscode,
+  item: ContainerTreeItem,
+  skipValidation = false
 ): Promise<void> {
   const service = getContainerService();
   const containerId = item.container.id;
@@ -155,8 +257,22 @@ export async function rebuildContainer(
 
   log.info(`Rebuild requested for container: ${containerName} (${containerId})`);
 
+  // Validate devcontainer.json exists
+  if (!skipValidation) {
+    const workspacePath = item.container.workspacePath;
+    const hasDevContainer = await validateDevContainerConfig(vsModule, workspacePath);
+
+    if (!hasDevContainer) {
+      vsModule.window.showErrorMessage(
+        `Cannot rebuild container "${containerName}": No devcontainer.json found. ` +
+        'A devcontainer.json is required for rebuild operations.'
+      );
+      return;
+    }
+  }
+
   // Show confirmation dialog (destructive operation)
-  const confirmation = await vscodeModule.window.showWarningMessage(
+  const confirmation = await vsModule.window.showWarningMessage(
     `Rebuild container "${containerName}"? This will stop and rebuild the container from scratch.`,
     { modal: true },
     'Rebuild',
@@ -169,9 +285,9 @@ export async function rebuildContainer(
   }
 
   try {
-    await vscodeModule.window.withProgress(
+    await vsModule.window.withProgress(
       {
-        location: vscodeModule.ProgressLocation.Notification,
+        location: vsModule.ProgressLocation.Notification,
         title: `Rebuilding container ${containerName}...`,
         cancellable: true,
       },
@@ -182,17 +298,22 @@ export async function rebuildContainer(
           throw new Error('Rebuild cancelled');
         }
 
+        progress.report({ message: 'Stopping container...' });
+
         const result = await service.rebuildContainer(containerId);
 
         if (!result.success) {
           throw new Error(result.error || 'Unknown error');
         }
 
+        progress.report({ message: 'Container rebuilt. Waiting for restart...' });
         log.info(`Container rebuilt successfully: ${containerName}`);
+        // Note: MCP reconnection is handled automatically by McpConnectionManager
+        // when it receives the container state change event (running -> stopped -> running)
       }
     );
 
-    vscodeModule.window.showInformationMessage(
+    vsModule.window.showInformationMessage(
       `Container ${containerName} rebuilt successfully.`
     );
     refreshTree();
@@ -204,7 +325,7 @@ export async function rebuildContainer(
 
     const errorMsg = error instanceof Error ? error.message : String(error);
     log.error(`Failed to rebuild container ${containerName}`, error);
-    vscodeModule.window.showErrorMessage(
+    vsModule.window.showErrorMessage(
       `Failed to rebuild container ${containerName}: ${errorMsg}`
     );
   }
@@ -212,57 +333,227 @@ export async function rebuildContainer(
 
 /**
  * View container logs.
- * Opens a webview panel if ContainerDetailPanel is available,
- * otherwise falls back to an output channel.
+ * Opens the ContainerDetailPanel webview with log viewing and filtering.
  *
- * @param vscodeModule The VS Code module
+ * @param vsModule The VS Code module
  * @param item Container tree item to view logs for
+ * @param extUri Optional extension URI (uses cached if not provided)
  */
 export async function viewContainerLogs(
-  vscodeModule: typeof vscode,
+  vsModule: typeof vscode,
+  item: ContainerTreeItem,
+  extUri?: vscode.Uri
+): Promise<void> {
+  const containerId = item.container.id;
+  const containerName = item.container.name;
+  const uri = extUri || extensionUri;
+
+  log.info(`Viewing logs for container: ${containerName} (${containerId})`);
+
+  try {
+    // Use ContainerDetailPanel if extension URI is available
+    if (uri) {
+      // Dynamic import to avoid circular dependencies
+      const { ContainerDetailPanel } = await import('../views/containers/ContainerDetailPanel');
+      ContainerDetailPanel.createOrShow(vsModule, uri, containerId);
+      log.debug(`Opened ContainerDetailPanel for ${containerName}`);
+    } else {
+      // Fallback to output channel if no extension URI
+      log.debug('No extension URI available, using output channel fallback');
+      await viewContainerLogsInOutputChannel(vsModule, item);
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    log.error(`Failed to view logs for container ${containerName}`, error);
+    vsModule.window.showErrorMessage(
+      `Failed to view logs for container ${containerName}: ${errorMsg}`
+    );
+  }
+}
+
+/**
+ * View container logs in an output channel (fallback).
+ * Used when ContainerDetailPanel is not available.
+ *
+ * @param vsModule The VS Code module
+ * @param item Container tree item to view logs for
+ */
+async function viewContainerLogsInOutputChannel(
+  vsModule: typeof vscode,
   item: ContainerTreeItem
 ): Promise<void> {
   const service = getContainerService();
   const containerId = item.container.id;
   const containerName = item.container.name;
 
-  log.info(`Viewing logs for container: ${containerName} (${containerId})`);
+  // Create output channel for logs
+  const outputChannel = vsModule.window.createOutputChannel(
+    `Container: ${containerName}`
+  );
+  outputChannel.show();
+
+  outputChannel.appendLine(`=== Logs for container: ${containerName} ===`);
+  outputChannel.appendLine(`Container ID: ${containerId}`);
+  outputChannel.appendLine(`Image: ${item.container.image}`);
+  outputChannel.appendLine(`Status: ${item.container.status}`);
+  outputChannel.appendLine('');
+
+  // Fetch logs using async iterator (last 100 lines)
+  const logs: Array<{ timestamp: number; stream: string; content: string }> = [];
+  try {
+    for await (const logEntry of service.getContainerLogs(containerId, { tail: 100 })) {
+      logs.push(logEntry);
+    }
+  } catch (error) {
+    log.warn(`Error fetching logs for ${containerName}`, error);
+  }
+
+  if (logs.length === 0) {
+    outputChannel.appendLine('No logs available.');
+  } else {
+    for (const logEntry of logs) {
+      const timestamp = new Date(logEntry.timestamp).toISOString();
+      const stream = logEntry.stream === 'stderr' ? '[stderr]' : '[stdout]';
+      outputChannel.appendLine(`${timestamp} ${stream} ${logEntry.content}`);
+    }
+  }
+
+  log.debug(`Displayed ${logs.length} log entries for ${containerName}`);
+}
+
+/**
+ * Show a container picker when command is invoked without a tree item context.
+ *
+ * @param vsModule The VS Code module
+ * @param title Title for the picker
+ * @param filter Optional filter for container status
+ * @returns Selected container tree item or undefined if cancelled
+ */
+export async function showContainerPicker(
+  vsModule: typeof vscode,
+  title: string,
+  filter?: (container: { status: string }) => boolean
+): Promise<ContainerTreeItem | undefined> {
+  const service = getContainerService();
 
   try {
-    // TODO: Check if ContainerDetailPanel exists (TG-020)
-    // For now, use output channel fallback
+    let containers = await service.listContainers();
 
-    // Create output channel for logs
-    const outputChannel = vscodeModule.window.createOutputChannel(
-      `Container: ${containerName}`
-    );
-    outputChannel.show();
-
-    outputChannel.appendLine(`=== Logs for container: ${containerName} ===`);
-    outputChannel.appendLine(`Container ID: ${containerId}`);
-    outputChannel.appendLine(`Image: ${item.container.image}`);
-    outputChannel.appendLine(`Status: ${item.container.status}`);
-    outputChannel.appendLine('');
-
-    // Fetch logs (last 100 lines)
-    const logs = await service.getLogs(containerId, { tail: 100 });
-
-    if (logs.length === 0) {
-      outputChannel.appendLine('No logs available.');
-    } else {
-      for (const logEntry of logs) {
-        const timestamp = new Date(logEntry.timestamp).toISOString();
-        const stream = logEntry.stream === 'stderr' ? '[stderr]' : '[stdout]';
-        outputChannel.appendLine(`${timestamp} ${stream} ${logEntry.content}`);
-      }
+    // Apply filter if provided
+    if (filter) {
+      containers = containers.filter(filter);
     }
 
-    log.debug(`Displayed ${logs.length} log entries for ${containerName}`);
+    if (containers.length === 0) {
+      vsModule.window.showInformationMessage('No containers available.');
+      return undefined;
+    }
+
+    const items = containers.map((container) => ({
+      label: container.name,
+      description: `${container.image} - ${container.status}`,
+      detail: `ID: ${container.id}`,
+      container,
+    }));
+
+    const selected = await vsModule.window.showQuickPick(items, {
+      title,
+      placeHolder: 'Select a container',
+    });
+
+    if (!selected) {
+      return undefined;
+    }
+
+    // Create a pseudo tree item
+    const { ContainerTreeItem: TreeItem } = await import('../providers/ContainerTreeProvider');
+    return new TreeItem(selected.container, vsModule.TreeItemCollapsibleState.None);
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    log.error(`Failed to view logs for container ${containerName}`, error);
-    vscodeModule.window.showErrorMessage(
-      `Failed to view logs for container ${containerName}: ${errorMsg}`
-    );
+    log.error('Failed to show container picker', error);
+    vsModule.window.showErrorMessage('Failed to load containers');
+    return undefined;
   }
+}
+
+/**
+ * Register container commands with VS Code.
+ *
+ * @param vsModule The VS Code module
+ * @returns Array of disposables for the registered commands
+ */
+export function registerContainerCommands(
+  vsModule: typeof vscode
+): vscode.Disposable[] {
+  const disposables: vscode.Disposable[] = [];
+  setVscodeModule(vsModule);
+
+  // Register startContainer command
+  disposables.push(
+    vsModule.commands.registerCommand(
+      'agency.startContainer',
+      async (item?: ContainerTreeItem) => {
+        const targetItem = item || await showContainerPicker(
+          vsModule,
+          'Start Container',
+          (c) => c.status !== 'running'
+        );
+        if (targetItem) {
+          await startContainer(vsModule, targetItem);
+        }
+      }
+    )
+  );
+
+  // Register stopContainer command
+  disposables.push(
+    vsModule.commands.registerCommand(
+      'agency.stopContainer',
+      async (item?: ContainerTreeItem) => {
+        const targetItem = item || await showContainerPicker(
+          vsModule,
+          'Stop Container',
+          (c) => c.status === 'running'
+        );
+        if (targetItem) {
+          await stopContainer(vsModule, targetItem);
+        }
+      }
+    )
+  );
+
+  // Register rebuildContainer command
+  disposables.push(
+    vsModule.commands.registerCommand(
+      'agency.rebuildContainer',
+      async (item?: ContainerTreeItem) => {
+        const targetItem = item || await showContainerPicker(
+          vsModule,
+          'Rebuild Container',
+          (c) => c.status === 'running' || c.status === 'exited' || c.status === 'stopped'
+        );
+        if (targetItem) {
+          await rebuildContainer(vsModule, targetItem);
+        }
+      }
+    )
+  );
+
+  // Register viewContainerLogs command
+  disposables.push(
+    vsModule.commands.registerCommand(
+      'agency.viewContainerLogs',
+      async (item?: ContainerTreeItem) => {
+        const targetItem = item || await showContainerPicker(
+          vsModule,
+          'View Container Logs'
+        );
+        if (targetItem) {
+          await viewContainerLogs(vsModule, targetItem);
+        }
+      }
+    )
+  );
+
+  log.debug(`Registered ${disposables.length} container commands`);
+  return disposables;
 }

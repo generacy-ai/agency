@@ -48,7 +48,10 @@ interface RebuildContainerMessage {
  */
 interface FilterLogsMessage {
   type: 'filterLogs';
-  payload: { filter: string };
+  payload: {
+    filter: string;
+    streamFilter?: 'all' | 'stdout' | 'stderr';
+  };
 }
 
 /**
@@ -77,7 +80,7 @@ interface ContainerDataMessage {
 interface LogDataMessage {
   type: 'logData';
   payload: {
-    logs: Array<{ content: string; timestamp: number }>;
+    logs: Array<{ content: string; timestamp: number; stream: 'stdout' | 'stderr' }>;
     append: boolean;
   };
 }
@@ -142,6 +145,7 @@ export class ContainerDetailPanel extends WebviewBase {
   private _containerId: string;
   private _container: ContainerInfo | null = null;
   private _logFilter = '';
+  private _streamFilter: 'all' | 'stdout' | 'stderr' = 'all';
   private _logStreamProcess: (() => void) | null = null;
   private _logs: ContainerLogEntry[] = [];
 
@@ -256,7 +260,7 @@ export class ContainerDetailPanel extends WebviewBase {
         break;
 
       case 'filterLogs':
-        this._handleFilterLogs(msg.payload.filter);
+        this._handleFilterLogs(msg.payload.filter, msg.payload.streamFilter);
         break;
 
       default:
@@ -374,8 +378,14 @@ export class ContainerDetailPanel extends WebviewBase {
   /**
    * Handle log filter change.
    */
-  private _handleFilterLogs(filter: string): void {
+  private _handleFilterLogs(
+    filter: string,
+    streamFilter?: 'all' | 'stdout' | 'stderr'
+  ): void {
     this._logFilter = filter.toLowerCase();
+    if (streamFilter !== undefined) {
+      this._streamFilter = streamFilter;
+    }
     this._sendLogs(false);
   }
 
@@ -470,12 +480,21 @@ export class ContainerDetailPanel extends WebviewBase {
    */
   private _sendLogs(append: boolean): void {
     const filteredLogs = this._logs
-      .filter((entry) =>
-        !this._logFilter || entry.content.toLowerCase().includes(this._logFilter)
-      )
+      .filter((entry) => {
+        // Apply stream filter
+        if (this._streamFilter !== 'all' && entry.stream !== this._streamFilter) {
+          return false;
+        }
+        // Apply text filter
+        if (this._logFilter && !entry.content.toLowerCase().includes(this._logFilter)) {
+          return false;
+        }
+        return true;
+      })
       .map((entry) => ({
         content: entry.content,
         timestamp: entry.timestamp,
+        stream: entry.stream,
       }));
 
     this.postMessage({
@@ -542,6 +561,11 @@ export class ContainerDetailPanel extends WebviewBase {
               placeholder="Filter logs..."
               class="log-filter-input"
             />
+            <select id="streamFilter" class="stream-filter-select">
+              <option value="all">All streams</option>
+              <option value="stdout">stdout only</option>
+              <option value="stderr">stderr only</option>
+            </select>
           </div>
           <div class="log-viewer" id="logViewer">
             <div class="log-content" id="logContent">
@@ -568,6 +592,7 @@ export class ContainerDetailPanel extends WebviewBase {
       const infoPorts = document.getElementById('infoPorts');
       const infoWorkspace = document.getElementById('infoWorkspace');
       const logFilter = document.getElementById('logFilter');
+      const streamFilter = document.getElementById('streamFilter');
       const logViewer = document.getElementById('logViewer');
       const logContent = document.getElementById('logContent');
 
@@ -591,7 +616,14 @@ export class ContainerDetailPanel extends WebviewBase {
 
       logFilter.addEventListener('input', () => {
         const filter = logFilter.value;
-        postMessage('filterLogs', { filter });
+        const stream = streamFilter.value;
+        postMessage('filterLogs', { filter, streamFilter: stream });
+      });
+
+      streamFilter.addEventListener('change', () => {
+        const filter = logFilter.value;
+        const stream = streamFilter.value;
+        postMessage('filterLogs', { filter, streamFilter: stream });
       });
 
       logViewer.addEventListener('scroll', () => {
@@ -651,17 +683,22 @@ export class ContainerDetailPanel extends WebviewBase {
         // Render new logs
         for (const log of newLogs) {
           const logLine = document.createElement('div');
-          logLine.className = 'log-line';
+          logLine.className = 'log-line log-stream-' + log.stream;
 
           const timestamp = document.createElement('span');
           timestamp.className = 'log-timestamp';
           timestamp.textContent = formatTime(log.timestamp);
+
+          const streamBadge = document.createElement('span');
+          streamBadge.className = 'log-stream-badge log-stream-' + log.stream;
+          streamBadge.textContent = log.stream;
 
           const content = document.createElement('span');
           content.className = 'log-text';
           content.textContent = log.content;
 
           logLine.appendChild(timestamp);
+          logLine.appendChild(streamBadge);
           logLine.appendChild(content);
           logContent.appendChild(logLine);
         }
@@ -783,13 +820,20 @@ export class ContainerDetailPanel extends WebviewBase {
         }
 
         .log-controls {
+          display: flex;
+          gap: 8px;
           margin-bottom: 12px;
           flex-shrink: 0;
         }
 
         .log-filter-input {
-          width: 100%;
+          flex: 1;
           padding: 6px 8px;
+        }
+
+        .stream-filter-select {
+          padding: 6px 8px;
+          min-width: 120px;
         }
 
         .log-viewer {
@@ -823,6 +867,29 @@ export class ContainerDetailPanel extends WebviewBase {
           flex: 1;
           white-space: pre-wrap;
           word-break: break-word;
+        }
+
+        .log-stream-badge {
+          font-size: 0.75em;
+          padding: 1px 4px;
+          border-radius: 2px;
+          margin-right: 8px;
+          font-weight: 600;
+          flex-shrink: 0;
+        }
+
+        .log-stream-badge.log-stream-stdout {
+          background: var(--vscode-terminal-ansiGreen);
+          color: var(--vscode-terminal-background);
+        }
+
+        .log-stream-badge.log-stream-stderr {
+          background: var(--vscode-terminal-ansiRed);
+          color: var(--vscode-terminal-background);
+        }
+
+        .log-line.log-stream-stderr .log-text {
+          color: var(--vscode-errorForeground);
         }
       </style>
     `;

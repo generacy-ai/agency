@@ -1,10 +1,17 @@
 import type * as vscode from 'vscode';
 import { EXTENSION_NAME, OUTPUT_CHANNEL_NAME } from './constants';
 import { DisposableManager, Logger, createScopedLogger } from './utils';
-import { ConfigService } from './services';
-import { registerPluginTreeView } from './providers';
-import { registerPluginCommands, initializePluginCommands, registerToolCommands, initializeToolCommands } from './commands';
-import { McpClientService } from './services';
+import { ConfigService, McpClientService, McpConnectionManager } from './services';
+import { ContainerService } from './services/ContainerService';
+import { registerPluginTreeView, ContainerTreeProvider } from './providers';
+import {
+  registerPluginCommands,
+  initializePluginCommands,
+  registerToolCommands,
+  initializeToolCommands,
+  registerContainerCommands,
+  initializeContainerCommands,
+} from './commands';
 
 /**
  * Extension state container.
@@ -28,9 +35,9 @@ function initializeLogger(outputChannel: vscode.OutputChannel): void {
 
 /**
  * Register extension commands.
- * Plugin and tool commands have real implementations, others are stubs.
+ * Plugin, tool, and container commands have real implementations.
  */
-function registerCommands(
+function registerAllCommands(
   vscodeModule: typeof vscode,
   state: ExtensionState,
   log: ReturnType<typeof createScopedLogger>
@@ -51,15 +58,17 @@ function registerCommands(
   }
   log.debug(`Registered ${toolCommandDisposables.length} tool commands`);
 
-  // Stub command registrations for commands not yet implemented
-  // These are registered to prevent "command not found" errors
+  // Register container commands (fully implemented)
+  const containerCommandDisposables = registerContainerCommands(vscodeModule);
+  for (const disposable of containerCommandDisposables) {
+    state.disposables.add(disposable);
+  }
+  log.debug(`Registered ${containerCommandDisposables.length} container commands`);
+
+  // Stub command registrations for mode commands (not yet implemented)
   const stubCommands = [
     'agency.switchMode',
     'agency.viewModeTools',
-    'agency.startContainer',
-    'agency.stopContainer',
-    'agency.rebuildContainer',
-    'agency.viewContainerLogs',
   ];
 
   for (const command of stubCommands) {
@@ -122,12 +131,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Initialize tool commands with extension URI for webview access
     initializeToolCommands(context.extensionUri);
 
+    // Initialize ContainerService
+    const containerService = ContainerService.getInstance();
+    await containerService.initialize(vscodeModule);
+    disposables.add({ dispose: () => ContainerService.reset() });
+
+    // Initialize McpConnectionManager (subscribes to container events)
+    const mcpConnectionManager = McpConnectionManager.getInstance();
+    await mcpConnectionManager.initialize(containerService, mcpService);
+    disposables.add({ dispose: () => McpConnectionManager.reset() });
+
     // Register tree views
     const pluginTreeDisposable = await registerPluginTreeView(vscodeModule);
     disposables.add(pluginTreeDisposable);
 
+    // Create and register container tree view
+    const containerTreeProvider = new ContainerTreeProvider(containerService);
+    const containerTreeView = vscodeModule.window.createTreeView('agency.containers', {
+      treeDataProvider: containerTreeProvider,
+      showCollapseAll: false,
+    });
+    disposables.add(containerTreeView);
+
+    // Initialize container commands with dependencies
+    initializeContainerCommands(containerService, containerTreeProvider, context.extensionUri);
+
     // Register commands
-    registerCommands(vscodeModule, extensionState, log);
+    registerAllCommands(vscodeModule, extensionState, log);
 
     log.info(`${EXTENSION_NAME} extension activated successfully`);
   } catch (error) {
