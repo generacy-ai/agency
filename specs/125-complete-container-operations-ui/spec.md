@@ -1,8 +1,10 @@
 # Feature Specification: Complete Container Operations UI in VS Code extension
 
-**Branch**: `125-complete-container-operations-ui` | **Date**: 2026-01-23 | **Status**: Draft
+**Branch**: `125-complete-container-operations-ui` | **Date**: 2026-01-23 | **Status**: Clarified
 
 ## Summary
+
+Implement fully functional container management commands in the Agency VS Code extension, replacing current stub implementations with working operations for start, stop, rebuild, and log viewing.
 
 ## Overview
 
@@ -21,7 +23,7 @@ The `ContainerTreeProvider` and `ContainerDetailPanel` exist but may not be full
 ## Requirements
 
 ### Start Container
-- Detect devcontainer.json in workspace
+- Detect devcontainer.json in workspace (required - only start containers with matching workspace config)
 - Start container using Docker CLI or Dev Containers extension API
 - Show progress notification
 - Update tree view when started
@@ -29,34 +31,40 @@ The `ContainerTreeProvider` and `ContainerDetailPanel` exist but may not be full
 ### Stop Container
 - Stop running container gracefully
 - Update tree view
-- Handle MCP connection cleanup
+- Handle MCP connection cleanup via event-based integration
 
 ### Rebuild Container
 - Rebuild from current devcontainer.json
 - Show build progress
-- Restart MCP connection after rebuild
+- Restart MCP connection after rebuild via event-based integration
 
 ### View Logs
 - Open output channel with container logs
 - Stream logs in real-time
-- Support log filtering
+- Support log filtering: text search + log level (stdout/stderr)
 
 ### Container Tree View
 - Show container status (running/stopped/building)
 - Show container details (image, ports, volumes)
 - Context menu for operations
 
+### MCP Connection Integration
+- Use event-based integration pattern (not direct coupling)
+- McpClientService subscribes to `onContainerStateChange` events
+- McpClientService handles its own connect/disconnect lifecycle
+- ContainerService emits state change events but does not call McpClientService directly
+
 ## Technical Notes
 
 - May need to integrate with VS Code Remote - Containers extension
 - Docker CLI can be used as fallback
-- MCP connection state needs to sync with container state
+- MCP connection state needs to sync with container state via event subscription
 
 ## Acceptance Criteria
 
 - [ ] Can start/stop containers from tree view
 - [ ] Rebuild works and restarts MCP connection
-- [ ] Logs viewable in output panel
+- [ ] Logs viewable in output panel with text search and log level filtering
 - [ ] Status updates reflect actual container state
 - [ ] Works with standard devcontainer.json setup
 
@@ -68,35 +76,59 @@ The `ContainerTreeProvider` and `ContainerDetailPanel` exist but may not be full
 
 ## User Stories
 
-### US1: [Primary User Story]
+### US1: Start Container from Tree View
 
-**As a** [user type],
-**I want** [capability],
-**So that** [benefit].
+**As a** developer using the Agency extension,
+**I want** to start a dev container from the container tree view,
+**So that** I can quickly spin up my development environment.
 
 **Acceptance Criteria**:
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
+- [ ] Start command only available when devcontainer.json exists in workspace
+- [ ] Progress notification shown during container start
+- [ ] Tree view updates to show running status
+
+### US2: Stop Container with MCP Cleanup
+
+**As a** developer,
+**I want** stopping a container to automatically disconnect MCP,
+**So that** I don't have stale connections.
+
+**Acceptance Criteria**:
+- [ ] Stop command gracefully stops container
+- [ ] MCP connection automatically disconnects via event
+- [ ] Tree view updates to show stopped status
+
+### US3: View and Filter Container Logs
+
+**As a** developer debugging container issues,
+**I want** to view and filter container logs,
+**So that** I can find relevant error messages quickly.
+
+**Acceptance Criteria**:
+- [ ] Logs stream in real-time to output channel
+- [ ] Can filter by text search
+- [ ] Can filter by log level (stdout/stderr)
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | [Description] | P1 | |
-
-## Success Criteria
-
-| ID | Metric | Target | Measurement |
-|----|--------|--------|-------------|
-| SC-001 | [Metric] | [Target] | [How to measure] |
+| FR-001 | Start container requires devcontainer.json | P1 | Workspace-centric design |
+| FR-002 | Event-based MCP integration | P1 | McpClientService subscribes to container events |
+| FR-003 | Log filtering: text + log level | P2 | Stdout/stderr separation |
 
 ## Assumptions
 
-- [Assumption 1]
+- Docker is installed and running
+- VS Code Dev Containers extension may be installed
+- devcontainer.json follows standard format
 
 ## Out of Scope
 
-- [Exclusion 1]
+- Time range filtering for logs
+- Regex support for log filtering
+- Container creation from scratch (only manage existing)
+- Multi-container compose orchestration
 
 ---
 

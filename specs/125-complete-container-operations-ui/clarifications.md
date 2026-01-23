@@ -11,7 +11,7 @@ Questions and answers to clarify the feature specification.
 - A: Direct coupling: ContainerService calls McpClientService.disconnect()/reconnect() directly
 - B: Event-based: McpClientService subscribes to onContainerStateChange and handles its own lifecycle
 
-**Answer**: *Pending*
+**Answer**: **B (Event-based)** - McpClientService should subscribe to `onContainerStateChange` and handle its own lifecycle. This provides better separation of concerns, testability, extensibility, and consistency with reactive patterns in the architecture.
 
 ### Q2: devcontainer.json Detection
 **Context**: The spec says 'Detect devcontainer.json in workspace' for Start Container, but the current ContainerService detects containers via Docker labels. The workspace-to-container mapping may not be straightforward.
@@ -20,7 +20,7 @@ Questions and answers to clarify the feature specification.
 - A: Require devcontainer.json - only start containers that match the current workspace
 - B: Allow any container - show all dev containers and let user start any of them
 
-**Answer**: *Pending*
+**Answer**: **A (Require devcontainer.json)** - Start Container should only work when a devcontainer.json exists in the current workspace. This creates clear workspace-to-container mapping and aligns with VS Code Dev Containers extension behavior.
 
 ### Q3: Log Filtering Scope
 **Context**: The spec mentions 'Support log filtering' but doesn't define what filtering criteria should be supported. This impacts UI complexity.
@@ -30,5 +30,5 @@ Questions and answers to clarify the feature specification.
 - B: Text search + log level - filter by stdout/stderr plus text search
 - C: Full filtering - text, log level, time range, regex support
 
-**Answer**: *Pending*
+**Answer**: **B (Text search + log level)** - Implement text search plus log level filtering (stdout/stderr). This balances utility with simplicity for the primary debugging use case.
 
