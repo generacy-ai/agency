@@ -27,3 +27,14 @@ export {
   registerModeCommands,
   initializeModeCommands,
 } from './mode-commands';
+
+export {
+  startContainer,
+  stopContainer,
+  rebuildContainer,
+  viewContainerLogs,
+  registerContainerCommands,
+  initializeContainerCommands,
+  showContainerPicker,
+  setVscodeModule,
+} from './container-commands';

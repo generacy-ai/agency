@@ -124,22 +124,29 @@
       {
         "command": "agency.startContainer",
         "title": "Start Container",
-        "category": "Agency"
+        "category": "Agency",
+        "icon": "$(play)",
+        "enablement": "viewItem == containerStopped || viewItem == containerPaused"
       },
       {
         "command": "agency.stopContainer",
         "title": "Stop Container",
-        "category": "Agency"
+        "category": "Agency",
+        "icon": "$(debug-stop)",
+        "enablement": "viewItem == containerRunning"
       },
       {
         "command": "agency.rebuildContainer",
         "title": "Rebuild Container",
-        "category": "Agency"
+        "category": "Agency",
+        "icon": "$(refresh)",
+        "enablement": "viewItem =~ /^container/"
       },
       {
         "command": "agency.viewContainerLogs",
         "title": "View Container Logs",
-        "category": "Agency"
+        "category": "Agency",
+        "icon": "$(output)"
       }
     ],
     "configuration": {
@@ -178,6 +185,26 @@
           "command": "agency.disablePlugin",
           "when": "view == agency.plugins && viewItem == pluginEnabled",
           "group": "inline"
+        },
+        {
+          "command": "agency.startContainer",
+          "when": "view == agency.containers && viewItem == containerStopped",
+          "group": "inline"
+        },
+        {
+          "command": "agency.stopContainer",
+          "when": "view == agency.containers && viewItem == containerRunning",
+          "group": "inline"
+        },
+        {
+          "command": "agency.rebuildContainer",
+          "when": "view == agency.containers && viewItem =~ /^container/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agency.viewContainerLogs",
+          "when": "view == agency.containers && viewItem =~ /^container/",
+          "group": "navigation@2"
         }
       ],
       "view/title": [
