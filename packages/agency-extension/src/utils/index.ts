@@ -26,3 +26,10 @@ export {
   delay,
   cancellableDelay,
 } from './debounce';
+
+// DevContainer detection utilities
+export {
+  detectDevContainer,
+  type DevContainerConfig,
+  type DevContainerDetectionResult,
+} from './devcontainerDetector';

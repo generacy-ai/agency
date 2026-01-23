@@ -19,3 +19,14 @@ export {
   registerToolCommands,
   initializeToolCommands,
 } from './tool-commands';
+
+export {
+  startContainer,
+  stopContainer,
+  rebuildContainer,
+  viewContainerLogs,
+  registerContainerCommands,
+  initializeContainerCommands,
+  showContainerPicker,
+  setVscodeModule,
+} from './container-commands';
