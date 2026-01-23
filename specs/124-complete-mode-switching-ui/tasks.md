@@ -10,27 +10,27 @@
 
 ## Phase 1: Setup & Exports
 
-- [ ] T001 [P] Add MODE_COMMANDS constants to `packages/agency-extension/src/constants.ts`
-- [ ] T002 [P] Export mode command registration from `packages/agency-extension/src/commands/index.ts`
-- [ ] T003 [P] Export registerModeTreeView from `packages/agency-extension/src/providers/index.ts`
-- [ ] T004 Add `agency.currentMode` configuration property to `packages/agency-extension/package.json`
+- [x] T001 [P] Add MODE_COMMANDS constants to `packages/agency-extension/src/constants.ts`
+- [x] T002 [P] Export mode command registration from `packages/agency-extension/src/commands/index.ts`
+- [x] T003 [P] Export registerModeTreeView from `packages/agency-extension/src/providers/index.ts`
+- [x] T004 Add `agency.currentMode` configuration property to `packages/agency-extension/package.json`
 
 ## Phase 2: Core Implementation
 
-- [ ] T005 [AC1] Add `registerModeCommands()` function to `packages/agency-extension/src/commands/mode-commands.ts`
-- [ ] T006 [AC2] Add mode status bar item to `packages/agency-extension/src/status/StatusBarManager.ts`
-- [ ] T007 [AC5] Add workspace settings persistence to `packages/agency-extension/src/services/ModeService.ts`
+- [x] T005 [AC1] Add `registerModeCommands()` function to `packages/agency-extension/src/commands/mode-commands.ts`
+- [x] T006 [AC2] Add mode status bar item to `packages/agency-extension/src/status/StatusBarManager.ts`
+- [x] T007 [AC5] Add workspace settings persistence to `packages/agency-extension/src/services/ModeService.ts`
 
 ## Phase 3: Extension Wiring
 
-- [ ] T008 [AC1,AC3] Wire mode commands and tree view registration in `packages/agency-extension/src/extension.ts`
-- [ ] T009 [AC4] Verify ModeTreeProvider updates tools list when mode changes (may need refresh call)
+- [x] T008 [AC1,AC3] Wire mode commands and tree view registration in `packages/agency-extension/src/extension.ts`
+- [x] T009 [AC4] Verify ModeTreeProvider updates tools list when mode changes (may need refresh call)
 
 ## Phase 4: Testing & Verification
 
-- [ ] T010 [P] Add unit tests for mode persistence in ModeService
-- [ ] T011 [P] Add unit tests for mode status bar item updates
-- [ ] T012 Manual verification: Test all 5 acceptance criteria in VS Code
+- [x] T010 [P] Add unit tests for mode persistence in ModeService
+- [x] T011 [P] Add unit tests for mode status bar item updates
+- [ ] T012 [manual] Manual verification: Test all 5 acceptance criteria in VS Code
 
 ## Dependencies & Execution Order
 

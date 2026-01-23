@@ -1,10 +1,16 @@
 import type * as vscode from 'vscode';
 import { EXTENSION_NAME, OUTPUT_CHANNEL_NAME } from './constants';
 import { DisposableManager, Logger, createScopedLogger } from './utils';
-import { ConfigService } from './services';
-import { registerPluginTreeView } from './providers';
-import { registerPluginCommands, initializePluginCommands, registerToolCommands, initializeToolCommands } from './commands';
-import { McpClientService } from './services';
+import { ConfigService, McpClientService, ModeService } from './services';
+import { registerPluginTreeView, registerModeTreeView } from './providers';
+import {
+  registerPluginCommands,
+  initializePluginCommands,
+  registerToolCommands,
+  initializeToolCommands,
+  registerModeCommands,
+  initializeModeCommands,
+} from './commands';
 
 /**
  * Extension state container.
@@ -51,11 +57,16 @@ function registerCommands(
   }
   log.debug(`Registered ${toolCommandDisposables.length} tool commands`);
 
+  // Register mode commands (fully implemented)
+  const modeCommandDisposables = registerModeCommands(vscodeModule);
+  for (const disposable of modeCommandDisposables) {
+    state.disposables.add(disposable);
+  }
+  log.debug(`Registered ${modeCommandDisposables.length} mode commands`);
+
   // Stub command registrations for commands not yet implemented
   // These are registered to prevent "command not found" errors
   const stubCommands = [
-    'agency.switchMode',
-    'agency.viewModeTools',
     'agency.startContainer',
     'agency.stopContainer',
     'agency.rebuildContainer',
@@ -116,15 +127,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await mcpService.initialize(vscodeModule);
     disposables.add({ dispose: () => McpClientService.reset() });
 
+    // Initialize ModeService
+    const modeService = ModeService.getInstance();
+    await modeService.initialize(vscodeModule);
+    disposables.add({ dispose: () => ModeService.reset() });
+
     // Initialize plugin commands with extension URI for webview access
     initializePluginCommands(context.extensionUri);
 
     // Initialize tool commands with extension URI for webview access
     initializeToolCommands(context.extensionUri);
 
+    // Initialize mode commands
+    initializeModeCommands();
+
     // Register tree views
     const pluginTreeDisposable = await registerPluginTreeView(vscodeModule);
     disposables.add(pluginTreeDisposable);
+
+    // Register mode tree view
+    const modeTreeDisposable = registerModeTreeView(vscodeModule);
+    disposables.add(modeTreeDisposable);
 
     // Register commands
     registerCommands(vscodeModule, extensionState, log);

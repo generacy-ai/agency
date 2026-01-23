@@ -34,6 +34,7 @@ export const COMMANDS = {
   // Mode commands
   SWITCH_MODE: 'agency.switchMode',
   VIEW_MODE_TOOLS: 'agency.viewModeTools',
+  REFRESH_MODES: 'agency.refreshModes',
 
   // Container commands
   START_CONTAINER: 'agency.startContainer',
@@ -42,10 +43,18 @@ export const COMMANDS = {
   VIEW_CONTAINER_LOGS: 'agency.viewContainerLogs',
 } as const;
 
+/** Mode command identifiers (alias for convenient access) */
+export const MODE_COMMANDS = {
+  SWITCH_MODE: COMMANDS.SWITCH_MODE,
+  VIEW_MODE_TOOLS: COMMANDS.VIEW_MODE_TOOLS,
+  REFRESH_MODES: COMMANDS.REFRESH_MODES,
+} as const;
+
 /** Configuration keys */
 export const CONFIG_KEYS = {
   CONFIG_PATH: 'agency.configPath',
   AUTO_CONNECT: 'agency.autoConnect',
+  CURRENT_MODE: 'agency.currentMode',
 } as const;
 
 /** Default configuration values */

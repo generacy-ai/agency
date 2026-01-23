@@ -236,3 +236,23 @@ export function refreshModes(): void {
 export function initializeModeCommands(): void {
   log.debug('Mode commands initialized');
 }
+
+/**
+ * Register mode commands with VS Code.
+ *
+ * @param vscodeModule The VS Code module
+ * @returns Array of disposables for cleanup
+ */
+export function registerModeCommands(vscodeModule: typeof vscode): vscode.Disposable[] {
+  return [
+    vscodeModule.commands.registerCommand('agency.switchMode', (item?: ModeTreeItem) =>
+      switchMode(vscodeModule, item)
+    ),
+    vscodeModule.commands.registerCommand('agency.viewModeTools', (modeId?: string) =>
+      viewModeTools(vscodeModule, modeId)
+    ),
+    vscodeModule.commands.registerCommand('agency.refreshModes', () =>
+      refreshModes()
+    ),
+  ];
+}

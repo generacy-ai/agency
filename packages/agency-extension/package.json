@@ -116,6 +116,12 @@
         "category": "Agency"
       },
       {
+        "command": "agency.refreshModes",
+        "title": "Refresh Modes",
+        "category": "Agency",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "agency.startContainer",
         "title": "Start Container",
         "category": "Agency"
@@ -148,6 +154,11 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically connect to MCP server on startup"
+        },
+        "agency.currentMode": {
+          "type": "string",
+          "default": "",
+          "description": "Currently active mode ID. Empty string means use default mode."
         }
       }
     },

@@ -11,6 +11,7 @@ import type {
 import type { ModeConfig } from '../config/ConfigSchema';
 import { ConfigService } from './ConfigService';
 import { createScopedLogger, DisposableManager } from '../utils';
+import { CONFIG_KEYS } from '../constants';
 
 const log = createScopedLogger('ModeService');
 
@@ -75,6 +76,7 @@ export class ModeService {
   private _initialized = false;
   private _disposables = new DisposableManager();
   private _onModeStateChange = new EventEmitter<ModeStateEvent>();
+  private _vscodeModule: typeof vscode | undefined;
 
   /**
    * Private constructor to enforce singleton pattern.
@@ -114,22 +116,33 @@ export class ModeService {
       return;
     }
 
+    this._vscodeModule = vscodeModule;
+
     // Ensure ConfigService is initialized
     if (!this._configService.isInitialized()) {
       await this._configService.initialize(vscodeModule);
     }
 
+    // Load persisted mode from workspace settings first
+    const persistedModeId = this._loadPersistedMode();
+
     // Load current mode from config (default to 'default' mode)
     const modes = this._configService.getModes();
     if (modes.length > 0) {
-      // Use first mode or 'default' if it exists
-      const defaultMode = modes.find((m) => m.id === 'default');
-      if (defaultMode) {
-        this._currentModeId = defaultMode.id;
+      // Check if persisted mode exists in config
+      if (persistedModeId && modes.find((m) => m.id === persistedModeId)) {
+        this._currentModeId = persistedModeId;
+        log.info(`Restored persisted mode: ${persistedModeId}`);
       } else {
-        const firstMode = modes[0];
-        if (firstMode) {
-          this._currentModeId = firstMode.id;
+        // Use first mode or 'default' if it exists
+        const defaultMode = modes.find((m) => m.id === 'default');
+        if (defaultMode) {
+          this._currentModeId = defaultMode.id;
+        } else {
+          const firstMode = modes[0];
+          if (firstMode) {
+            this._currentModeId = firstMode.id;
+          }
         }
       }
     }
@@ -147,6 +160,51 @@ export class ModeService {
 
     this._initialized = true;
     log.info('ModeService initialized');
+  }
+
+  /**
+   * Load persisted mode from workspace settings.
+   *
+   * @returns The persisted mode ID or undefined if not set
+   */
+  private _loadPersistedMode(): string | undefined {
+    if (!this._vscodeModule) {
+      return undefined;
+    }
+
+    const config = this._vscodeModule.workspace.getConfiguration('agency');
+    const modeId = config.get<string>('currentMode');
+
+    // Empty string means use default, return undefined to trigger default logic
+    if (!modeId || modeId.trim() === '') {
+      return undefined;
+    }
+
+    return modeId;
+  }
+
+  /**
+   * Persist current mode to workspace settings.
+   *
+   * @param modeId The mode ID to persist
+   */
+  private async _persistMode(modeId: string): Promise<void> {
+    if (!this._vscodeModule) {
+      log.warn('Cannot persist mode: vscode module not available');
+      return;
+    }
+
+    try {
+      const config = this._vscodeModule.workspace.getConfiguration('agency');
+      await config.update(
+        'currentMode',
+        modeId,
+        this._vscodeModule.ConfigurationTarget.Workspace
+      );
+      log.debug(`Persisted mode to workspace settings: ${modeId}`);
+    } catch (error) {
+      log.error('Failed to persist mode to workspace settings', error);
+    }
   }
 
   /**
@@ -200,11 +258,9 @@ export class ModeService {
     // Update current mode
     this._currentModeId = request.modeId;
 
-    // Persist if requested (note: current schema doesn't support isDefault field)
-    // This would require extending the schema in the future
+    // Persist to workspace settings if requested
     if (request.persist) {
-      // For now, we just keep the mode active in memory
-      // Future: extend schema to support isDefault field
+      await this._persistMode(request.modeId);
     }
 
     // Emit events
