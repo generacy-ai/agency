@@ -33,6 +33,7 @@
     }
   },
   "devDependencies": {
+    "@generacy-ai/agency": "workspace:*",
     "@types/node": "^20.17.12",
     "typescript": "^5.7.3",
     "vitest": "^3.0.4"

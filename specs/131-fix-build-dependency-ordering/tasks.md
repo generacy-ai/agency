@@ -9,20 +9,20 @@
 
 ## Phase 1: Add devDependencies
 
-- [ ] T001 [P] Add `@generacy-ai/agency` to devDependencies in `packages/agency-plugin-git/package.json`
-- [ ] T002 [P] Add `@generacy-ai/agency` to devDependencies in `packages/agency-plugin-npm/package.json`
-- [ ] T003 [P] Add `@generacy-ai/agency` to devDependencies in `packages/agency-plugin-docker/package.json`
-- [ ] T004 [P] Add `@generacy-ai/agency` to devDependencies in `packages/agency-plugin-firebase/package.json`
-- [ ] T005 [P] Add `@generacy-ai/agency` to devDependencies in `packages/agency-plugin-humancy/package.json`
+- [X] T001 [P] Add `@generacy-ai/agency` to devDependencies in `packages/agency-plugin-git/package.json`
+- [X] T002 [P] Add `@generacy-ai/agency` to devDependencies in `packages/agency-plugin-npm/package.json`
+- [X] T003 [P] Add `@generacy-ai/agency` to devDependencies in `packages/agency-plugin-docker/package.json`
+- [X] T004 [P] Add `@generacy-ai/agency` to devDependencies in `packages/agency-plugin-firebase/package.json`
+- [X] T005 [P] Add `@generacy-ai/agency` to devDependencies in `packages/agency-plugin-humancy/package.json`
 
 ## Phase 2: Update Dependencies
 
-- [ ] T006 Run `pnpm install` to update lockfile with new workspace dependencies
+- [X] T006 Run `pnpm install` to update lockfile with new workspace dependencies
 
 ## Phase 3: Verification
 
-- [ ] T007 Run `pnpm build` and verify all packages build successfully
-- [ ] T008 Verify build order shows core completing before plugins start
+- [X] T007 Run `pnpm build` and verify all packages build successfully
+- [X] T008 Verify build order shows core completing before plugins start
 
 ## Dependencies & Execution Order
 
