@@ -1,7 +1,7 @@
 /**
  * Connection mode types for Humancy plugin
  *
- * Defines how the plugin connects to the Humancy VS Code extension.
+ * Defines how the plugin connects to the Humancy service.
  */
 
 /**
@@ -10,10 +10,20 @@
 export enum ConnectionMode {
   /** Direct IPC to local VS Code extension */
   DIRECT = 'direct',
-  /** Routed through Generacy orchestration layer */
-  VIA_GENERACY = 'generacy',
+  /** HTTP to humancy-cloud API (generacy.ai/api/humancy) */
+  CLOUD = 'cloud',
   /** Queue for later delivery (offline mode) */
   OFFLINE = 'offline',
+}
+
+/**
+ * HTTP client info for cloud mode
+ */
+export interface HttpClientInfo {
+  /** Base URL of the humancy-cloud API */
+  baseUrl: string;
+  /** Whether the client has valid authentication */
+  authenticated: boolean;
 }
 
 /**
@@ -28,4 +38,6 @@ export interface ConnectionState {
   lastConnected?: Date;
   /** Error if connection failed */
   error?: string;
+  /** HTTP client info (cloud mode only) */
+  httpClientInfo?: HttpClientInfo;
 }

@@ -3,11 +3,11 @@
  *
  * Implements hybrid detection with fallback:
  * 1. Check configuration for explicit mode preference
- * 2. If not configured, auto-detect: Direct → Via Generacy → Offline
+ * 2. If not configured, auto-detect: Direct → Cloud → Offline
  */
 
 import type { AgencyCoreAPI } from '@generacy-ai/agency';
-import { ConnectionMode, type ConnectionState } from './types.js';
+import { ConnectionMode, type ConnectionState, type HttpClientInfo } from './types.js';
 
 /**
  * Configuration key for explicit mode preference
@@ -15,9 +15,24 @@ import { ConnectionMode, type ConnectionState } from './types.js';
 const CONFIG_KEY = 'humancy.mode';
 
 /**
- * Configuration key for Generacy endpoint
+ * Configuration key for API URL
  */
-const GENERACY_ENDPOINT_KEY = 'generacy.endpoint';
+const API_URL_KEY = 'humancy.apiUrl';
+
+/**
+ * Environment variable for API URL
+ */
+const API_URL_ENV = 'HUMANCY_API_URL';
+
+/**
+ * Environment variable for API key
+ */
+const API_KEY_ENV = 'GENERACY_API_KEY';
+
+/**
+ * Default API URL
+ */
+const DEFAULT_API_URL = 'https://generacy.ai/api/humancy';
 
 /**
  * Connection mode detector with hybrid detection and fallback
@@ -46,7 +61,7 @@ export class ConnectionModeDetector {
    * Priority:
    * 1. Explicit config preference
    * 2. Direct mode (if Humancy extension detected)
-   * 3. Via Generacy (if Generacy endpoint configured)
+   * 3. Cloud mode (if API config present)
    * 4. Offline (fallback)
    */
   async detect(): Promise<ConnectionMode> {
@@ -54,6 +69,9 @@ export class ConnectionModeDetector {
     const configuredMode = this.getConfiguredMode();
     if (configuredMode) {
       this.state.mode = configuredMode;
+      if (configuredMode === ConnectionMode.CLOUD) {
+        this.state.httpClientInfo = this.getHttpClientInfo();
+      }
       return configuredMode;
     }
 
@@ -65,11 +83,12 @@ export class ConnectionModeDetector {
       return ConnectionMode.DIRECT;
     }
 
-    // 3. Try Via Generacy mode
-    if (this.detectGeneracyMode()) {
-      this.state.mode = ConnectionMode.VIA_GENERACY;
+    // 3. Try Cloud mode (API config present)
+    if (this.hasApiConfig()) {
+      this.state.mode = ConnectionMode.CLOUD;
+      this.state.httpClientInfo = this.getHttpClientInfo();
       // Connection status will be determined on first use
-      return ConnectionMode.VIA_GENERACY;
+      return ConnectionMode.CLOUD;
     }
 
     // 4. Fallback to Offline mode
@@ -95,8 +114,8 @@ export class ConnectionModeDetector {
     switch (mode.toLowerCase()) {
       case 'direct':
         return ConnectionMode.DIRECT;
-      case 'generacy':
-        return ConnectionMode.VIA_GENERACY;
+      case 'cloud':
+        return ConnectionMode.CLOUD;
       case 'offline':
         return ConnectionMode.OFFLINE;
       default:
@@ -126,16 +145,94 @@ export class ConnectionModeDetector {
   }
 
   /**
-   * Detect if Generacy orchestration is available
+   * Check if API configuration is available for cloud mode
    */
-  private detectGeneracyMode(): boolean {
-    if (!this.coreAPI) {
-      return false;
+  private hasApiConfig(): boolean {
+    // Check environment variable
+    if (process.env[API_URL_ENV]) {
+      return true;
     }
 
-    // Check if Generacy endpoint is configured
-    const endpoint = this.coreAPI.getConfig<string>(GENERACY_ENDPOINT_KEY);
-    return endpoint !== undefined && endpoint.length > 0;
+    // Check config
+    if (this.coreAPI) {
+      const apiUrl = this.coreAPI.getConfig<string>(API_URL_KEY);
+      if (apiUrl && apiUrl.length > 0) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Get HTTP client info for cloud mode
+   */
+  private getHttpClientInfo(): HttpClientInfo {
+    const baseUrl = this.getApiUrl();
+    const authenticated = this.hasApiKey();
+
+    return {
+      baseUrl,
+      authenticated,
+    };
+  }
+
+  /**
+   * Get the API URL from config or environment
+   */
+  getApiUrl(): string {
+    // Priority: env var > config > default
+    const envUrl = process.env[API_URL_ENV];
+    if (envUrl) {
+      return envUrl;
+    }
+
+    if (this.coreAPI) {
+      const configUrl = this.coreAPI.getConfig<string>(API_URL_KEY);
+      if (configUrl) {
+        return configUrl;
+      }
+    }
+
+    return DEFAULT_API_URL;
+  }
+
+  /**
+   * Get the API key from config or environment
+   */
+  getApiKey(): string | undefined {
+    // Priority: env var > config
+    const envKey = process.env[API_KEY_ENV];
+    if (envKey) {
+      return envKey;
+    }
+
+    if (this.coreAPI) {
+      return this.coreAPI.getConfig<string>('humancy.apiKey');
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Check if API key is configured
+   */
+  hasApiKey(): boolean {
+    const key = this.getApiKey();
+    return key !== undefined && key.length > 0;
+  }
+
+  /**
+   * Get the request timeout from config
+   */
+  getTimeout(): number {
+    if (this.coreAPI) {
+      const timeout = this.coreAPI.getConfig<number>('humancy.timeout');
+      if (timeout && timeout > 0) {
+        return timeout;
+      }
+    }
+    return 60000; // Default 60 seconds
   }
 
   /**
@@ -177,5 +274,10 @@ export class ConnectionModeDetector {
    */
   setMode(mode: ConnectionMode): void {
     this.state.mode = mode;
+    if (mode === ConnectionMode.CLOUD) {
+      this.state.httpClientInfo = this.getHttpClientInfo();
+    } else {
+      this.state.httpClientInfo = undefined;
+    }
   }
 }

@@ -14,12 +14,12 @@
 
 ### Setup
 
-- [ ] T001 [US1] Create `packages/agency-plugin-humancy/src/http/types.ts` with API request/response types from data-model.md (HttpClientConfig, CreateDecisionApiRequest, DecisionCreatedResponse, DecisionApiResponse)
-- [ ] T002 [P] [US1] Create `packages/agency-plugin-humancy/src/http/index.ts` with module exports
+- [X] T001 [US1] Create `packages/agency-plugin-humancy/src/http/types.ts` with API request/response types from data-model.md (HttpClientConfig, CreateDecisionApiRequest, DecisionCreatedResponse, DecisionApiResponse)
+- [X] T002 [P] [US1] Create `packages/agency-plugin-humancy/src/http/index.ts` with module exports
 
 ### HTTP Client
 
-- [ ] T003 [US1] Create `packages/agency-plugin-humancy/src/http/client.ts` with HumancyHttpClient class implementing:
+- [X] T003 [US1] Create `packages/agency-plugin-humancy/src/http/client.ts` with HumancyHttpClient class implementing:
   - Constructor with HttpClientConfig parameter
   - `createDecision(request)` - POST /api/humancy/decisions
   - `getDecision(id)` - GET /api/humancy/decisions/:id
@@ -29,7 +29,7 @@
 
 ### SSE Handler
 
-- [ ] T004 [US2] Create `packages/agency-plugin-humancy/src/http/sse.ts` with SSE event types (BaseSSEEvent, DecisionResolvedEvent, DecisionExpiredEvent, HeartbeatEvent, SSEEvent union) and SSEHandler class implementing:
+- [X] T004 [US2] Create `packages/agency-plugin-humancy/src/http/sse.ts` with SSE event types (BaseSSEEvent, DecisionResolvedEvent, DecisionExpiredEvent, HeartbeatEvent, SSEEvent union) and SSEHandler class implementing:
   - `subscribeToDecision(id)` - AsyncGenerator<SSEEvent> connecting to GET /api/humancy/decisions/:id/events
   - Manual SSE parsing (event/data fields)
   - Reconnection logic with exponential backoff
@@ -37,13 +37,13 @@
 
 ### HTTP Client Tests
 
-- [ ] T005 [P] [US1] Create `packages/agency-plugin-humancy/src/__tests__/http/client.test.ts` with unit tests:
+- [X] T005 [P] [US1] Create `packages/agency-plugin-humancy/src/__tests__/http/client.test.ts` with unit tests:
   - createDecision success and error cases
   - getDecision success and error cases
   - Timeout handling
   - Retry logic for 5xx errors
   - Authentication header injection
-- [ ] T006 [P] [US2] Create `packages/agency-plugin-humancy/src/__tests__/http/sse.test.ts` with unit tests:
+- [X] T006 [P] [US2] Create `packages/agency-plugin-humancy/src/__tests__/http/sse.test.ts` with unit tests:
   - SSE event parsing
   - Stream lifecycle
   - Reconnection behavior
@@ -55,28 +55,28 @@
 
 ### Type Updates
 
-- [ ] T007 Modify `packages/agency-plugin-humancy/src/connection/types.ts`:
+- [X] T007 Modify `packages/agency-plugin-humancy/src/connection/types.ts`:
   - Rename `VIA_GENERACY` to `CLOUD` in ConnectionMode enum
   - Add httpClientInfo to ConnectionState interface
   - Update JSDoc comments
 
 ### Detector Updates
 
-- [ ] T008 Modify `packages/agency-plugin-humancy/src/connection/detector.ts`:
+- [X] T008 Modify `packages/agency-plugin-humancy/src/connection/detector.ts`:
   - Update detection logic to return CLOUD when API config present
   - Add `hasApiConfig()` private method checking HUMANCY_API_URL or config
   - Update mode priority: explicit config > direct > cloud > offline
 
 ### Configuration
 
-- [ ] T009 [P] Add configuration handling for HTTP client:
+- [X] T009 [P] Add configuration handling for HTTP client:
   - Support `HUMANCY_API_URL` env var (default: `https://generacy.ai/api/humancy`)
   - Support `GENERACY_API_KEY` env var for authentication
   - Support `humancy.timeout` config (default: 60000ms)
 
 ### Connection Mode Tests
 
-- [ ] T010 Update existing connection tests in `packages/agency-plugin-humancy/src/__tests__/connection/` for CLOUD mode:
+- [X] T010 Update existing connection tests in `packages/agency-plugin-humancy/src/__tests__/connection/` for CLOUD mode:
   - Test VIA_GENERACY → CLOUD rename
   - Test hasApiConfig detection
   - Test configuration priority order
@@ -87,7 +87,7 @@
 
 ### Request Decision Tool
 
-- [ ] T011 [US1] Modify `packages/agency-plugin-humancy/src/tools/request-decision.ts`:
+- [X] T011 [US1] Modify `packages/agency-plugin-humancy/src/tools/request-decision.ts`:
   - Import HumancyHttpClient
   - Add cloud mode branch in execute() checking connection mode
   - Call httpClient.createDecision() for cloud mode
@@ -97,27 +97,27 @@
 
 ### Ask Question Tool
 
-- [ ] T012 [P] [US1] Modify `packages/agency-plugin-humancy/src/tools/ask-question.ts`:
+- [X] T012 [P] [US1] Modify `packages/agency-plugin-humancy/src/tools/ask-question.ts`:
   - Add cloud mode support using HumancyHttpClient
   - Convert freeform question to decision API format
   - Handle response mapping
 
 ### Request Review Tool
 
-- [ ] T013 [P] [US1] Modify `packages/agency-plugin-humancy/src/tools/request-review.ts`:
+- [X] T013 [P] [US1] Modify `packages/agency-plugin-humancy/src/tools/request-review.ts`:
   - Add cloud mode support using HumancyHttpClient
   - Convert review request to decision API format
   - Handle response mapping
 
 ### Notify Tool
 
-- [ ] T014 [P] [US1] Modify `packages/agency-plugin-humancy/src/tools/notify.ts`:
+- [X] T014 [P] [US1] Modify `packages/agency-plugin-humancy/src/tools/notify.ts`:
   - Add cloud mode support for notifications
   - Notifications may use a simplified API endpoint or decision with single option
 
 ### Get Decision Outcome Tool
 
-- [ ] T015 [US2] Modify `packages/agency-plugin-humancy/src/tools/get-decision-outcome.ts`:
+- [X] T015 [US2] Modify `packages/agency-plugin-humancy/src/tools/get-decision-outcome.ts`:
   - Add cloud mode support using SSE subscription
   - Use httpClient.subscribeToDecision() for real-time updates
   - Handle decision_resolved and decision_expired events
@@ -126,13 +126,13 @@
 
 ### Report Decision Result Tool
 
-- [ ] T016 [P] Modify `packages/agency-plugin-humancy/src/tools/report-decision-result.ts`:
+- [X] T016 [P] Modify `packages/agency-plugin-humancy/src/tools/report-decision-result.ts`:
   - Add cloud mode support
   - POST result to API if applicable
 
 ### Plugin Class Updates
 
-- [ ] T017 Modify `packages/agency-plugin-humancy/src/plugin.ts`:
+- [X] T017 Modify `packages/agency-plugin-humancy/src/plugin.ts`:
   - Instantiate HumancyHttpClient when mode is CLOUD
   - Pass client reference to tools via context
   - Handle client lifecycle (init/cleanup)
@@ -143,7 +143,7 @@
 
 ### Integration Tests
 
-- [ ] T018 [US1] [US2] Create integration tests with mock server in `packages/agency-plugin-humancy/src/__tests__/integration/`:
+- [X] T018 [US1] [US2] Create integration tests with mock server in `packages/agency-plugin-humancy/src/__tests__/integration/`:
   - Full decision creation → SSE response cycle
   - Error scenarios (401, 404, 5xx, network)
   - Timeout handling
@@ -151,7 +151,7 @@
 
 ### Error Scenario Tests
 
-- [ ] T019 [P] Add error scenario coverage:
+- [X] T019 [P] Add error scenario coverage:
   - Auth failure (401) - clear error message
   - Not found (404) - decision not found
   - Rate limited (429) - retry-after handling
@@ -161,14 +161,14 @@
 
 ### Offline Mode Tests
 
-- [ ] T020 [P] [US3] Add tests for offline queue sync:
+- [X] T020 [P] [US3] Add tests for offline queue sync:
   - Queue decisions when offline
   - Sync when coming online
   - Notification of sync status
 
 ### README Updates
 
-- [ ] T021 [P] Update `packages/agency-plugin-humancy/README.md`:
+- [X] T021 [P] Update `packages/agency-plugin-humancy/README.md`:
   - Document new configuration options (HUMANCY_API_URL, GENERACY_API_KEY)
   - Document connection modes (Direct, Cloud, Offline)
   - Add usage examples for cloud mode
