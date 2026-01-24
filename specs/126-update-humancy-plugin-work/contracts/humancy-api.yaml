@@ -1,0 +1,259 @@
+openapi: 3.0.3
+info:
+  title: Humancy Cloud API
+  description: REST API for human decision-making in agent workflows
+  version: 1.0.0
+
+servers:
+  - url: https://generacy.ai/api/humancy
+    description: Production
+  - url: http://localhost:3000/api/humancy
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+paths:
+  /decisions:
+    post:
+      summary: Create a decision request
+      operationId: createDecision
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDecisionRequest'
+      responses:
+        '201':
+          description: Decision created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionCreatedResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /decisions/{id}:
+    get:
+      summary: Get decision details
+      operationId: getDecision
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Decision details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionResponse'
+        '404':
+          description: Decision not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /decisions/{id}/events:
+    get:
+      summary: Subscribe to decision events (SSE)
+      operationId: subscribeToDecision
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: Server-Sent Events stream
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: API key as bearer token
+
+  schemas:
+    CreateDecisionRequest:
+      type: object
+      required:
+        - question
+        - options
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: The decision question
+        options:
+          type: array
+          minItems: 2
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/DecisionOption'
+        context:
+          type: string
+          maxLength: 50000
+          description: Additional context for the decision
+        urgency:
+          type: string
+          enum: [blocking_now, blocking_soon, when_available]
+          default: blocking_soon
+        domain:
+          type: array
+          items:
+            type: string
+          description: Domain tags for principle matching
+        timeout:
+          type: integer
+          minimum: 1
+          maximum: 300000
+          description: Timeout in milliseconds
+
+    DecisionOption:
+      type: object
+      required:
+        - id
+        - label
+      properties:
+        id:
+          type: string
+          minLength: 1
+        label:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        tradeoffs:
+          $ref: '#/components/schemas/Tradeoffs'
+
+    Tradeoffs:
+      type: object
+      properties:
+        pros:
+          type: array
+          items:
+            type: string
+        cons:
+          type: array
+          items:
+            type: string
+
+    DecisionCreatedResponse:
+      type: object
+      required:
+        - id
+        - status
+        - createdAt
+        - expiresAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, resolved, expired]
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    DecisionResponse:
+      type: object
+      required:
+        - id
+        - status
+        - question
+        - options
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, resolved, expired]
+        question:
+          type: string
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/DecisionOption'
+        selectedOption:
+          type: string
+          description: Selected option ID (present when resolved)
+        respondedAt:
+          type: string
+          format: date-time
+        baseline:
+          $ref: '#/components/schemas/BaselineRecommendation'
+        protege:
+          $ref: '#/components/schemas/ProtegeRecommendation'
+        human:
+          $ref: '#/components/schemas/HumanDecision'
+
+    BaselineRecommendation:
+      type: object
+      properties:
+        optionId:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+
+    ProtegeRecommendation:
+      type: object
+      properties:
+        optionId:
+          type: string
+        reasoning:
+          type: string
+
+    HumanDecision:
+      type: object
+      properties:
+        optionId:
+          type: string
+        note:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional error details

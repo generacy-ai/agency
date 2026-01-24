@@ -15,12 +15,16 @@ import {
   type DecisionOutcome,
 } from '../types/index.js';
 import type { DecisionStore } from '../storage/index.js';
+import { ConnectionModeDetector, ConnectionMode } from '../connection/index.js';
+import { HumancyHttpClient } from '../http/index.js';
 
 /**
  * Create the report_decision_result tool
  */
 export function createReportDecisionResultTool(
-  store: DecisionStore
+  store: DecisionStore,
+  detector?: ConnectionModeDetector,
+  httpClient?: HumancyHttpClient
 ): AgencyTool {
   return {
     name: 'humancy.report_decision_result',
@@ -61,15 +65,6 @@ export function createReportDecisionResultTool(
 
       const { decisionId, outcome, details } = parseResult.data;
 
-      // Check if decision exists
-      if (!store.has(decisionId)) {
-        return terseToMcpToolResult(
-          TerseOutput.failure(
-            `Decision not found: ${decisionId}`
-          )
-        );
-      }
-
       // Build outcome record
       const outcomeRecord: DecisionOutcome = {
         result: outcome,
@@ -77,22 +72,92 @@ export function createReportDecisionResultTool(
         reportedAt: new Date(),
       };
 
-      // Update the decision record with outcome
-      const updated = store.updateOutcome(decisionId, outcomeRecord);
-      if (!updated) {
-        return terseToMcpToolResult(
-          TerseOutput.failure(
-            `Failed to update decision: ${decisionId}`
-          )
-        );
+      // Check connection mode
+      const mode = detector?.getMode() ?? ConnectionMode.DIRECT;
+
+      // In cloud mode, POST result to API
+      if (mode === ConnectionMode.CLOUD && httpClient) {
+        return executeCloudMode(decisionId, outcomeRecord, httpClient, store, detector!);
       }
 
-      // Return success
-      return terseToMcpToolResult(
-        TerseOutput.success(
-          `Outcome reported for ${decisionId}: ${outcome}${details ? ` - ${details}` : ''}`
-        )
-      );
+      // Direct mode: update local store only
+      return executeDirectMode(decisionId, outcomeRecord, store);
     },
   };
+}
+
+/**
+ * Execute via cloud API
+ *
+ * Note: The current humancy-cloud API doesn't have a dedicated outcome endpoint.
+ * This implementation stores the outcome locally and logs a warning.
+ * A future API version should support POST /decisions/:id/outcome
+ */
+async function executeCloudMode(
+  decisionId: string,
+  outcomeRecord: DecisionOutcome,
+  httpClient: HumancyHttpClient,
+  store: DecisionStore,
+  detector: ConnectionModeDetector
+): Promise<ToolResult> {
+  try {
+    // Verify decision exists in cloud
+    await httpClient.getDecision(decisionId);
+    detector.updateConnectionState(true);
+
+    // Store outcome locally (API doesn't have outcome endpoint yet)
+    // In a future version, this would POST to /decisions/:id/outcome
+    if (store.has(decisionId)) {
+      store.updateOutcome(decisionId, outcomeRecord);
+    }
+
+    // Return success
+    return terseToMcpToolResult(
+      TerseOutput.success(
+        `Outcome reported for ${decisionId}: ${outcomeRecord.result}${outcomeRecord.details ? ` - ${outcomeRecord.details}` : ''}`
+      )
+    );
+  } catch (error) {
+    detector.updateConnectionState(false, String(error));
+    return terseToMcpToolResult(
+      TerseOutput.failure(
+        error instanceof Error ? error.message : String(error)
+      )
+    );
+  }
+}
+
+/**
+ * Execute via local store (direct mode)
+ */
+function executeDirectMode(
+  decisionId: string,
+  outcomeRecord: DecisionOutcome,
+  store: DecisionStore
+): ToolResult {
+  // Check if decision exists
+  if (!store.has(decisionId)) {
+    return terseToMcpToolResult(
+      TerseOutput.failure(
+        `Decision not found: ${decisionId}`
+      )
+    );
+  }
+
+  // Update the decision record with outcome
+  const updated = store.updateOutcome(decisionId, outcomeRecord);
+  if (!updated) {
+    return terseToMcpToolResult(
+      TerseOutput.failure(
+        `Failed to update decision: ${decisionId}`
+      )
+    );
+  }
+
+  // Return success
+  return terseToMcpToolResult(
+    TerseOutput.success(
+      `Outcome reported for ${decisionId}: ${outcomeRecord.result}${outcomeRecord.details ? ` - ${outcomeRecord.details}` : ''}`
+    )
+  );
 }

@@ -19,6 +19,7 @@ import {
   Urgency,
 } from '../types/index.js';
 import { ConnectionModeDetector, ConnectionMode } from '../connection/index.js';
+import { HumancyHttpClient, type CreateDecisionApiRequest } from '../http/index.js';
 
 const CHANNEL_NAME = 'agency.humancy';
 
@@ -27,7 +28,8 @@ const CHANNEL_NAME = 'agency.humancy';
  */
 export function createNotifyTool(
   coreAPI: AgencyCoreAPI,
-  detector: ConnectionModeDetector
+  detector: ConnectionModeDetector,
+  httpClient?: HumancyHttpClient
 ): AgencyTool {
   return {
     name: 'humancy.notify',
@@ -73,43 +75,93 @@ export function createNotifyTool(
       // They'll be queued by the channel router
       const mode = detector.getMode();
 
-      // Build request
-      const request: NotificationRequest = {
-        id: crypto.randomUUID(),
-        type: 'notification',
-        message: validParams.message,
-        context: validParams.context,
-        urgency: validParams.urgency as Urgency ?? Urgency.WHEN_AVAILABLE,
-        timestamp: new Date(),
-      };
-
-      // Create message envelope
-      const envelope = createMessageEnvelope({
-        channel: CHANNEL_NAME,
-        sender: coreAPI.getPluginId(),
-        payload: request,
-      });
-
-      try {
-        // Fire-and-forget - don't wait for response
-        coreAPI.sendMessage(CHANNEL_NAME, envelope);
-
-        // Return immediately - delivery is handled by channel router
-        if (mode === ConnectionMode.OFFLINE) {
-          return terseToMcpToolResult(
-            TerseOutput.success('queued (offline)')
-          );
-        }
-
-        return terseToMcpToolResult(TerseOutput.success('sent'));
-      } catch (error) {
-        // Even for fire-and-forget, report if sending failed
-        return terseToMcpToolResult(
-          TerseOutput.failure(
-            error instanceof Error ? error.message : String(error)
-          )
-        );
+      // Route based on connection mode
+      if (mode === ConnectionMode.CLOUD && httpClient) {
+        return executeCloudMode(validParams, httpClient);
       }
+
+      return executeDirectMode(validParams, mode, coreAPI);
     },
   };
+}
+
+/**
+ * Execute notification via cloud API
+ *
+ * Notifications are converted to decisions with a single "Acknowledged" option.
+ * This allows the human to confirm they received the notification.
+ */
+async function executeCloudMode(
+  params: NotifyParams,
+  httpClient: HumancyHttpClient
+): Promise<ToolResult> {
+  // Convert notification to decision API format with single acknowledge option
+  const apiRequest: CreateDecisionApiRequest = {
+    question: `Notification: ${params.message}`,
+    options: [
+      { id: 'acknowledged', label: 'Acknowledged', description: 'I have read this notification' },
+    ],
+    context: params.context,
+    urgency: params.urgency ?? 'when_available',
+  };
+
+  try {
+    // Fire-and-forget - create the decision but don't wait for resolution
+    await httpClient.createDecision(apiRequest);
+    return terseToMcpToolResult(TerseOutput.success('sent'));
+  } catch (error) {
+    // Even for fire-and-forget, report if sending failed
+    return terseToMcpToolResult(
+      TerseOutput.failure(
+        error instanceof Error ? error.message : String(error)
+      )
+    );
+  }
+}
+
+/**
+ * Execute notification via direct IPC (existing behavior)
+ */
+async function executeDirectMode(
+  params: NotifyParams,
+  mode: ConnectionMode,
+  coreAPI: AgencyCoreAPI
+): Promise<ToolResult> {
+  // Build request
+  const request: NotificationRequest = {
+    id: crypto.randomUUID(),
+    type: 'notification',
+    message: params.message,
+    context: params.context,
+    urgency: params.urgency as Urgency ?? Urgency.WHEN_AVAILABLE,
+    timestamp: new Date(),
+  };
+
+  // Create message envelope
+  const envelope = createMessageEnvelope({
+    channel: CHANNEL_NAME,
+    sender: coreAPI.getPluginId(),
+    payload: request,
+  });
+
+  try {
+    // Fire-and-forget - don't wait for response
+    coreAPI.sendMessage(CHANNEL_NAME, envelope);
+
+    // Return immediately - delivery is handled by channel router
+    if (mode === ConnectionMode.OFFLINE) {
+      return terseToMcpToolResult(
+        TerseOutput.success('queued (offline)')
+      );
+    }
+
+    return terseToMcpToolResult(TerseOutput.success('sent'));
+  } catch (error) {
+    // Even for fire-and-forget, report if sending failed
+    return terseToMcpToolResult(
+      TerseOutput.failure(
+        error instanceof Error ? error.message : String(error)
+      )
+    );
+  }
 }

@@ -2,6 +2,7 @@
  * humancy.ask_question tool
  *
  * Ask human a freeform question and wait for their response.
+ * Supports both direct (IPC) and cloud (HTTP) modes.
  */
 
 import {
@@ -21,6 +22,8 @@ import {
 } from '../types/index.js';
 import type { QuestionResponse } from '../types/responses.js';
 import { ConnectionModeDetector, ConnectionMode } from '../connection/index.js';
+import type { HumancyHttpClient } from '../http/client.js';
+import type { CreateDecisionApiRequest } from '../http/types.js';
 
 const CHANNEL_NAME = 'agency.humancy';
 const DEFAULT_TIMEOUT = 30000;
@@ -30,7 +33,8 @@ const DEFAULT_TIMEOUT = 30000;
  */
 export function createAskQuestionTool(
   coreAPI: AgencyCoreAPI,
-  detector: ConnectionModeDetector
+  detector: ConnectionModeDetector,
+  httpClient?: HumancyHttpClient
 ): AgencyTool {
   return {
     name: 'humancy.ask_question',
@@ -87,73 +91,150 @@ export function createAskQuestionTool(
         );
       }
 
-      // Build request
-      const request: QuestionRequest = {
-        id: crypto.randomUUID(),
-        type: 'question',
-        question: validParams.question,
-        context: validParams.context,
-        urgency: validParams.urgency as Urgency ?? Urgency.WHEN_AVAILABLE,
-        timeout,
-        timestamp: new Date(),
-      };
+      // Route to appropriate handler based on mode
+      if (mode === ConnectionMode.CLOUD && httpClient) {
+        return executeCloudMode(validParams, timeout, detector, httpClient);
+      }
 
-      // Create message envelope
-      const envelope = createMessageEnvelope({
-        channel: CHANNEL_NAME,
-        sender: coreAPI.getPluginId(),
-        payload: request,
-      });
+      // Direct mode - use channel messaging
+      return executeDirectMode(validParams, timeout, coreAPI, detector);
+    },
+  };
+}
 
-      try {
-        // Send and wait for response using channel router
-        // Note: The channel manager's sendAndWait handles the correlation
-        const startTime = Date.now();
+/**
+ * Execute question in cloud mode using HTTP API
+ * Questions are converted to decisions with a freeform text response option
+ */
+async function executeCloudMode(
+  validParams: AskQuestionParams,
+  timeout: number,
+  detector: ConnectionModeDetector,
+  httpClient: HumancyHttpClient
+): Promise<ToolResult> {
+  try {
+    // Convert question to decision API format
+    // For freeform questions, we create a special decision with text input
+    const apiRequest: CreateDecisionApiRequest = {
+      question: validParams.question,
+      options: [
+        { id: 'freeform', label: 'Text Response' },
+      ],
+      context: validParams.context,
+      urgency: validParams.urgency ?? 'when_available',
+      timeout,
+    };
 
-        // We need to use the channel manager directly for sendAndWait
-        // For now, we send the message and the response will come back
-        // via the channel's correlation mechanism
-        coreAPI.sendMessage(CHANNEL_NAME, envelope);
+    // Create decision via API
+    const created = await httpClient.createDecision(apiRequest);
+    detector.updateConnectionState(true);
 
-        // Since sendMessage is fire-and-forget in the CoreAPI interface,
-        // we need to set up a response listener
-        // For proper request/response, we'd need direct channel manager access
-        // or an enhanced CoreAPI. For now, simulate with a promise pattern.
-        const response = await waitForResponse<QuestionResponse>(
-          coreAPI,
-          CHANNEL_NAME,
-          request.id,
-          timeout
-        );
+    // Poll for decision resolution
+    const pollInterval = 2000;
+    const startTime = Date.now();
 
-        const elapsed = Date.now() - startTime;
-        detector.updateConnectionState(true);
+    while (Date.now() - startTime < timeout) {
+      const response = await httpClient.getDecision(created.id);
 
-        return terseToMcpToolResult(
-          TerseOutput.success(response.response)
-        );
-      } catch (error) {
-        detector.updateConnectionState(false, String(error));
+      if (response.status === 'resolved') {
+        // The human's text response is in the note field
+        const textResponse = response.human?.note ?? response.selectedOption ?? '';
+        return terseToMcpToolResult(TerseOutput.success(textResponse));
+      }
 
-        if (isTimeoutError(error)) {
-          const elapsed = (error as { elapsedMs?: number }).elapsedMs ?? timeout;
-          return terseToMcpToolResult(
-            TerseOutput.failure(
-              `Timeout after ${elapsed}ms waiting for human response. ` +
-                'Consider retrying with a longer timeout or asking a simpler question.',
-              { requestId: request.id, elapsed, timeout }
-            )
-          );
-        }
-
+      if (response.status === 'expired') {
         return terseToMcpToolResult(
           TerseOutput.failure(
-            error instanceof Error ? error.message : String(error)
+            `Question expired after ${timeout}ms. The human may need more time.`,
+            { decisionId: created.id }
           )
         );
       }
-    },
+
+      // Wait before next poll
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    }
+
+    // Timeout
+    return terseToMcpToolResult(
+      TerseOutput.failure(
+        `Timeout after ${timeout}ms waiting for human response. Consider retrying with a longer timeout.`,
+        { decisionId: created.id }
+      )
+    );
+  } catch (error) {
+    detector.updateConnectionState(false, String(error));
+
+    return terseToMcpToolResult(
+      TerseOutput.failure(
+        error instanceof Error ? error.message : String(error)
+      )
+    );
+  }
+}
+
+/**
+ * Execute question in direct mode using channel messaging
+ */
+async function executeDirectMode(
+  validParams: AskQuestionParams,
+  timeout: number,
+  coreAPI: AgencyCoreAPI,
+  detector: ConnectionModeDetector
+): Promise<ToolResult> {
+  // Build request
+  const request: QuestionRequest = {
+    id: crypto.randomUUID(),
+    type: 'question',
+    question: validParams.question,
+    context: validParams.context,
+    urgency: validParams.urgency as Urgency ?? Urgency.WHEN_AVAILABLE,
+    timeout,
+    timestamp: new Date(),
   };
+
+  // Create message envelope
+  const envelope = createMessageEnvelope({
+    channel: CHANNEL_NAME,
+    sender: coreAPI.getPluginId(),
+    payload: request,
+  });
+
+  try {
+    coreAPI.sendMessage(CHANNEL_NAME, envelope);
+
+    const response = await waitForResponse<QuestionResponse>(
+      coreAPI,
+      CHANNEL_NAME,
+      request.id,
+      timeout
+    );
+
+    detector.updateConnectionState(true);
+
+    return terseToMcpToolResult(
+      TerseOutput.success(response.response)
+    );
+  } catch (error) {
+    detector.updateConnectionState(false, String(error));
+
+    if (isTimeoutError(error)) {
+      const elapsed = (error as { elapsedMs?: number }).elapsedMs ?? timeout;
+      return terseToMcpToolResult(
+        TerseOutput.failure(
+          `Timeout after ${elapsed}ms waiting for human response. ` +
+            'Consider retrying with a longer timeout or asking a simpler question.',
+          { requestId: request.id, elapsed, timeout }
+        )
+      );
+    }
+
+    return terseToMcpToolResult(
+      TerseOutput.failure(
+        error instanceof Error ? error.message : String(error)
+      )
+    );
+  }
 }
 
 /**

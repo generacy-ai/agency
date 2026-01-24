@@ -6,8 +6,9 @@
 
 import type { AgencyPlugin, AgencyCoreAPI, PluginManifest } from '@generacy-ai/agency';
 import { manifest } from './manifest.js';
-import { ConnectionModeDetector } from './connection/index.js';
+import { ConnectionModeDetector, ConnectionMode } from './connection/index.js';
 import { DecisionStore } from './storage/index.js';
+import { HumancyHttpClient } from './http/index.js';
 import {
   createAskQuestionTool,
   createRequestReviewTool,
@@ -34,6 +35,7 @@ export class HumancyPlugin implements AgencyPlugin {
   private coreAPI?: AgencyCoreAPI;
   private detector: ConnectionModeDetector;
   private decisionStore: DecisionStore;
+  private httpClient?: HumancyHttpClient;
   private cleanups: Array<() => void> = [];
 
   constructor() {
@@ -53,15 +55,25 @@ export class HumancyPlugin implements AgencyPlugin {
     // Detect connection mode
     await this.detector.detect();
 
+    // Initialize HTTP client if in cloud mode
+    const mode = this.detector.getMode();
+    if (mode === ConnectionMode.CLOUD) {
+      this.httpClient = new HumancyHttpClient({
+        baseUrl: this.detector.getApiUrl(),
+        apiKey: this.detector.getApiKey(),
+        timeout: this.detector.getTimeout(),
+      });
+    }
+
     // Register all tools
     const tools = [
-      createAskQuestionTool(core, this.detector),
-      createRequestReviewTool(core, this.detector),
-      createRequestDecisionTool(core, this.detector, this.decisionStore),
-      createNotifyTool(core, this.detector),
+      createAskQuestionTool(core, this.detector, this.httpClient),
+      createRequestReviewTool(core, this.detector, this.httpClient),
+      createRequestDecisionTool(core, this.detector, this.decisionStore, this.httpClient),
+      createNotifyTool(core, this.detector, this.httpClient),
       // Three-layer decision model tools
-      createGetDecisionOutcomeTool(this.decisionStore),
-      createReportDecisionResultTool(this.decisionStore),
+      createGetDecisionOutcomeTool(this.decisionStore, this.detector, this.httpClient),
+      createReportDecisionResultTool(this.decisionStore, this.detector, this.httpClient),
     ];
 
     for (const tool of tools) {
@@ -91,6 +103,9 @@ export class HumancyPlugin implements AgencyPlugin {
 
     // Shutdown the decision store (clears cleanup interval)
     this.decisionStore.shutdown();
+
+    // Clear HTTP client reference
+    this.httpClient = undefined;
 
     // Unregister tools
     if (this.coreAPI) {
@@ -126,6 +141,13 @@ export class HumancyPlugin implements AgencyPlugin {
    */
   getDecisionStore(): DecisionStore {
     return this.decisionStore;
+  }
+
+  /**
+   * Get the HTTP client for testing (cloud mode only)
+   */
+  getHttpClient(): HumancyHttpClient | undefined {
+    return this.httpClient;
   }
 }
 
