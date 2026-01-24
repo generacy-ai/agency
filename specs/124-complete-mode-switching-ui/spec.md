@@ -1,6 +1,6 @@
 # Feature Specification: Complete Mode Switching UI in VS Code extension
 
-**Branch**: `124-complete-mode-switching-ui` | **Date**: 2026-01-23 | **Status**: Draft
+**Branch**: `124-complete-mode-switching-ui` | **Date**: 2026-01-24 | **Status**: Draft
 
 ## Summary
 
