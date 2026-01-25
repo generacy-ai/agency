@@ -26,7 +26,8 @@ import type { DecisionResponse } from '../types/responses.js';
 import { ConnectionModeDetector, ConnectionMode } from '../connection/index.js';
 import type { DecisionStore } from '../storage/index.js';
 import type { HumancyHttpClient } from '../http/client.js';
-import type { CreateDecisionApiRequest, DecisionApiResponse } from '../http/types.js';
+import { SSEHandler } from '../http/sse.js';
+import type { CreateDecisionApiRequest, SSEEvent } from '../http/types.js';
 
 const CHANNEL_NAME = 'agency.humancy';
 const DEFAULT_TIMEOUT = 60000;
@@ -198,10 +199,10 @@ async function executeCloudMode(
     const created = await httpClient.createDecision(apiRequest);
     detector.updateConnectionState(true);
 
-    // Poll for decision resolution (or could use SSE in future)
-    const response = await pollForDecision(httpClient, created.id, timeout);
+    // Wait for decision resolution via SSE
+    const result = await waitForDecisionSSE(httpClient, created.id, timeout);
 
-    if (response.status === 'expired') {
+    if (result.type === 'decision:expired') {
       return terseToMcpToolResult(
         TerseOutput.failure(
           `Decision expired after ${timeout}ms. The human may need more time.`,
@@ -210,56 +211,48 @@ async function executeCloudMode(
       );
     }
 
-    if (response.status !== 'resolved' || !response.selectedOption) {
-      return terseToMcpToolResult(
-        TerseOutput.failure(
-          `Decision not resolved: ${response.status}`,
-          { decisionId: created.id }
-        )
-      );
-    }
+    // At this point, result.type must be 'decision:resolved'
 
     // Validate that selected option exists
     const selectedOption = validParams.options.find(
-      (opt) => opt.id === response.selectedOption
+      (opt) => opt.id === result.selectedOption
     );
 
     if (!selectedOption) {
       return terseToMcpToolResult(
         TerseOutput.failure(
-          `Invalid selection: ${response.selectedOption} is not a valid option ID`
+          `Invalid selection: ${result.selectedOption} is not a valid option ID`
         )
       );
     }
 
     // Store decision record if store is available
     if (store) {
-      // Map API response to internal three-layer format
-      // API returns simpler types, internal format is more structured
+      // Map SSE event to internal three-layer format
       const threeLayer =
-        response.baseline && response.protege && response.human
+        result.baseline && result.protege && result.human
           ? {
               baseline: {
-                optionId: response.baseline.optionId,
-                confidence: response.baseline.confidence,
-                reasoning: [], // API doesn't provide reasoning array
+                optionId: result.baseline.optionId,
+                confidence: result.baseline.confidence,
+                reasoning: [], // SSE event doesn't provide reasoning array
               },
               protege: {
-                optionId: response.protege.optionId,
-                confidence: 0, // API doesn't provide confidence
-                reasoning: response.protege.reasoning ? [response.protege.reasoning] : [],
-                appliedPrinciples: [], // API doesn't provide principles
+                optionId: result.protege.optionId,
+                confidence: 0, // SSE event doesn't provide confidence
+                reasoning: result.protege.reasoning ? [result.protege.reasoning] : [],
+                appliedPrinciples: [], // SSE event doesn't provide principles
               },
               human: {
-                optionId: response.human.optionId,
-                matchedProtege: response.human.optionId === response.protege.optionId,
-                coaching: response.human.note ?? null,
+                optionId: result.human.optionId,
+                matchedProtege: result.human.optionId === result.protege.optionId,
+                coaching: result.human.note ?? null,
               },
             }
           : undefined;
 
       const record: DecisionRecord = {
-        decisionId: response.id,
+        decisionId: created.id,
         request: {
           question: validParams.question,
           options: validParams.options,
@@ -268,33 +261,33 @@ async function executeCloudMode(
           timestamp: new Date(),
         },
         threeLayer,
-        selectedOption: response.selectedOption,
-        decidedAt: response.respondedAt ? new Date(response.respondedAt) : new Date(),
+        selectedOption: result.selectedOption,
+        decidedAt: result.respondedAt ? new Date(result.respondedAt) : new Date(),
       };
       store.store(record);
     }
 
     // Build enhanced response output
     const outputData: Record<string, unknown> = {
-      selectedOption: response.selectedOption,
-      decisionId: response.id,
+      selectedOption: result.selectedOption,
+      decisionId: created.id,
     };
 
     // Include three-layer breakdown if requested and present
     if (validParams.includeRecommendations) {
-      if (response.baseline) {
-        outputData['baseline'] = response.baseline;
+      if (result.baseline) {
+        outputData['baseline'] = result.baseline;
       }
-      if (response.protege) {
-        outputData['protege'] = response.protege;
+      if (result.protege) {
+        outputData['protege'] = result.protege;
       }
-      if (response.human) {
-        outputData['human'] = response.human;
+      if (result.human) {
+        outputData['human'] = result.human;
       }
     }
 
     // Format message
-    const message = `Selected: ${response.selectedOption} (decisionId: ${response.id})`;
+    const message = `Selected: ${result.selectedOption} (decisionId: ${created.id})`;
 
     // For terse output, include JSON data for machine parsing when three-layer data exists
     const hasThreeLayerData = validParams.includeRecommendations;
@@ -315,29 +308,42 @@ async function executeCloudMode(
 }
 
 /**
- * Poll for decision resolution
+ * Wait for decision resolution via SSE streaming
  */
-async function pollForDecision(
+async function waitForDecisionSSE(
   httpClient: HumancyHttpClient,
   decisionId: string,
   timeout: number
-): Promise<DecisionApiResponse> {
-  const startTime = Date.now();
-  const pollInterval = 2000; // Poll every 2 seconds
+): Promise<SSEEvent & { type: 'decision:resolved' | 'decision:expired' }> {
+  const sseHandler = new SSEHandler({
+    authHeaders: httpClient.getAuthHeaders(),
+  });
 
-  while (Date.now() - startTime < timeout) {
-    const response = await httpClient.getDecision(decisionId);
+  const url = httpClient.getEventsUrl(decisionId);
 
-    if (response.status !== 'pending') {
-      return response;
+  // Set up overall decision timeout
+  const abortTimeout = setTimeout(() => {
+    sseHandler.close();
+  }, timeout);
+
+  try {
+    for await (const event of sseHandler.subscribeToDecision(url)) {
+      if (event.type === 'decision:resolved' || event.type === 'decision:expired') {
+        return event as SSEEvent & { type: 'decision:resolved' | 'decision:expired' };
+      }
+      // Continue iterating on heartbeat, created, updated events
     }
 
-    // Wait before next poll
-    await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    // Stream ended without terminal event — treat as expired
+    return {
+      type: 'decision:expired',
+      reason: 'SSE stream ended without resolution',
+      timestamp: new Date().toISOString(),
+    };
+  } finally {
+    clearTimeout(abortTimeout);
+    sseHandler.close();
   }
-
-  // Return last known state (likely still pending = expired)
-  return httpClient.getDecision(decisionId);
 }
 
 /**
