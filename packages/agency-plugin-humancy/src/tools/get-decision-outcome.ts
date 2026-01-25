@@ -130,6 +130,7 @@ async function waitForDecisionViaSSE(
     connectionTimeoutMs: timeout,
     maxReconnects: 3,
     reconnectBaseDelayMs: 1000,
+    authHeaders: httpClient.getAuthHeaders(),
   });
 
   const eventsUrl = httpClient.getEventsUrl(decisionId);
@@ -137,12 +138,12 @@ async function waitForDecisionViaSSE(
 
   try {
     for await (const event of sseHandler.subscribeToDecision(eventsUrl)) {
-      if (event.type === 'decision_resolved') {
+      if (event.type === 'decision:resolved') {
         detector.updateConnectionState(true);
         return formatSSEDecisionResponse(decisionId, event);
       }
 
-      if (event.type === 'decision_expired') {
+      if (event.type === 'decision:expired') {
         return terseToMcpToolResult(
           TerseOutput.failure(
             `Decision ${decisionId}: expired - ${event.reason}`,
@@ -210,7 +211,7 @@ function formatDecisionResponse(
  */
 function formatSSEDecisionResponse(
   decisionId: string,
-  event: SSEEvent & { type: 'decision_resolved' }
+  event: SSEEvent & { type: 'decision:resolved' }
 ): ToolResult {
   const outputData: Record<string, unknown> = {
     decisionId,

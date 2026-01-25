@@ -127,8 +127,8 @@ export class SSEHandler {
 
             // If this is a terminal event, stop streaming
             if (
-              event.type === 'decision_resolved' ||
-              event.type === 'decision_expired'
+              event.type === 'decision:resolved' ||
+              event.type === 'decision:expired'
             ) {
               return;
             }

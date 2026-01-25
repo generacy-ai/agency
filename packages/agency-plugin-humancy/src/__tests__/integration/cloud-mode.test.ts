@@ -278,10 +278,10 @@ describe('Cloud Mode Integration', () => {
   });
 
   describe('SSE Event Handling', () => {
-    it('should receive decision_resolved event', async () => {
+    it('should receive decision:resolved event', async () => {
       const sseData =
-        'event: decision_resolved\n' +
-        'data: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n';
+        'event: decision:resolved\n' +
+        'data: {"type":"decision:resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n';
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -303,15 +303,15 @@ describe('Cloud Mode Integration', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
-        type: 'decision_resolved',
+        type: 'decision:resolved',
         selectedOption: 'a',
       });
     });
 
-    it('should receive decision_expired event', async () => {
+    it('should receive decision:expired event', async () => {
       const sseData =
-        'event: decision_expired\n' +
-        'data: {"type":"decision_expired","reason":"timeout","timestamp":"2024-01-01T00:00:00Z"}\n\n';
+        'event: decision:expired\n' +
+        'data: {"type":"decision:expired","reason":"timeout","timestamp":"2024-01-01T00:00:00Z"}\n\n';
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -333,7 +333,7 @@ describe('Cloud Mode Integration', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
-        type: 'decision_expired',
+        type: 'decision:expired',
         reason: 'timeout',
       });
     });
@@ -342,8 +342,8 @@ describe('Cloud Mode Integration', () => {
       const sseData =
         'event: heartbeat\n' +
         'data: {"type":"heartbeat","timestamp":"2024-01-01T00:00:00Z"}\n\n' +
-        'event: decision_resolved\n' +
-        'data: {"type":"decision_resolved","selectedOption":"b","respondedAt":"2024-01-01T00:00:01Z","timestamp":"2024-01-01T00:00:01Z"}\n\n';
+        'event: decision:resolved\n' +
+        'data: {"type":"decision:resolved","selectedOption":"b","respondedAt":"2024-01-01T00:00:01Z","timestamp":"2024-01-01T00:00:01Z"}\n\n';
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -361,13 +361,13 @@ describe('Cloud Mode Integration', () => {
         'https://test.api/humancy/decisions/123/events'
       )) {
         events.push(event);
-        if ((event as { type: string }).type === 'decision_resolved') break;
+        if ((event as { type: string }).type === 'decision:resolved') break;
       }
 
       // Should receive both heartbeat and resolved
       expect(events).toHaveLength(2);
       expect((events[0] as { type: string }).type).toBe('heartbeat');
-      expect((events[1] as { type: string }).type).toBe('decision_resolved');
+      expect((events[1] as { type: string }).type).toBe('decision:resolved');
     });
   });
 

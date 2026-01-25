@@ -48,10 +48,10 @@ describe('SSEHandler', () => {
   });
 
   describe('subscribeToDecision', () => {
-    it('should parse decision_resolved events', async () => {
+    it('should parse decision:resolved events', async () => {
       const sseData = [
-        'event: decision_resolved\n',
-        'data: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n',
+        'event: decision:resolved\n',
+        'data: {"type":"decision:resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n',
         '\n',
       ];
 
@@ -69,15 +69,15 @@ describe('SSEHandler', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
-        type: 'decision_resolved',
+        type: 'decision:resolved',
         selectedOption: 'a',
         respondedAt: '2024-01-01T00:00:00Z',
       });
     });
 
-    it('should parse decision_expired events', async () => {
+    it('should parse decision:expired events', async () => {
       const sseData =
-        'event: decision_expired\ndata: {"type":"decision_expired","reason":"timeout","timestamp":"2024-01-01T00:00:00Z"}\n\n';
+        'event: decision:expired\ndata: {"type":"decision:expired","reason":"timeout","timestamp":"2024-01-01T00:00:00Z"}\n\n';
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -93,16 +93,68 @@ describe('SSEHandler', () => {
 
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
-        type: 'decision_expired',
+        type: 'decision:expired',
         reason: 'timeout',
       });
+    });
+
+    it('should parse decision:created events', async () => {
+      const sseData = [
+        'event: decision:created\ndata: {"type":"decision:created","decisionId":"abc-123","timestamp":"2024-01-01T00:00:00Z"}\n\n',
+        'event: decision:resolved\ndata: {"type":"decision:resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
+      ];
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockSSEStream(sseData),
+      });
+
+      const events: unknown[] = [];
+      for await (const event of handler.subscribeToDecision(
+        'https://test.api/decisions/123/events'
+      )) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(2);
+      expect(events[0]).toMatchObject({
+        type: 'decision:created',
+        decisionId: 'abc-123',
+      });
+      expect(events[1]).toMatchObject({ type: 'decision:resolved' });
+    });
+
+    it('should parse decision:updated events', async () => {
+      const sseData = [
+        'event: decision:updated\ndata: {"type":"decision:updated","status":"in_review","timestamp":"2024-01-01T00:00:00Z"}\n\n',
+        'event: decision:resolved\ndata: {"type":"decision:resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
+      ];
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockSSEStream(sseData),
+      });
+
+      const events: unknown[] = [];
+      for await (const event of handler.subscribeToDecision(
+        'https://test.api/decisions/123/events'
+      )) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(2);
+      expect(events[0]).toMatchObject({
+        type: 'decision:updated',
+        status: 'in_review',
+      });
+      expect(events[1]).toMatchObject({ type: 'decision:resolved' });
     });
 
     it('should parse heartbeat events', async () => {
       // Send heartbeat then resolved to end stream
       const sseData = [
         'event: heartbeat\ndata: {"type":"heartbeat","timestamp":"2024-01-01T00:00:00Z"}\n\n',
-        'event: decision_resolved\ndata: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
+        'event: decision:resolved\ndata: {"type":"decision:resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
       ];
 
       mockFetch.mockResolvedValueOnce({
@@ -119,12 +171,12 @@ describe('SSEHandler', () => {
 
       expect(events).toHaveLength(2);
       expect(events[0]).toMatchObject({ type: 'heartbeat' });
-      expect(events[1]).toMatchObject({ type: 'decision_resolved' });
+      expect(events[1]).toMatchObject({ type: 'decision:resolved' });
     });
 
     it('should include three-layer data when present', async () => {
-      const sseData = `event: decision_resolved
-data: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z","baseline":{"optionId":"a","confidence":0.8},"protege":{"optionId":"a","reasoning":"Best choice"},"human":{"optionId":"a","note":"Agreed"}}
+      const sseData = `event: decision:resolved
+data: {"type":"decision:resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z","baseline":{"optionId":"a","confidence":0.8},"protege":{"optionId":"a","reasoning":"Best choice"},"human":{"optionId":"a","note":"Agreed"}}
 
 `;
 
@@ -150,8 +202,8 @@ data: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01
     it('should handle chunked SSE data', async () => {
       // Data split across multiple chunks
       const chunks = [
-        'event: decision_res',
-        'olved\ndata: {"type":"decision_resolved","selectedOption":"a","respon',
+        'event: decision:res',
+        'olved\ndata: {"type":"decision:resolved","selectedOption":"a","respon',
         'dedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
       ];
 
@@ -169,14 +221,14 @@ data: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01
 
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({
-        type: 'decision_resolved',
+        type: 'decision:resolved',
         selectedOption: 'a',
       });
     });
 
     it('should stop on terminal events', async () => {
       const sseData =
-        'event: decision_resolved\ndata: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n';
+        'event: decision:resolved\ndata: {"type":"decision:resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n';
 
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -207,7 +259,7 @@ data: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01
         .mockResolvedValueOnce({
           ok: true,
           body: createMockSSEStream([
-            'event: decision_resolved\ndata: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
+            'event: decision:resolved\ndata: {"type":"decision:resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
           ]),
         });
 
@@ -253,7 +305,7 @@ data: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01
         ok: true,
         body: createMockSSEStream([
           'event: heartbeat\ndata: {"type":"heartbeat","timestamp":"2024-01-01T00:00:00Z"}\n\n',
-          'event: decision_resolved\ndata: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
+          'event: decision:resolved\ndata: {"type":"decision:resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
         ]),
       });
 
@@ -305,7 +357,7 @@ data: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01
       mockFetch.mockResolvedValueOnce({
         ok: true,
         body: createMockSSEStream([
-          'event: decision_resolved\ndata: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
+          'event: decision:resolved\ndata: {"type":"decision:resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
         ]),
       });
 
@@ -331,7 +383,7 @@ data: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01
     it('should skip invalid JSON data', async () => {
       const sseData = [
         'event: invalid\ndata: not valid json\n\n',
-        'event: decision_resolved\ndata: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
+        'event: decision:resolved\ndata: {"type":"decision:resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z"}\n\n',
       ];
 
       mockFetch.mockResolvedValueOnce({
@@ -348,7 +400,7 @@ data: {"type":"decision_resolved","selectedOption":"a","respondedAt":"2024-01-01
 
       // Should skip invalid event and only return valid one
       expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({ type: 'decision_resolved' });
+      expect(events[0]).toMatchObject({ type: 'decision:resolved' });
     });
 
     it('should handle network errors with SSEConnectionError', async () => {

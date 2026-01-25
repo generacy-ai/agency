@@ -158,7 +158,7 @@ export interface BaseSSEEvent {
  * Decision resolved event
  */
 export interface DecisionResolvedEvent extends BaseSSEEvent {
-  type: 'decision_resolved';
+  type: 'decision:resolved';
 
   /** Selected option ID */
   selectedOption: string;
@@ -176,10 +176,30 @@ export interface DecisionResolvedEvent extends BaseSSEEvent {
  * Decision expired event
  */
 export interface DecisionExpiredEvent extends BaseSSEEvent {
-  type: 'decision_expired';
+  type: 'decision:expired';
 
   /** Reason for expiration */
   reason: string;
+}
+
+/**
+ * Decision created event
+ */
+export interface DecisionCreatedEvent extends BaseSSEEvent {
+  type: 'decision:created';
+
+  /** Decision ID */
+  decisionId: string;
+}
+
+/**
+ * Decision updated event
+ */
+export interface DecisionUpdatedEvent extends BaseSSEEvent {
+  type: 'decision:updated';
+
+  /** Current status */
+  status: string;
 }
 
 /**
@@ -195,6 +215,8 @@ export interface HeartbeatEvent extends BaseSSEEvent {
 export type SSEEvent =
   | DecisionResolvedEvent
   | DecisionExpiredEvent
+  | DecisionCreatedEvent
+  | DecisionUpdatedEvent
   | HeartbeatEvent;
 
 /**
@@ -340,7 +362,7 @@ export const decisionApiResponseSchema = z.object({
  */
 export const sseEventSchema = z.discriminatedUnion('type', [
   z.object({
-    type: z.literal('decision_resolved'),
+    type: z.literal('decision:resolved'),
     selectedOption: z.string(),
     respondedAt: z.string(),
     timestamp: z.string(),
@@ -364,8 +386,18 @@ export const sseEventSchema = z.discriminatedUnion('type', [
       .optional(),
   }),
   z.object({
-    type: z.literal('decision_expired'),
+    type: z.literal('decision:expired'),
     reason: z.string(),
+    timestamp: z.string(),
+  }),
+  z.object({
+    type: z.literal('decision:created'),
+    decisionId: z.string(),
+    timestamp: z.string(),
+  }),
+  z.object({
+    type: z.literal('decision:updated'),
+    status: z.string(),
     timestamp: z.string(),
   }),
   z.object({

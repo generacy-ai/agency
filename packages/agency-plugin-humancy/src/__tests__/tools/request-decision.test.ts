@@ -6,7 +6,17 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createRequestDecisionTool } from '../../tools/request-decision.js';
 import { ConnectionModeDetector, ConnectionMode } from '../../connection/index.js';
 import { DecisionStore } from '../../storage/index.js';
+import { HumancyHttpClient } from '../../http/client.js';
+import { SSEHandler } from '../../http/sse.js';
 import type { AgencyCoreAPI } from '@generacy-ai/agency';
+
+// Mock the SSE handler module
+vi.mock('../../http/sse.js', () => {
+  const MockSSEHandler = vi.fn();
+  MockSSEHandler.prototype.close = vi.fn();
+  MockSSEHandler.prototype.subscribeToDecision = vi.fn();
+  return { SSEHandler: MockSSEHandler };
+});
 
 describe('humancy.request_decision', () => {
   let mockCoreAPI: AgencyCoreAPI;
@@ -431,6 +441,245 @@ describe('humancy.request_decision', () => {
 
       const result = await resultPromise;
       expect(result.isError).toBeFalsy();
+    });
+  });
+
+  describe('cloud mode (SSE)', () => {
+    let mockHttpClient: HumancyHttpClient;
+    let store: DecisionStore;
+
+    beforeEach(() => {
+      store = new DecisionStore();
+      mockHttpClient = {
+        createDecision: vi.fn().mockResolvedValue({
+          id: 'decision-123',
+          status: 'pending',
+          createdAt: '2024-01-01T00:00:00Z',
+          expiresAt: '2024-01-01T01:00:00Z',
+        }),
+        getDecision: vi.fn(),
+        getEventsUrl: vi.fn().mockReturnValue('https://test.api/decisions/decision-123/events'),
+        getBaseUrl: vi.fn().mockReturnValue('https://test.api'),
+        isAuthenticated: vi.fn().mockReturnValue(true),
+        getAuthHeaders: vi.fn().mockReturnValue({ Authorization: 'Bearer test-key' }),
+      } as unknown as HumancyHttpClient;
+
+      detector.setMode(ConnectionMode.CLOUD);
+    });
+
+    afterEach(() => {
+      store.shutdown();
+      vi.mocked(SSEHandler).mockClear();
+    });
+
+    it('should return selected option on decision:resolved', async () => {
+      // Mock SSE stream yielding a resolved event
+      const mockSubscribe = vi.fn().mockImplementation(async function* () {
+        yield {
+          type: 'decision:resolved' as const,
+          selectedOption: 'opt1',
+          respondedAt: '2024-01-01T00:00:00Z',
+          timestamp: '2024-01-01T00:00:00Z',
+        };
+      });
+      vi.mocked(SSEHandler).prototype.subscribeToDecision = mockSubscribe;
+
+      const tool = createRequestDecisionTool(mockCoreAPI, detector, store, mockHttpClient);
+      const result = await tool.execute({
+        question: 'Which option?',
+        options: validOptions,
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect((result.content[0] as { text: string }).text).toContain('Selected: opt1');
+      expect((result.content[0] as { text: string }).text).toContain('decision-123');
+    });
+
+    it('should handle decision:expired event', async () => {
+      const mockSubscribe = vi.fn().mockImplementation(async function* () {
+        yield {
+          type: 'decision:expired' as const,
+          reason: 'timeout',
+          timestamp: '2024-01-01T00:00:00Z',
+        };
+      });
+      vi.mocked(SSEHandler).prototype.subscribeToDecision = mockSubscribe;
+
+      const tool = createRequestDecisionTool(mockCoreAPI, detector, store, mockHttpClient);
+      const result = await tool.execute({
+        question: 'Which option?',
+        options: validOptions,
+      });
+
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as { text: string }).text).toContain('expired');
+    });
+
+    it('should skip non-terminal events and wait for resolution', async () => {
+      const mockSubscribe = vi.fn().mockImplementation(async function* () {
+        yield {
+          type: 'decision:created' as const,
+          decisionId: 'decision-123',
+          timestamp: '2024-01-01T00:00:00Z',
+        };
+        yield {
+          type: 'heartbeat' as const,
+          timestamp: '2024-01-01T00:00:01Z',
+        };
+        yield {
+          type: 'decision:updated' as const,
+          status: 'in_review',
+          timestamp: '2024-01-01T00:00:02Z',
+        };
+        yield {
+          type: 'decision:resolved' as const,
+          selectedOption: 'opt2',
+          respondedAt: '2024-01-01T00:00:03Z',
+          timestamp: '2024-01-01T00:00:03Z',
+        };
+      });
+      vi.mocked(SSEHandler).prototype.subscribeToDecision = mockSubscribe;
+
+      const tool = createRequestDecisionTool(mockCoreAPI, detector, store, mockHttpClient);
+      const result = await tool.execute({
+        question: 'Which option?',
+        options: validOptions,
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect((result.content[0] as { text: string }).text).toContain('Selected: opt2');
+    });
+
+    it('should handle SSE stream ending without terminal event', async () => {
+      const mockSubscribe = vi.fn().mockImplementation(async function* () {
+        yield {
+          type: 'heartbeat' as const,
+          timestamp: '2024-01-01T00:00:00Z',
+        };
+        // Stream ends without resolved/expired
+      });
+      vi.mocked(SSEHandler).prototype.subscribeToDecision = mockSubscribe;
+
+      const tool = createRequestDecisionTool(mockCoreAPI, detector, store, mockHttpClient);
+      const result = await tool.execute({
+        question: 'Which option?',
+        options: validOptions,
+      });
+
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as { text: string }).text).toContain('expired');
+    });
+
+    it('should store decision record when store is provided', async () => {
+      const mockSubscribe = vi.fn().mockImplementation(async function* () {
+        yield {
+          type: 'decision:resolved' as const,
+          selectedOption: 'opt1',
+          respondedAt: '2024-01-01T00:00:00Z',
+          timestamp: '2024-01-01T00:00:00Z',
+        };
+      });
+      vi.mocked(SSEHandler).prototype.subscribeToDecision = mockSubscribe;
+
+      const tool = createRequestDecisionTool(mockCoreAPI, detector, store, mockHttpClient);
+      await tool.execute({
+        question: 'Which option?',
+        options: validOptions,
+        domain: ['backend'],
+      });
+
+      const storedRecord = store.get('decision-123');
+      expect(storedRecord).toBeDefined();
+      expect(storedRecord?.selectedOption).toBe('opt1');
+      expect(storedRecord?.request.domain).toEqual(['backend']);
+    });
+
+    it('should pass auth headers to SSEHandler', async () => {
+      const mockSubscribe = vi.fn().mockImplementation(async function* () {
+        yield {
+          type: 'decision:resolved' as const,
+          selectedOption: 'opt1',
+          respondedAt: '2024-01-01T00:00:00Z',
+          timestamp: '2024-01-01T00:00:00Z',
+        };
+      });
+      vi.mocked(SSEHandler).prototype.subscribeToDecision = mockSubscribe;
+
+      const tool = createRequestDecisionTool(mockCoreAPI, detector, store, mockHttpClient);
+      await tool.execute({
+        question: 'Which option?',
+        options: validOptions,
+      });
+
+      expect(vi.mocked(SSEHandler)).toHaveBeenCalledWith(
+        expect.objectContaining({
+          authHeaders: { Authorization: 'Bearer test-key' },
+        })
+      );
+    });
+
+    it('should reject invalid selection from SSE event', async () => {
+      const mockSubscribe = vi.fn().mockImplementation(async function* () {
+        yield {
+          type: 'decision:resolved' as const,
+          selectedOption: 'invalid_option',
+          respondedAt: '2024-01-01T00:00:00Z',
+          timestamp: '2024-01-01T00:00:00Z',
+        };
+      });
+      vi.mocked(SSEHandler).prototype.subscribeToDecision = mockSubscribe;
+
+      const tool = createRequestDecisionTool(mockCoreAPI, detector, store, mockHttpClient);
+      const result = await tool.execute({
+        question: 'Which option?',
+        options: validOptions,
+      });
+
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as { text: string }).text).toContain('Invalid selection');
+    });
+
+    it('should handle SSE connection errors gracefully', async () => {
+      const mockSubscribe = vi.fn().mockImplementation(async function* () {
+        throw new Error('SSE connection failed');
+      });
+      vi.mocked(SSEHandler).prototype.subscribeToDecision = mockSubscribe;
+
+      const tool = createRequestDecisionTool(mockCoreAPI, detector, store, mockHttpClient);
+      const result = await tool.execute({
+        question: 'Which option?',
+        options: validOptions,
+      });
+
+      expect(result.isError).toBe(true);
+      expect((result.content[0] as { text: string }).text).toContain('SSE connection failed');
+    });
+
+    it('should include three-layer data when requested', async () => {
+      const mockSubscribe = vi.fn().mockImplementation(async function* () {
+        yield {
+          type: 'decision:resolved' as const,
+          selectedOption: 'opt1',
+          respondedAt: '2024-01-01T00:00:00Z',
+          timestamp: '2024-01-01T00:00:00Z',
+          baseline: { optionId: 'opt1', confidence: 0.9 },
+          protege: { optionId: 'opt1', reasoning: 'Best choice' },
+          human: { optionId: 'opt1', note: 'Agreed' },
+        };
+      });
+      vi.mocked(SSEHandler).prototype.subscribeToDecision = mockSubscribe;
+
+      const tool = createRequestDecisionTool(mockCoreAPI, detector, store, mockHttpClient);
+      const result = await tool.execute({
+        question: 'Which option?',
+        options: validOptions,
+        includeRecommendations: true,
+      });
+
+      expect(result.isError).toBeFalsy();
+      const text = (result.content[0] as { text: string }).text;
+      expect(text).toContain('Selected: opt1');
+      expect(text).toContain('baseline');
     });
   });
 });
