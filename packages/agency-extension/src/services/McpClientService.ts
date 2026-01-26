@@ -391,7 +391,7 @@ export class McpClientService {
     try {
       // Build the command to execute MCP server in container
       const command = options.command ?? 'npx';
-      const args = options.command ? [] : ['@modelcontextprotocol/server'];
+      const args = options.args ?? (options.command ? [] : ['@modelcontextprotocol/server']);
 
       // Create stdio transport using docker exec
       const dockerArgs = [

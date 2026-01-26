@@ -34,6 +34,8 @@ export const ContainerConfigSchema = z.object({
   name: z.string().min(1, 'Container name is required'),
   workspacePath: z.string().min(1, 'Workspace path is required'),
   dockerComposePath: z.string().optional(),
+  mcpCommand: z.string().optional(),
+  mcpArgs: z.array(z.string()).optional(),
 });
 
 export type ContainerConfig = z.infer<typeof ContainerConfigSchema>;

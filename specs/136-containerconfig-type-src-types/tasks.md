@@ -10,18 +10,18 @@
 
 ## Phase 1: Schema and Type Updates
 
-- [ ] T001 [P] [US1] Add `mcpCommand` and `mcpArgs` fields to `ContainerConfigSchema` in `packages/agency-extension/src/config/ConfigSchema.ts`
-- [ ] T002 [P] [US1] Add `mcpArgs?: string[]` field to `ContainerConfig` interface in `packages/agency-extension/src/types/container.ts`
-- [ ] T003 [P] [US1] Add `args?: string[]` field to `McpConnectionOptions` interface in `packages/agency-extension/src/types/mcp.ts`
+- [x] T001 [P] [US1] Add `mcpCommand` and `mcpArgs` fields to `ContainerConfigSchema` in `packages/agency-extension/src/config/ConfigSchema.ts`
+- [x] T002 [P] [US1] Add `mcpArgs?: string[]` field to `ContainerConfig` interface in `packages/agency-extension/src/types/container.ts`
+- [x] T003 [P] [US1] Add `args?: string[]` field to `McpConnectionOptions` interface in `packages/agency-extension/src/types/mcp.ts`
 
 ## Phase 2: Service Integration
 
-- [ ] T004 [US1] [US2] Update `McpClientService._doConnect()` in `packages/agency-extension/src/services/McpClientService.ts` to use `options.args` when building docker exec command, with default fallback to `['@modelcontextprotocol/server']`
+- [x] T004 [US1] [US2] Update `McpClientService._doConnect()` in `packages/agency-extension/src/services/McpClientService.ts` to use `options.args` when building docker exec command, with default fallback to `['@modelcontextprotocol/server']`
 
 ## Phase 3: Verification
 
-- [ ] T005 Run `pnpm build` to verify TypeScript compilation succeeds with no type errors
-- [ ] T006 Run `pnpm test` to verify no regressions in existing tests
+- [x] T005 Run `pnpm build` to verify TypeScript compilation succeeds with no type errors
+- [x] T006 Run `pnpm test` to verify no regressions in existing tests (ConfigSchema.test.ts and McpClientService.test.ts pass)
 
 ## Dependencies & Execution Order
 
