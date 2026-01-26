@@ -34,3 +34,6 @@ coverage/
 
 # TypeScript cache
 *.tsbuildinfo
+
+# VS Code extension packages
+*.vsix
