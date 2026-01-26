@@ -909,9 +909,16 @@ export class ContainerService {
     options: ExecaOptions = {}
   ): Promise<{ stdout: string; stderr: string }> {
     try {
+      // Use host docker context to see containers from host (for dev containers with DooD)
+      const env = {
+        ...process.env,
+        DOCKER_CONTEXT: process.env.DOCKER_CONTEXT || 'host',
+        ...options.env,
+      };
       const result = await execa('docker', args, {
         timeout: DOCKER_COMMAND_TIMEOUT,
         ...options,
+        env,
       });
       return { stdout: result.stdout, stderr: result.stderr };
     } catch (error) {
@@ -924,8 +931,14 @@ export class ContainerService {
    * Stream container logs using subprocess.
    */
   private async *_streamContainerLogs(args: string[]): AsyncIterable<ContainerLogEntry> {
+    // Use host docker context to see containers from host
+    const env = {
+      ...process.env,
+      DOCKER_CONTEXT: process.env.DOCKER_CONTEXT || 'host',
+    };
     const subprocess = execa('docker', args, {
       buffer: false,
+      env,
     });
 
     const stdout = subprocess.stdout;

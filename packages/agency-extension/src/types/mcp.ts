@@ -14,14 +14,22 @@ export type McpConnectionStatus =
   | 'error';
 
 /**
+ * Transport type for MCP connection.
+ */
+export type McpTransportType = 'stdio' | 'docker-exec';
+
+/**
  * Options for establishing an MCP connection.
  */
 export interface McpConnectionOptions {
-  /** Container ID to connect to */
-  containerId: string;
+  /** Transport type (default: 'stdio' for direct local connection) */
+  transport?: McpTransportType;
 
-  /** Custom MCP server command (defaults to standard MCP server) */
-  command?: string;
+  /** Container ID to connect to (required for docker-exec transport) */
+  containerId?: string;
+
+  /** MCP server command to run */
+  command: string;
 
   /** Arguments to pass to the MCP server command */
   args?: string[];

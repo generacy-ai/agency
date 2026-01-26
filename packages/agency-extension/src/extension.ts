@@ -3,6 +3,7 @@ import { EXTENSION_NAME, OUTPUT_CHANNEL_NAME } from './constants';
 import { DisposableManager, Logger, createScopedLogger } from './utils';
 import { ConfigService, McpClientService, ModeService, McpConnectionManager } from './services';
 import { ContainerService } from './services/ContainerService';
+import { StatusBarManager } from './status/StatusBarManager';
 import { registerPluginTreeView, registerModeTreeView, ContainerTreeProvider } from './providers';
 import {
   registerPluginCommands,
@@ -14,6 +15,7 @@ import {
   registerContainerCommands,
   initializeContainerCommands,
 } from './commands';
+import type { McpConnectionOptions } from './types';
 
 /**
  * Extension state container.
@@ -91,6 +93,54 @@ function registerAllCommands(
 }
 
 /**
+ * Auto-connect to the local MCP server if configured.
+ * Reads mcpCommand/mcpArgs from the first container config or uses defaults.
+ */
+async function autoConnectMcpServer(
+  configService: ConfigService,
+  mcpService: McpClientService,
+  statusBarManager: StatusBarManager,
+  log: ReturnType<typeof createScopedLogger>
+): Promise<void> {
+  // Check if there's an MCP server configured
+  const containers = configService.getContainers();
+  const containerConfig = containers[0]; // Use first container config for MCP settings
+
+  // Default to the Agency MCP server
+  const mcpCommand = containerConfig?.mcpCommand ?? 'node';
+  const mcpArgs = containerConfig?.mcpArgs ?? ['/workspaces/agency/packages/agency/dist/cli.js'];
+
+  log.info(`Auto-connecting to local MCP server: ${mcpCommand} ${mcpArgs.join(' ')}`);
+
+  // Subscribe to connection status changes to update status bar
+  mcpService.onConnectionStatusChange((event) => {
+    if (event.newStatus === 'connected') {
+      statusBarManager.updateMcpStatus({ state: 'connected' });
+    } else if (event.newStatus === 'connecting' || event.newStatus === 'reconnecting') {
+      statusBarManager.updateMcpStatus({ state: 'connecting' });
+    } else if (event.newStatus === 'error') {
+      statusBarManager.updateMcpStatus({ state: 'error', error: event.error ?? new Error('Connection error') });
+    } else {
+      statusBarManager.updateMcpStatus({ state: 'disconnected', reason: 'Not connected' });
+    }
+  });
+
+  try {
+    const options: McpConnectionOptions = {
+      transport: 'stdio',
+      command: mcpCommand,
+      args: mcpArgs,
+    };
+
+    await mcpService.connect(options);
+    log.info('Successfully connected to local MCP server');
+  } catch (error) {
+    log.warn('Failed to auto-connect to MCP server', error);
+    // Don't throw - extension should still work without MCP connection
+  }
+}
+
+/**
  * This method is called when the extension is activated.
  * Activation happens based on the activationEvents in package.json.
  */
@@ -156,6 +206,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await mcpConnectionManager.initialize(containerService, mcpService);
     disposables.add({ dispose: () => McpConnectionManager.reset() });
 
+    // Initialize StatusBarManager for visual status indicators
+    const statusBarManager = StatusBarManager.initialize();
+    disposables.add(statusBarManager);
+    log.debug('StatusBarManager initialized');
+
     // Register tree views
     const pluginTreeDisposable = await registerPluginTreeView(vscodeModule);
     disposables.add(pluginTreeDisposable);
@@ -177,6 +232,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Register commands
     registerAllCommands(vscodeModule, extensionState, log);
+
+    // Auto-connect to local MCP server
+    await autoConnectMcpServer(configService, mcpService, statusBarManager, log);
 
     log.info(`${EXTENSION_NAME} extension activated successfully`);
   } catch (error) {

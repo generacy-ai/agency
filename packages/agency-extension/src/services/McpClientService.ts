@@ -389,24 +389,32 @@ export class McpClientService {
     this._setStatus(this._isReconnecting ? 'reconnecting' : 'connecting', previousStatus);
 
     try {
-      // Build the command to execute MCP server in container
-      const command = options.command ?? 'npx';
-      const args = options.args ?? (options.command ? [] : ['@modelcontextprotocol/server']);
+      const transport = options.transport ?? 'stdio';
+      const command = options.command;
+      const args = options.args ?? [];
 
-      // Create stdio transport using docker exec
-      const dockerArgs = [
-        'exec',
-        '-i',
-        options.containerId,
-        command,
-        ...args,
-      ];
-
-      this._transport = new StdioClientTransport({
-        command: 'docker',
-        args: dockerArgs,
-        env: options.environment,
-      });
+      if (transport === 'docker-exec') {
+        // Docker exec transport - run command inside a container
+        if (!options.containerId) {
+          throw new Error('containerId is required for docker-exec transport');
+        }
+        const dockerArgs = ['exec', '-i', options.containerId, command, ...args];
+        this._transport = new StdioClientTransport({
+          command: 'docker',
+          args: dockerArgs,
+          env: options.environment,
+        });
+        log.debug(`Using docker-exec transport: docker ${dockerArgs.join(' ')}`);
+      } else {
+        // Direct stdio transport - spawn command locally
+        this._transport = new StdioClientTransport({
+          command,
+          args,
+          env: options.environment,
+          cwd: options.workingDirectory,
+        });
+        log.debug(`Using stdio transport: ${command} ${args.join(' ')}`);
+      }
 
       // Create MCP client
       this._client = new Client(
@@ -443,7 +451,8 @@ export class McpClientService {
       this._isReconnecting = false;
 
       this._setStatus('connected', this._status);
-      log.info(`Connected to MCP server in container: ${options.containerId}`);
+      const connectTarget = transport === 'docker-exec' ? `container: ${options.containerId}` : `local: ${command}`;
+      log.info(`Connected to MCP server (${connectTarget})`);
 
       // Set up disconnect handler for auto-reconnect
       this._setupDisconnectHandler();

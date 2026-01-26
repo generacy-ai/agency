@@ -327,18 +327,18 @@ export class ModeService {
 
     // Check for missing parents
     for (const mode of modes) {
-      if (mode.parentId && !modes.find((m) => m.id === mode.parentId)) {
+      if (mode.inherits && !modes.find((m) => m.id === mode.inherits)) {
         errors.push({
           modeId: mode.id,
           code: 'missing_parent',
-          message: `Parent mode '${mode.parentId}' not found`,
+          message: `Parent mode '${mode.inherits}' not found`,
         });
       }
     }
 
     // Check for empty modes
     for (const mode of modes) {
-      if (mode.includedTools.length === 0 && !mode.parentId) {
+      if (mode.tools.length === 0 && !mode.inherits) {
         warnings.push({
           modeId: mode.id,
           code: 'empty_mode',
@@ -432,21 +432,21 @@ export class ModeService {
     // Calculate depth
     const depth = this._calculateDepth(mode, modes);
 
-    // Convert to ModeInfo format
+    // Convert to ModeInfo format (map schema fields to ModeConfig interface)
     const modeConfig = {
       id: mode.id,
       name: mode.name,
-      description: mode.description,
-      parentId: mode.parentId,
-      includedTools: mode.includedTools,
-      excludedTools: mode.excludedTools,
-      isDefault: mode.isDefault ?? mode.id === 'default',
+      description: undefined,
+      parentId: mode.inherits,
+      includedTools: mode.tools,
+      excludedTools: [] as string[],
+      isDefault: mode.id === 'default',
     };
 
     return {
       config: modeConfig,
       effectiveTools,
-      parent: mode.parentId ? this._buildModeInfo(mode.parentId) : undefined,
+      parent: mode.inherits ? this._buildModeInfo(mode.inherits) : undefined,
       children: [], // Populated by caller if needed
       depth,
       isActive: mode.id === this._currentModeId,
@@ -468,21 +468,16 @@ export class ModeService {
       visited.add(currentMode.id);
 
       // Recursively resolve parent first
-      if (currentMode.parentId) {
-        const parent = allModes.find((m) => m.id === currentMode.parentId);
+      if (currentMode.inherits) {
+        const parent = allModes.find((m) => m.id === currentMode.inherits);
         if (parent) {
           resolve(parent);
         }
       }
 
-      // Add this mode's included tools
-      for (const tool of currentMode.includedTools) {
+      // Add this mode's tools
+      for (const tool of currentMode.tools) {
         tools.add(tool);
-      }
-
-      // Remove excluded tools
-      for (const tool of currentMode.excludedTools) {
-        tools.delete(tool);
       }
     };
 
@@ -498,13 +493,13 @@ export class ModeService {
     let depth = 0;
 
     let current: ModeConfig | undefined = mode;
-    while (current?.parentId) {
+    while (current?.inherits) {
       if (visited.has(current.id)) {
         break; // Circular reference
       }
       visited.add(current.id);
       depth++;
-      current = allModes.find((m) => m.id === current!.parentId);
+      current = allModes.find((m) => m.id === current!.inherits);
     }
 
     return depth;
@@ -517,12 +512,12 @@ export class ModeService {
     const visited = new Set<string>();
 
     let current = allModes.find((m) => m.id === modeId);
-    while (current?.parentId) {
+    while (current?.inherits) {
       if (visited.has(current.id)) {
         return true; // Circular reference detected
       }
       visited.add(current.id);
-      current = allModes.find((m) => m.id === current!.parentId);
+      current = allModes.find((m) => m.id === current!.inherits);
     }
 
     return false;
