@@ -163,6 +163,9 @@ export interface ContainerConfig {
   /** Custom MCP server command (if different from default) */
   mcpCommand?: string;
 
+  /** Arguments to pass to the MCP server command */
+  mcpArgs?: string[];
+
   /** Environment variables to set when connecting */
   environment?: Record<string, string>;
 }

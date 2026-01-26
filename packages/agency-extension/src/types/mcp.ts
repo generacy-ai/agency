@@ -23,6 +23,9 @@ export interface McpConnectionOptions {
   /** Custom MCP server command (defaults to standard MCP server) */
   command?: string;
 
+  /** Arguments to pass to the MCP server command */
+  args?: string[];
+
   /** Connection timeout in milliseconds (default: 30000) */
   timeout?: number;
 
