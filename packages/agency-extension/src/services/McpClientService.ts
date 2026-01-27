@@ -321,8 +321,9 @@ export class McpClientService {
       const duration = Date.now() - startTime;
 
       // Convert MCP result to our ToolResult format
-      const content: ToolResultContent[] = (result.content || []).map((item) => {
-        if (item.type === 'text') {
+      const rawContent = result.content as Array<{ type: string; text?: string }> || [];
+      const content: ToolResultContent[] = rawContent.map((item) => {
+        if (item.type === 'text' && typeof item.text === 'string') {
           return { type: 'text', text: item.text } as TextContent;
         }
         // Handle other content types as text fallback
@@ -423,9 +424,7 @@ export class McpClientService {
           version: '1.0.0',
         },
         {
-          capabilities: {
-            tools: {},
-          },
+          capabilities: {},
         }
       );
 

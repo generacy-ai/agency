@@ -24,6 +24,12 @@ export interface McpContainerAssociation {
 
   /** Error message from the last failed connection attempt */
   error?: string;
+
+  /** MCP server command to run in the container */
+  mcpCommand: string;
+
+  /** Arguments for the MCP server command */
+  mcpArgs: string[];
 }
 
 /**
@@ -233,19 +239,34 @@ export class McpConnectionManager {
    * If the container is currently running, this will trigger a connection attempt.
    *
    * @param containerId Container ID to associate
-   * @param autoConnect Whether to automatically connect when the container starts (default: true)
+   * @param options Association options
    */
-  async associateContainer(containerId: string, autoConnect = true): Promise<void> {
+  async associateContainer(
+    containerId: string,
+    options: {
+      autoConnect?: boolean;
+      mcpCommand?: string;
+      mcpArgs?: string[];
+    } = {}
+  ): Promise<void> {
     this._ensureInitialized();
+
+    const {
+      autoConnect = true,
+      mcpCommand = 'node',
+      mcpArgs = ['/workspaces/agency/packages/agency/dist/cli.js'],
+    } = options;
 
     // Check if already associated
     const existing = this._associations.get(containerId);
     if (existing) {
-      // Update auto-connect setting if different
+      // Update settings if different
       if (existing.autoConnect !== autoConnect) {
         existing.autoConnect = autoConnect;
         log.debug(`Updated auto-connect for container ${containerId}: ${autoConnect}`);
       }
+      existing.mcpCommand = mcpCommand;
+      existing.mcpArgs = mcpArgs;
       return;
     }
 
@@ -254,6 +275,8 @@ export class McpConnectionManager {
       containerId,
       isConnected: false,
       autoConnect,
+      mcpCommand,
+      mcpArgs,
     };
     this._associations.set(containerId, association);
     log.info(`Associated container ${containerId} for MCP connection management`);
@@ -456,7 +479,12 @@ export class McpConnectionManager {
     association.lastAttempt = Date.now();
 
     try {
-      await this._mcpService.connect({ containerId });
+      await this._mcpService.connect({
+        transport: 'docker-exec',
+        containerId,
+        command: association.mcpCommand,
+        args: association.mcpArgs,
+      });
       association.isConnected = true;
       association.error = undefined;
 

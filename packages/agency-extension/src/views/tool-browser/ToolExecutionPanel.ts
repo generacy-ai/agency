@@ -131,6 +131,7 @@ export class ToolExecutionPanel extends WebviewBase {
   private readonly _mcpService: McpClientService;
   private _executionHistory: ToolExecutionRecord[] = [];
   private _isExecuting = false;
+  private _lastResult: ToolResult | null = null;
 
   private constructor(
     vscodeModule: typeof vscode,
@@ -207,6 +208,17 @@ export class ToolExecutionPanel extends WebviewBase {
    * Handle messages from the webview.
    */
   protected handleMessage(message: WebviewMessage): void {
+    // Validate message structure
+    if (!message || typeof message.type !== 'string') {
+      log.debug(`Ignoring invalid message: ${JSON.stringify(message)}`);
+      return;
+    }
+
+    // Ignore VS Code internal messages (they appear as "[object Object]")
+    if (message.type.includes('object') || message.type.startsWith('vscode')) {
+      return;
+    }
+
     const msg = message as IncomingMessage;
 
     switch (msg.type) {
@@ -227,7 +239,7 @@ export class ToolExecutionPanel extends WebviewBase {
         break;
 
       default:
-        log.warn(`Unknown message type: ${message.type}`);
+        log.debug(`Ignoring unknown message type: ${msg.type}`);
     }
   }
 
@@ -245,7 +257,7 @@ export class ToolExecutionPanel extends WebviewBase {
     const executionId = generateExecutionId();
     this._isExecuting = true;
 
-    // Notify webview that execution started
+    // Notify webview that execution started (may not work in remote scenarios)
     await this.postMessage({
       type: 'executionStarted',
       payload: { executionId },
@@ -303,13 +315,12 @@ export class ToolExecutionPanel extends WebviewBase {
     // Add to history
     this._addToHistory(record);
 
-    // Notify webview of completion
-    await this.postMessage({
-      type: 'executionComplete',
-      payload: { record },
-    } as ExecutionCompleteMessage);
-
+    // Store the result and refresh HTML to display it (workaround for postMessage issue)
+    this._lastResult = record.result;
     log.info(`Tool execution complete: ${this._tool.name} - ${record.status}`);
+
+    // Refresh the webview to show the result
+    this.refresh();
   }
 
   /**
@@ -413,7 +424,7 @@ export class ToolExecutionPanel extends WebviewBase {
         <section class="section">
           <div class="section-header">
             <h2 class="section-title">Result</h2>
-            <span id="executionTime" class="execution-time"></span>
+            <span id="executionTime" class="execution-time">${this._lastResult?.duration ? `Duration: ${this._lastResult.duration}ms` : ''}</span>
           </div>
           <div id="resultContainer" class="result-container">
             <div id="loadingIndicator" class="loading hidden">
@@ -421,7 +432,7 @@ export class ToolExecutionPanel extends WebviewBase {
               <span>Executing...</span>
             </div>
             <div id="resultContent" class="result-content">
-              <p class="text-muted">Execute the tool to see results.</p>
+              ${this._lastResult ? this._renderResult(this._lastResult) : '<p class="text-muted">Execute the tool to see results.</p>'}
             </div>
           </div>
         </section>
@@ -634,7 +645,7 @@ export class ToolExecutionPanel extends WebviewBase {
         });
       }
 
-      // Handle messages from extension
+      // Handle messages from extension (note: postMessage may not work reliably in remote scenarios)
       window.addEventListener('message', (event) => {
         const message = event.data;
 
@@ -657,7 +668,12 @@ export class ToolExecutionPanel extends WebviewBase {
             executeBtn.disabled = false;
             executeBtn.textContent = 'Execute';
             loadingIndicator.classList.add('hidden');
-            showResult(message.payload.record.result);
+            try {
+              showResult(message.payload.record.result);
+            } catch (err) {
+              console.error('showResult error:', err);
+              resultContent.innerHTML = '<pre class="error">Error displaying result: ' + err.message + '</pre>';
+            }
             break;
 
           case 'historyUpdated':
@@ -666,7 +682,7 @@ export class ToolExecutionPanel extends WebviewBase {
         }
       });
 
-      // Request initial history load
+      // Request initial history
       postMessage('loadHistory');
 
       // Clear validation errors on input
@@ -981,5 +997,33 @@ export class ToolExecutionPanel extends WebviewBase {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  /**
+   * Render a tool result as HTML.
+   */
+  private _renderResult(result: ToolResult): string {
+    const statusClass = result.isError ? 'error' : 'success';
+    const statusIcon = result.isError ? '✗' : '✓';
+
+    let contentHtml = '';
+    for (const item of result.content || []) {
+      if (item.type === 'text') {
+        // Try to format as JSON if possible
+        let text = item.text;
+        try {
+          const parsed = JSON.parse(text);
+          text = JSON.stringify(parsed, null, 2);
+          contentHtml += `<pre class="json-content">${this._escapeHtml(text)}</pre>`;
+        } catch {
+          contentHtml += `<pre class="text-content">${this._escapeHtml(text)}</pre>`;
+        }
+      }
+    }
+
+    return `<div class="result ${statusClass}">
+      <span class="status-icon">${statusIcon}</span>
+      <div class="result-body">${contentHtml}</div>
+    </div>`;
   }
 }

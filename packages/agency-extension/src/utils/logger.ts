@@ -59,8 +59,25 @@ export class Logger {
    */
   private formatMessage(level: LogLevel, message: string, ...args: unknown[]): string {
     const timestamp = new Date().toISOString();
-    const formattedArgs = args.length > 0 ? ` ${JSON.stringify(args)}` : '';
+    const formattedArgs = args.length > 0 ? ` ${this.formatArgs(args)}` : '';
     return `[${timestamp}] [${level}] ${message}${formattedArgs}`;
+  }
+
+  /**
+   * Format arguments for logging, properly handling Error objects.
+   */
+  private formatArgs(args: unknown[]): string {
+    const formatted = args.map((arg) => {
+      if (arg instanceof Error) {
+        return `${arg.name}: ${arg.message}${arg.stack ? `\n${arg.stack}` : ''}`;
+      }
+      try {
+        return JSON.stringify(arg);
+      } catch {
+        return String(arg);
+      }
+    });
+    return `[${formatted.join(', ')}]`;
   }
 
   /**

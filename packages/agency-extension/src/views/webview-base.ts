@@ -214,7 +214,12 @@ export abstract class WebviewBase {
     this._disposables.add(
       this._panel.webview.onDidReceiveMessage(
         (message: WebviewMessage) => {
-          log.debug(`Received message: ${message.type}`);
+          // Log full message for debugging unknown message types
+          if (message && typeof message.type === 'string' && message.type.includes('object')) {
+            log.debug(`Received unusual message: ${JSON.stringify(message)}`);
+          } else {
+            log.debug(`Received message: ${message?.type}`);
+          }
           this.handleMessage(message);
         },
         undefined

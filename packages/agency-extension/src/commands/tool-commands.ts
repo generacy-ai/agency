@@ -360,7 +360,10 @@ export async function connectMcp(vscodeModule: typeof vscode): Promise<void> {
         }
 
         await mcpService.connect({
+          transport: 'docker-exec',
           containerId: containerId.trim(),
+          command: 'node',
+          args: ['/workspaces/agency/packages/agency/dist/cli.js'],
         });
 
         // Set context for command enablement

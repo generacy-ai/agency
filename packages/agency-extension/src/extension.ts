@@ -1,10 +1,10 @@
 import type * as vscode from 'vscode';
 import { EXTENSION_NAME, OUTPUT_CHANNEL_NAME } from './constants';
 import { DisposableManager, Logger, createScopedLogger } from './utils';
-import { ConfigService, McpClientService, ModeService, McpConnectionManager } from './services';
+import { ConfigService, McpClientService, ModeService, McpConnectionManager, ActivityService } from './services';
 import { ContainerService } from './services/ContainerService';
 import { StatusBarManager } from './status/StatusBarManager';
-import { registerPluginTreeView, registerModeTreeView, ContainerTreeProvider } from './providers';
+import { registerPluginTreeView, registerModeTreeView, registerToolTreeView, registerActivityTreeView, ContainerTreeProvider } from './providers';
 import {
   registerPluginCommands,
   initializePluginCommands,
@@ -97,6 +97,7 @@ function registerAllCommands(
  * Reads mcpCommand/mcpArgs from the first container config or uses defaults.
  */
 async function autoConnectMcpServer(
+  vscodeModule: typeof vscode,
   configService: ConfigService,
   mcpService: McpClientService,
   statusBarManager: StatusBarManager,
@@ -110,16 +111,20 @@ async function autoConnectMcpServer(
   const mcpCommand = containerConfig?.mcpCommand ?? 'node';
   const mcpArgs = containerConfig?.mcpArgs ?? ['/workspaces/agency/packages/agency/dist/cli.js'];
 
-  log.info(`Auto-connecting to local MCP server: ${mcpCommand} ${mcpArgs.join(' ')}`);
+  // Get workspace folder for the MCP server working directory
+  const workspaceFolders = vscodeModule.workspace.workspaceFolders;
+  const workspaceFolder = workspaceFolders?.[0]?.uri.fsPath;
+
+  log.info(`Auto-connecting to local MCP server: ${mcpCommand} ${mcpArgs.join(' ')} (cwd: ${workspaceFolder ?? 'not set'})`);
 
   // Subscribe to connection status changes to update status bar
   mcpService.onConnectionStatusChange((event) => {
     if (event.newStatus === 'connected') {
-      statusBarManager.updateMcpStatus({ state: 'connected' });
+      statusBarManager.updateMcpStatus({ state: 'connected', connectedAt: new Date() });
     } else if (event.newStatus === 'connecting' || event.newStatus === 'reconnecting') {
-      statusBarManager.updateMcpStatus({ state: 'connecting' });
+      statusBarManager.updateMcpStatus({ state: 'connecting', startedAt: new Date() });
     } else if (event.newStatus === 'error') {
-      statusBarManager.updateMcpStatus({ state: 'error', error: event.error ?? new Error('Connection error') });
+      statusBarManager.updateMcpStatus({ state: 'error', error: event.error ?? new Error('Connection error'), occurredAt: new Date() });
     } else {
       statusBarManager.updateMcpStatus({ state: 'disconnected', reason: 'Not connected' });
     }
@@ -130,6 +135,7 @@ async function autoConnectMcpServer(
       transport: 'stdio',
       command: mcpCommand,
       args: mcpArgs,
+      workingDirectory: workspaceFolder,
     };
 
     await mcpService.connect(options);
@@ -211,6 +217,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     disposables.add(statusBarManager);
     log.debug('StatusBarManager initialized');
 
+    // Initialize ActivityService
+    const activityService = ActivityService.getInstance();
+    await activityService.initialize(vscodeModule);
+    disposables.add({ dispose: () => ActivityService.reset() });
+
     // Register tree views
     const pluginTreeDisposable = await registerPluginTreeView(vscodeModule);
     disposables.add(pluginTreeDisposable);
@@ -218,6 +229,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // Register mode tree view
     const modeTreeDisposable = registerModeTreeView(vscodeModule);
     disposables.add(modeTreeDisposable);
+
+    // Register tool tree view
+    const toolTreeDisposable = await registerToolTreeView(vscodeModule);
+    disposables.add(toolTreeDisposable);
+
+    // Register activity tree view
+    const activityTreeDisposable = await registerActivityTreeView(vscodeModule);
+    disposables.add(activityTreeDisposable);
 
     // Create and register container tree view
     const containerTreeProvider = new ContainerTreeProvider(containerService);
@@ -234,7 +253,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     registerAllCommands(vscodeModule, extensionState, log);
 
     // Auto-connect to local MCP server
-    await autoConnectMcpServer(configService, mcpService, statusBarManager, log);
+    await autoConnectMcpServer(vscodeModule, configService, mcpService, statusBarManager, log);
 
     log.info(`${EXTENSION_NAME} extension activated successfully`);
   } catch (error) {

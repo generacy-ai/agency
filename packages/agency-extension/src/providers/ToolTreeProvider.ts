@@ -256,8 +256,9 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<TreeItemData> {
     this._mcpService = McpClientService.getInstance();
 
     // Subscribe to connection status changes
+    log.info('Subscribing to MCP connection status changes');
     const statusChangeDisposable = this._mcpService.onConnectionStatusChange((event) => {
-      log.debug(`Connection status changed: ${event.previousStatus} -> ${event.newStatus}`);
+      log.info(`Connection status changed: ${event.previousStatus} -> ${event.newStatus}`);
       this._connectionStatus = event.newStatus;
 
       // Refresh tools when connected
@@ -411,14 +412,20 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<TreeItemData> {
    * Internal method to refresh tools from the MCP server.
    */
   private async _refreshTools(): Promise<void> {
-    if (!this._mcpService || !this._mcpService.isConnected()) {
-      log.debug('Cannot refresh tools: not connected');
+    log.info('_refreshTools called');
+    if (!this._mcpService) {
+      log.warn('Cannot refresh tools: mcpService is null');
+      return;
+    }
+    if (!this._mcpService.isConnected()) {
+      log.warn(`Cannot refresh tools: not connected (status: ${this._mcpService.getConnectionStatus()})`);
       return;
     }
 
     try {
-      log.debug('Refreshing tools from MCP server');
+      log.info('Fetching tools from MCP server...');
       this._tools = await this._mcpService.listTools();
+      log.info(`Received ${this._tools.length} tools from MCP server`);
 
       // Group tools by namespace
       this._namespaces.clear();

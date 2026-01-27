@@ -240,6 +240,17 @@ export class ContainerDetailPanel extends WebviewBase {
    * Handle messages from the webview.
    */
   protected handleMessage(message: WebviewMessage): void {
+    // Validate message structure
+    if (!message || typeof message.type !== 'string') {
+      log.debug(`Ignoring invalid message: ${JSON.stringify(message)}`);
+      return;
+    }
+
+    // Ignore VS Code internal messages
+    if (message.type.includes('object') || message.type.startsWith('vscode')) {
+      return;
+    }
+
     const msg = message as IncomingMessage;
 
     switch (msg.type) {
@@ -264,7 +275,7 @@ export class ContainerDetailPanel extends WebviewBase {
         break;
 
       default:
-        log.warn(`Unknown message type: ${message.type}`);
+        log.debug(`Ignoring unknown message type: ${msg.type}`);
     }
   }
 
@@ -398,7 +409,7 @@ export class ContainerDetailPanel extends WebviewBase {
    */
   private async _loadContainer(): Promise<void> {
     try {
-      this._container = await this._containerService.getContainer(this._containerId);
+      this._container = await this._containerService.getContainer(this._containerId) ?? null;
       if (!this._container) {
         log.warn(`Container ${this._containerId} not found`);
         return;

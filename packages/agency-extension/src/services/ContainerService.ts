@@ -65,26 +65,35 @@ class EventEmitter<T> {
 
 /**
  * Raw container data from Docker CLI JSON output.
+ * Note: Docker CLI `--format '{{json .}}'` returns different field names than the API.
+ * Field names may be ID (caps) or Id (pascal), and some values may be strings or arrays.
  */
 interface DockerContainerJson {
-  Id: string;
-  Names: string[];
+  // ID can be either "Id" or "ID" depending on Docker version/format
+  Id?: string;
+  ID?: string;
+  // Names can be array (API) or string (CLI format)
+  Names: string[] | string;
   Image: string;
   State: string;
   Status: string;
-  Created: number;
+  // Created can be number (unix timestamp) or string (formatted date)
+  Created: number | string;
+  CreatedAt?: string;
+  // Ports can be array (API) or string (CLI format)
   Ports: Array<{
     IP?: string;
     PrivatePort: number;
     PublicPort?: number;
     Type: string;
-  }>;
-  Labels: Record<string, string>;
+  }> | string;
+  // Labels can be object (API) or string (CLI format)
+  Labels: Record<string, string> | string;
   Mounts: Array<{
     Type: string;
     Source: string;
     Destination: string;
-  }>;
+  }> | string;
 }
 
 /**
@@ -721,33 +730,69 @@ export class ContainerService {
    * Convert Docker CLI JSON output to ContainerInfo.
    */
   private async _dockerJsonToContainerInfo(raw: DockerContainerJson): Promise<ContainerInfo> {
+    // Get container ID (handles both "Id" and "ID" field names)
+    const containerId = raw.Id ?? raw.ID ?? '';
+    if (!containerId) {
+      throw new Error('Container ID is missing from Docker output');
+    }
+    const shortId = containerId.substring(0, 12);
+
     // Get more details via inspect
-    const inspectInfo = await this._inspectContainer(raw.Id.substring(0, 12));
+    const inspectInfo = await this._inspectContainer(shortId);
     if (inspectInfo) {
       return inspectInfo;
     }
 
     // Fallback to basic info from ps output
-    const ports: PortMapping[] = raw.Ports.filter((p) => p.PublicPort !== undefined).map((p) => ({
-      host: p.PublicPort!,
-      container: p.PrivatePort,
-      protocol: p.Type === 'udp' ? 'udp' : 'tcp',
-    }));
+    // Handle Ports being either array or string
+    let ports: PortMapping[] = [];
+    if (Array.isArray(raw.Ports)) {
+      ports = raw.Ports.filter((p) => p.PublicPort !== undefined).map((p) => ({
+        host: p.PublicPort!,
+        container: p.PrivatePort,
+        protocol: p.Type === 'udp' ? 'udp' : 'tcp',
+      }));
+    }
+    // If Ports is a string, we skip parsing (inspect fallback handles it)
 
-    const isDevContainer = this._detectDevContainer(raw.Labels);
-    const workspacePath = this._extractWorkspacePath(raw.Labels, raw.Mounts);
+    // Handle Labels being either object or string
+    const labels: Record<string, string> = typeof raw.Labels === 'object' && raw.Labels !== null
+      ? raw.Labels
+      : {};
+
+    // Handle Mounts being either array or string
+    const mounts = Array.isArray(raw.Mounts) ? raw.Mounts : [];
+
+    const isDevContainer = this._detectDevContainer(labels);
+    const workspacePath = this._extractWorkspacePath(labels, mounts);
+
+    // Handle Names being either array or string
+    let containerName = shortId;
+    if (Array.isArray(raw.Names) && raw.Names.length > 0 && raw.Names[0]) {
+      containerName = raw.Names[0].replace(/^\//, '');
+    } else if (typeof raw.Names === 'string' && raw.Names) {
+      containerName = raw.Names.replace(/^\//, '');
+    }
+
+    // Handle Created being number or string
+    let createdAt = 0;
+    if (typeof raw.Created === 'number') {
+      createdAt = raw.Created * 1000;
+    } else if (raw.CreatedAt) {
+      createdAt = new Date(raw.CreatedAt).getTime();
+    }
 
     return {
-      id: raw.Id.substring(0, 12),
-      name: raw.Names[0]?.replace(/^\//, '') ?? raw.Id.substring(0, 12),
+      id: shortId,
+      name: containerName,
       image: raw.Image,
       status: this._parseContainerStatus(raw.State),
       health: 'none',
       isDevContainer,
       workspacePath,
       ports,
-      labels: raw.Labels,
-      createdAt: raw.Created * 1000,
+      labels,
+      createdAt,
       hasMcpServer: false,
     };
   }
@@ -912,7 +957,7 @@ export class ContainerService {
       // Use host docker context to see containers from host (for dev containers with DooD)
       const env = {
         ...process.env,
-        DOCKER_CONTEXT: process.env.DOCKER_CONTEXT || 'host',
+        DOCKER_CONTEXT: process.env['DOCKER_CONTEXT'] || 'host',
         ...options.env,
       };
       const result = await execa('docker', args, {
@@ -934,7 +979,7 @@ export class ContainerService {
     // Use host docker context to see containers from host
     const env = {
       ...process.env,
-      DOCKER_CONTEXT: process.env.DOCKER_CONTEXT || 'host',
+      DOCKER_CONTEXT: process.env['DOCKER_CONTEXT'] || 'host',
     };
     const subprocess = execa('docker', args, {
       buffer: false,
