@@ -21,7 +21,7 @@ For VS Code extension testing and browser automation capabilities, see the centr
 [/workspaces/triad-development/docs/MCP_TESTING_TOOLS.md](/workspaces/triad-development/docs/MCP_TESTING_TOOLS.md)
 
 To test the Agency VS Code extension:
-1. Start VS Code web: `/workspaces/triad-development/scripts/stack start-vscode`
+1. Start code-server: `/workspaces/triad-development/scripts/stack code-server`
 2. Navigate to http://localhost:8443 with Playwright
 3. Install the extension and test functionality
 
