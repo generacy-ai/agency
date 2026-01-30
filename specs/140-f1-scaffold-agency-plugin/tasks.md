@@ -9,8 +9,8 @@
 
 ## Phase 1: Package Configuration
 
-- [ ] T001 Create `packages/agency-plugin-spec-kit/` directory
-- [ ] T002 Create `packages/agency-plugin-spec-kit/package.json` with agency metadata:
+- [x] T001 Create `packages/agency-plugin-spec-kit/` directory
+- [x] T002 Create `packages/agency-plugin-spec-kit/package.json` with agency metadata:
   - name: `@generacy-ai/agency-plugin-spec-kit`
   - version: `0.0.0`
   - type: `module`
@@ -20,37 +20,37 @@
   - peer dependency on `@generacy-ai/agency` (workspace:*)
   - dev dependencies: typescript, @types/node, vitest
   - scripts: build, test, clean, typecheck
-- [ ] T003 Create `packages/agency-plugin-spec-kit/tsconfig.json` extending `../../tsconfig.base.json`:
+- [x] T003 Create `packages/agency-plugin-spec-kit/tsconfig.json` extending `../../tsconfig.base.json`:
   - compilerOptions.outDir: `./dist`
   - compilerOptions.rootDir: `./src`
   - include: `["src/**/*"]`
   - exclude: `["node_modules", "dist", "tests"]`
-- [ ] T004 [P] Create `packages/agency-plugin-spec-kit/vitest.config.ts` with test configuration
+- [x] T004 [P] Create `packages/agency-plugin-spec-kit/vitest.config.ts` with test configuration
 
 ## Phase 2: Source Structure
 
-- [ ] T005 Create `packages/agency-plugin-spec-kit/src/types/index.ts`:
+- [x] T005 Create `packages/agency-plugin-spec-kit/src/types/index.ts`:
   - Export BaseToolParams interface
   - Export SpecKitPluginConfig interface
   - Re-export Agency types (AgencyPlugin, AgencyCoreAPI, AgencyTool)
-- [ ] T006 Create `packages/agency-plugin-spec-kit/src/config.ts`:
+- [x] T006 Create `packages/agency-plugin-spec-kit/src/config.ts`:
   - Define DEFAULT_CONFIG constant
   - Export resolveConfig function
-- [ ] T007 Create `packages/agency-plugin-spec-kit/src/manifest.ts`:
+- [x] T007 Create `packages/agency-plugin-spec-kit/src/manifest.ts`:
   - Define PLUGIN_MANIFEST constant with PluginManifest type
   - Include id, name, version, description, modes, tools (empty array for now)
-- [ ] T008 [P] Create `packages/agency-plugin-spec-kit/src/utils/index.ts`:
+- [x] T008 [P] Create `packages/agency-plugin-spec-kit/src/utils/index.ts`:
   - Export placeholder for utility functions
-- [ ] T009 [P] Create `packages/agency-plugin-spec-kit/src/providers/index.ts`:
+- [x] T009 [P] Create `packages/agency-plugin-spec-kit/src/providers/index.ts`:
   - Export placeholder for provider interfaces
-- [ ] T010 [P] Create `packages/agency-plugin-spec-kit/src/tools/index.ts`:
+- [x] T010 [P] Create `packages/agency-plugin-spec-kit/src/tools/index.ts`:
   - Export createTools function (returns empty array for skeleton)
-- [ ] T011 Create `packages/agency-plugin-spec-kit/src/plugin.ts`:
+- [x] T011 Create `packages/agency-plugin-spec-kit/src/plugin.ts`:
   - Import manifest, config, and tools
   - Implement SpecKitPlugin class with AgencyPlugin interface
   - Implement initialize(), shutdown(), onModeChange() methods
   - Export default and named exports
-- [ ] T012 Create `packages/agency-plugin-spec-kit/src/index.ts`:
+- [x] T012 Create `packages/agency-plugin-spec-kit/src/index.ts`:
   - Re-export SpecKitPlugin as default
   - Re-export types from types/index.ts
   - Re-export manifest from manifest.ts
@@ -58,14 +58,14 @@
 
 ## Phase 3: Testing & Validation
 
-- [ ] T013 Create `packages/agency-plugin-spec-kit/tests/plugin.test.ts`:
+- [x] T013 Create `packages/agency-plugin-spec-kit/tests/plugin.test.ts`:
   - Test plugin instantiation
   - Test manifest properties
   - Test config resolution with defaults
   - Test config resolution with overrides
-- [ ] T014 Run `pnpm install` to verify workspace integration
-- [ ] T015 Run `pnpm build` in package directory to verify TypeScript compilation
-- [ ] T016 Run `pnpm test` in package directory to verify tests pass
+- [x] T014 Run `pnpm install` to verify workspace integration
+- [x] T015 Run `pnpm build` in package directory to verify TypeScript compilation
+- [x] T016 Run `pnpm test` in package directory to verify tests pass
 
 ## Dependencies & Execution Order
 

@@ -186,6 +186,21 @@ importers:
         specifier: ^3.0.4
         version: 3.2.4(@types/node@20.19.30)(yaml@2.8.2)
 
+  packages/agency-plugin-spec-kit:
+    devDependencies:
+      '@generacy-ai/agency':
+        specifier: workspace:*
+        version: link:../agency
+      '@types/node':
+        specifier: ^20.17.12
+        version: 20.19.30
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.4
+        version: 3.2.4(@types/node@20.19.30)(yaml@2.8.2)
+
 packages:
 
   '@azure/abort-controller@2.1.2':
