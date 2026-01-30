@@ -10,34 +10,34 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Add zod dependency to `packages/agency-plugin-spec-kit/package.json`
-- [ ] T002 Create `src/types/` directory structure
+- [x] T001 Add zod dependency to `packages/agency-plugin-spec-kit/package.json`
+- [x] T002 Create `src/types/` directory structure
 
 ## Phase 2: Core Types
 
-- [ ] T003 [P] Create `src/types/feature.ts` - Feature, FeaturePaths, BranchInfo, PrerequisiteResult types with JSDoc
-- [ ] T004 [P] Create `src/types/ticket.ts` - TicketProvider (string + constants), TicketRef, TicketParams, TicketUpdates with JSDoc
-- [ ] T005 [P] Create `src/types/task.ts` - Task, TaskGroup, TaskGroupEntry, SubTask, GroupingStrategy, TaskIdConfig with JSDoc
-- [ ] T006 [P] Create `src/types/clarification.ts` - ClarificationQuestion, ClarificationOption, ClarificationBatch, ClarificationsFile with JSDoc
-- [ ] T007 [P] Create `src/types/dependency.ts` - TaskDependency, DependencyGraph, DependencyValidationResult, CircularDependency with JSDoc
-- [ ] T008 [P] Create `src/types/issue.ts` - IssuePlan, CreatedIssue, TasksToIssuesResult with JSDoc
-- [ ] T009 [P] Create `src/types/errors.ts` - ErrorCode union, McpError interface, createError factory function with JSDoc
+- [x] T003 [P] Create `src/types/feature.ts` - Feature, FeaturePaths, BranchInfo, PrerequisiteResult types with JSDoc
+- [x] T004 [P] Create `src/types/ticket.ts` - TicketProvider (string + constants), TicketRef, TicketParams, TicketUpdates with JSDoc
+- [x] T005 [P] Create `src/types/task.ts` - Task, TaskGroup, TaskGroupEntry, SubTask, GroupingStrategy, TaskIdConfig with JSDoc
+- [x] T006 [P] Create `src/types/clarification.ts` - ClarificationQuestion, ClarificationOption, ClarificationBatch, ClarificationsFile with JSDoc
+- [x] T007 [P] Create `src/types/dependency.ts` - TaskDependency, DependencyGraph, DependencyValidationResult, CircularDependency with JSDoc
+- [x] T008 [P] Create `src/types/issue.ts` - IssuePlan, CreatedIssue, TasksToIssuesResult with JSDoc
+- [x] T009 [P] Create `src/types/errors.ts` - ErrorCode union, McpError interface, createError factory function with JSDoc
 
 ## Phase 3: Configuration Schema
 
-- [ ] T010 Create `src/types/config.ts` - Zod schemas (TaskIdConfigSchema, FileNamesSchema, SpecKitConfigSchema) with inferred types
+- [x] T010 Create `src/types/config.ts` - Zod schemas (TaskIdConfigSchema, FileNamesSchema, SpecKitConfigSchema) with inferred types
 
 ## Phase 4: Utilities
 
-- [ ] T011 Create `src/utils/index.ts` - buildTaskId, buildTaskGroupId, buildTaskIdPattern, buildTaskGroupIdPattern, escapeRegex utilities
-- [ ] T012 Create `src/types/patterns.ts` - Validation constants (FEATURE_NAME_PATTERN, TASK_ID_PATTERN, USER_STORY_PATTERN, etc.)
+- [x] T011 Create `src/utils/index.ts` - buildTaskId, buildTaskGroupId, buildTaskIdPattern, buildTaskGroupIdPattern, escapeRegex utilities
+- [x] T012 Create `src/types/patterns.ts` - Validation constants (FEATURE_NAME_PATTERN, TASK_ID_PATTERN, USER_STORY_PATTERN, etc.)
 
 ## Phase 5: Integration
 
-- [ ] T013 Create `src/types/index.ts` - Re-export all types from feature, ticket, task, clarification, dependency, issue, errors, config, patterns
-- [ ] T014 Update `src/index.ts` - Export types module and utils module from package entry point
-- [ ] T015 Run `pnpm build` to verify TypeScript compilation succeeds
-- [ ] T016 Verify all types have JSDoc documentation
+- [x] T013 Create `src/types/index.ts` - Re-export all types from feature, ticket, task, clarification, dependency, issue, errors, config, patterns
+- [x] T014 Update `src/index.ts` - Export types module and utils module from package entry point
+- [x] T015 Run `pnpm build` to verify TypeScript compilation succeeds
+- [x] T016 Verify all types have JSDoc documentation
 
 ## Dependencies & Execution Order
 
