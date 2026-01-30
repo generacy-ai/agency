@@ -11,7 +11,7 @@ Questions and answers to clarify the feature specification.
 - A: Yes, in agency-plugin-spec-kit (as mentioned in Agent Assignment)
 - B: Different package location (please specify)
 
-**Answer**: *Pending*
+**Answer**: A - Yes, in agency-plugin-spec-kit (as mentioned in Agent Assignment). Location: `packages/agency-plugin-spec-kit/src/utils/fs.ts`
 
 ### Q2: findRepoRoot Return Type
 **Context**: The spec signature shows `Promise<string>` but the reference implementation returns `Promise<string | null>` when no repo root is found. This affects error handling behavior.
@@ -20,7 +20,7 @@ Questions and answers to clarify the feature specification.
 - A: Return `null` (matching reference implementation)
 - B: Throw an error (requiring custom error type)
 
-**Answer**: *Pending*
+**Answer**: B - Throw an error when no repository root is found. This requires implementing a custom error type.
 
 ### Q3: Custom Error Types
 **Context**: The spec requires 'Proper error handling with custom error types' but the reference implementation uses simple try/catch without custom errors. Need clarity on error handling approach.
@@ -29,7 +29,7 @@ Questions and answers to clarify the feature specification.
 - A: Create custom error classes for different failure modes
 - B: Use standard error handling (match reference implementation)
 
-**Answer**: *Pending*
+**Answer**: A - Create custom error classes for different failure modes (e.g., FileNotFoundError, PermissionError, RepoNotFoundError).
 
 ### Q4: Include copyFile Function
 **Context**: The reference implementation includes `copyFile()` which is not listed in the spec's function signatures. It may be useful for template operations.
@@ -38,5 +38,5 @@ Questions and answers to clarify the feature specification.
 - A: Yes, include copyFile() for completeness
 - B: No, stick to the spec's function list only
 
-**Answer**: *Pending*
+**Answer**: B - No, stick to the spec's function list only. Do not include copyFile().
 

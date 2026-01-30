@@ -4,6 +4,8 @@
 
 ## Summary
 
+Port file system utilities from speckit to the agency-plugin-spec-kit package, implementing async/await functions with custom error types for robust error handling.
+
 ## Parent Epic
 Part of #139
 
@@ -13,21 +15,31 @@ Part of #139
 ## Description
 Port the file system utilities from speckit to the new spec-kit Agency plugin.
 
+## Target Location
+`packages/agency-plugin-spec-kit/src/utils/fs.ts`
+
 ## Acceptance Criteria
-- [ ] Create `src/utils/fs.ts`
-- [ ] Implement `findRepoRoot()` - find repository root by looking for `.git/`
+- [ ] Create `packages/agency-plugin-spec-kit/src/utils/fs.ts`
+- [ ] Implement `findRepoRoot()` - find repository root by looking for `.git/`, throws `RepoNotFoundError` if not found
 - [ ] Implement `readFile()` / `writeFile()` with error handling
 - [ ] Implement `exists()` / `isDirectory()` / `isFile()`
 - [ ] Implement `mkdir()` / `readDir()`
 - [ ] All functions should use async/await
-- [ ] Proper error handling with custom error types
+- [ ] Implement custom error classes: `FileNotFoundError`, `PermissionError`, `RepoNotFoundError`
+- [ ] Update `packages/agency-plugin-spec-kit/src/utils/index.ts` to export fs utilities
 
 ## Functions to Port
 
 ```typescript
-// src/utils/fs.ts
+// packages/agency-plugin-spec-kit/src/utils/fs.ts
 
-export async function findRepoRoot(startPath?: string): Promise<string>;
+// Custom Error Types
+export class FileNotFoundError extends Error { ... }
+export class PermissionError extends Error { ... }
+export class RepoNotFoundError extends Error { ... }
+
+// Functions
+export async function findRepoRoot(startPath?: string): Promise<string>;  // Throws RepoNotFoundError if not found
 export async function readFile(path: string): Promise<string>;
 export async function writeFile(path: string, content: string): Promise<void>;
 export async function exists(path: string): Promise<boolean>;
@@ -41,43 +53,61 @@ export async function readDir(path: string): Promise<string[]>;
 - F1 (package structure)
 
 ## Files to Create/Modify
-- `src/utils/fs.ts`
-- `src/utils/index.ts`
+- `packages/agency-plugin-spec-kit/src/utils/fs.ts`
+- `packages/agency-plugin-spec-kit/src/utils/index.ts`
 
 ## References
 - Current implementation: `/workspaces/claude-plugins/plugins/speckit/mcp-server/src/utils/fs.ts`
 
 ## User Stories
 
-### US1: [Primary User Story]
+### US1: Repository Root Detection
 
-**As a** [user type],
-**I want** [capability],
-**So that** [benefit].
+**As a** plugin developer,
+**I want** to find the repository root from any subdirectory,
+**So that** I can locate configuration files and spec directories reliably.
 
 **Acceptance Criteria**:
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
+- [ ] `findRepoRoot()` traverses up directories looking for `.git/`
+- [ ] Throws `RepoNotFoundError` when no repository is found
+
+### US2: File Operations with Error Handling
+
+**As a** plugin developer,
+**I want** async file operations with meaningful error messages,
+**So that** I can handle failures gracefully and provide useful feedback.
+
+**Acceptance Criteria**:
+- [ ] Custom error types indicate specific failure modes
+- [ ] All operations are async/await compatible
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | [Description] | P1 | |
+| FR-001 | `findRepoRoot()` throws `RepoNotFoundError` when no repo found | P1 | Changed from returning null |
+| FR-002 | Custom error classes for `FileNotFoundError`, `PermissionError`, `RepoNotFoundError` | P1 | |
+| FR-003 | All functions use async/await | P1 | |
+| FR-004 | Do not include `copyFile()` | P2 | Stick to spec's function list |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | [Metric] | [Target] | [How to measure] |
+| SC-001 | All specified functions implemented | 8 functions | Code review |
+| SC-002 | Custom error types implemented | 3 error classes | Code review |
+| SC-003 | TypeScript compilation | No errors | `pnpm build` |
 
 ## Assumptions
 
-- [Assumption 1]
+- The `packages/agency-plugin-spec-kit` directory structure exists (from F1)
+- Node.js `fs/promises` API is available
 
 ## Out of Scope
 
-- [Exclusion 1]
+- `copyFile()` function (not in spec's function list)
+- Synchronous versions of functions
+- File watching capabilities
 
 ---
 
