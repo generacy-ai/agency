@@ -95,10 +95,12 @@ describe('SpecKitPlugin', () => {
 
       await plugin.initialize(core);
 
-      // One tool registered: spec_kit.get_ticket
-      expect(core.registerTool).toHaveBeenCalledTimes(1);
-      expect(core.registeredTools).toHaveLength(1);
-      expect(core.registeredTools[0].name).toBe('spec_kit.get_ticket');
+      // Two tools registered: spec_kit.get_paths and spec_kit.get_ticket
+      expect(core.registerTool).toHaveBeenCalledTimes(2);
+      expect(core.registeredTools).toHaveLength(2);
+      const toolNames = core.registeredTools.map((t) => t.name);
+      expect(toolNames).toContain('spec_kit.get_paths');
+      expect(toolNames).toContain('spec_kit.get_ticket');
     });
 
     it('should use config from core.getConfig', async () => {

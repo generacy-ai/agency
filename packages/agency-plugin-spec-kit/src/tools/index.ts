@@ -7,12 +7,17 @@ import type { SpecKitPluginConfig, SpecKitConfig } from '../config.js';
 import { parseConfig } from '../config.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import { createGetTicketTool } from './get-ticket.js';
+import { createGetPathsTool } from './get-paths.js';
 
 // Import providers to register their factories
 import '../providers/github.js';
 import '../providers/jira.js';
 import '../providers/shortcut.js';
 import '../providers/local.js';
+
+// Re-export individual tool creators for direct access
+export { createGetPathsTool } from './get-paths.js';
+export { createGetTicketTool, createGetTicketToolWithRegistry } from './get-ticket.js';
 
 /**
  * Create all spec tools
@@ -22,8 +27,8 @@ import '../providers/local.js';
  * @returns Array of spec tools
  */
 export function createTools(
-  config: SpecKitPluginConfig | SpecKitConfig,
-  _core: AgencyCoreAPI
+  config: SpecKitPluginConfig | SpecKitConfig | unknown,
+  core: AgencyCoreAPI
 ): AgencyTool[] {
   // Handle both legacy and new config formats
   const resolvedConfig = isLegacyConfig(config)
@@ -33,13 +38,14 @@ export function createTools(
           templates: config.templateDirectory,
         },
       })
-    : config;
+    : parseConfig(config);
 
   // Create provider registry
   const registry = new ProviderRegistry(resolvedConfig);
 
   // Create and return all tools
   return [
+    createGetPathsTool(resolvedConfig, core),
     createGetTicketTool(resolvedConfig, (name) =>
       registry.getProvider(name as Parameters<typeof registry.getProvider>[0])
     ),
@@ -50,10 +56,11 @@ export function createTools(
  * Check if config is legacy format
  */
 function isLegacyConfig(
-  config: SpecKitPluginConfig | SpecKitConfig
+  config: SpecKitPluginConfig | SpecKitConfig | unknown
 ): config is SpecKitPluginConfig {
-  return 'specDirectory' in config || 'templateDirectory' in config;
+  return (
+    typeof config === 'object' &&
+    config !== null &&
+    ('specDirectory' in config || 'templateDirectory' in config)
+  );
 }
-
-// Re-export tool creation functions for direct usage
-export { createGetTicketTool, createGetTicketToolWithRegistry } from './get-ticket.js';

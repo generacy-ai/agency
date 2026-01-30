@@ -1,18 +1,51 @@
 /**
  * Utility functions for spec-kit
  *
- * Provides task ID builders, regex utilities, ticket reference detection,
- * and other helper functions used throughout the spec-kit package.
+ * Provides task ID builders, regex utilities, file system utilities,
+ * git utilities, ticket reference detection, and other helper functions
+ * used throughout the spec-kit package.
  */
 
 import type { TaskIdConfig } from '../types/task.js';
 import { DEFAULT_TASK_ID_CONFIG } from '../types/task.js';
 
 // ============================================================================
+// File System Utilities
+// ============================================================================
+
+// Re-export file system utilities
+export {
+  // Error classes
+  FileNotFoundError,
+  PermissionError,
+  RepoNotFoundError,
+  // Functions
+  exists,
+  isDirectory,
+  isFile,
+  readFile,
+  writeFile,
+  mkdir,
+  readDir,
+  findRepoRoot,
+} from './fs.js';
+
+// ============================================================================
+// Git Utilities
+// ============================================================================
+
+// Re-export git utilities
+export { isGitRepo, getCurrentBranch } from './git.js';
+
+// ============================================================================
 // Ticket Reference Detection
 // ============================================================================
 
 export { detectTicketRef } from './detect-ticket-ref.js';
+
+// ============================================================================
+// Task ID Utilities
+// ============================================================================
 
 /**
  * Build a task ID from a number.
