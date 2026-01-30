@@ -1,8 +1,8 @@
 /**
- * Provider interfaces, error types, and registry for @generacy-ai/agency-plugin-spec-kit
+ * Provider interfaces and implementations for @generacy-ai/agency-plugin-spec-kit
  *
  * This module exports the BacklogProvider interface, supporting types,
- * and registry functions for implementing and managing backlog system integrations.
+ * error classes, and provider implementations.
  *
  * @example
  * ```typescript
@@ -13,17 +13,15 @@
  *   ProviderError,
  *   AuthError,
  *   NotFoundError,
- *   ProviderNotFoundError,
- *   createProvider,
- *   getProvider,
- *   getConfiguredProvider,
+ *   ProviderRegistry,
+ *   GitHubProvider,
  * } from '@generacy-ai/agency-plugin-spec-kit/providers';
  * ```
  */
 
 import type { z } from 'zod';
 import type { BacklogConfigSchema } from '../config.js';
-import type { BacklogProvider } from './types.js';
+import type { BacklogProvider, BacklogProviderName } from './types.js';
 import { ProviderNotFoundError } from './errors.js';
 
 // ============================================================================
@@ -52,7 +50,26 @@ export type {
 } from './types.js';
 
 // ============================================================================
-// Provider Registry
+// Registry
+// ============================================================================
+
+export {
+  ProviderRegistry,
+  registerProviderFactory,
+  type ProviderFactory,
+} from './registry.js';
+
+// ============================================================================
+// Provider Implementations
+// ============================================================================
+
+export { GitHubProvider } from './github.js';
+export { JiraProvider } from './jira.js';
+export { ShortcutProvider } from './shortcut.js';
+export { LocalProvider } from './local.js';
+
+// ============================================================================
+// Compatibility Layer (for develop branch API)
 // ============================================================================
 
 /**

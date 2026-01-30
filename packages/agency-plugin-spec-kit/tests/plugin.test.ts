@@ -89,15 +89,18 @@ describe('SpecKitPlugin', () => {
       await expect(plugin.initialize(core)).resolves.toBeUndefined();
     });
 
-    it('should register get_paths tool', async () => {
+    it('should register tools on initialize', async () => {
       const plugin = new SpecKitPlugin();
       const core = createMockCoreAPI();
 
       await plugin.initialize(core);
 
-      expect(core.registerTool).toHaveBeenCalledTimes(1);
-      expect(core.registeredTools).toHaveLength(1);
-      expect(core.registeredTools[0].name).toBe('spec_kit.get_paths');
+      // Two tools registered: spec_kit.get_paths and spec_kit.get_ticket
+      expect(core.registerTool).toHaveBeenCalledTimes(2);
+      expect(core.registeredTools).toHaveLength(2);
+      const toolNames = core.registeredTools.map((t) => t.name);
+      expect(toolNames).toContain('spec_kit.get_paths');
+      expect(toolNames).toContain('spec_kit.get_ticket');
     });
 
     it('should use config from core.getConfig', async () => {
