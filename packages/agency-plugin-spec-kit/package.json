@@ -13,7 +13,9 @@
     },
     "./package.json": "./package.json"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
@@ -22,10 +24,18 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
-  "keywords": ["mcp", "agent", "generacy", "spec", "specification", "feature"],
+  "keywords": [
+    "mcp",
+    "agent",
+    "generacy",
+    "spec",
+    "specification",
+    "feature"
+  ],
   "author": "Generacy AI",
   "license": "MIT",
   "dependencies": {
+    "simple-git": "^3.30.0",
     "zod": "^3.24.0"
   },
   "peerDependencies": {
@@ -41,7 +51,10 @@
     "id": "@generacy-ai/agency-plugin-spec-kit",
     "name": "Spec Kit Plugin",
     "tools": [],
-    "modes": ["research", "coding"],
+    "modes": [
+      "research",
+      "coding"
+    ],
     "dependencies": [],
     "critical": false
   }

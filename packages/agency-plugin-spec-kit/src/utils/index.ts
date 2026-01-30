@@ -2,7 +2,7 @@
  * Utility functions for spec-kit
  *
  * Provides task ID builders, regex utilities, file system utilities,
- * and other helper functions used throughout the spec-kit package.
+ * git utilities, and other helper functions used throughout the spec-kit package.
  */
 
 import type { TaskIdConfig } from '../types/task.js';
@@ -24,6 +24,9 @@ export {
   readDir,
   findRepoRoot,
 } from './fs.js';
+
+// Re-export git utilities
+export { isGitRepo, getCurrentBranch } from './git.js';
 
 /**
  * Build a task ID from a number.

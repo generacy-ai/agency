@@ -89,15 +89,15 @@ describe('SpecKitPlugin', () => {
       await expect(plugin.initialize(core)).resolves.toBeUndefined();
     });
 
-    it('should register no tools (tools added in later features)', async () => {
+    it('should register get_paths tool', async () => {
       const plugin = new SpecKitPlugin();
       const core = createMockCoreAPI();
 
       await plugin.initialize(core);
 
-      // Note: createTools currently returns empty array; tools implemented in F5-F9
-      expect(core.registerTool).toHaveBeenCalledTimes(0);
-      expect(core.registeredTools).toHaveLength(0);
+      expect(core.registerTool).toHaveBeenCalledTimes(1);
+      expect(core.registeredTools).toHaveLength(1);
+      expect(core.registeredTools[0].name).toBe('spec_kit.get_paths');
     });
 
     it('should use config from core.getConfig', async () => {

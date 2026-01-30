@@ -3,19 +3,26 @@
  */
 
 import type { AgencyTool, AgencyCoreAPI } from '@generacy-ai/agency';
-import type { SpecKitPluginConfig } from '../config.js';
+import type { SpecKitConfig } from '../config.js';
+import { parseConfig } from '../config.js';
+import { createGetPathsTool } from './get-paths.js';
+
+// Re-export individual tool creators for direct access
+export { createGetPathsTool } from './get-paths.js';
 
 /**
  * Create all spec tools
  *
- * @param config - Plugin configuration
+ * @param config - Plugin configuration (raw or parsed)
  * @param core - Agency core API
- * @returns Array of spec tools (empty for skeleton)
+ * @returns Array of spec tools
  */
 export function createTools(
-  _config: SpecKitPluginConfig,
-  _core: AgencyCoreAPI
+  config: unknown,
+  core: AgencyCoreAPI
 ): AgencyTool[] {
-  // Tools will be added here in subsequent features
-  return [];
+  // Parse config to ensure defaults are applied
+  const parsedConfig: SpecKitConfig = parseConfig(config);
+
+  return [createGetPathsTool(parsedConfig, core)];
 }
