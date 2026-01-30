@@ -172,6 +172,24 @@ export {
   isValidTaskGroupId,
 } from './utils/index.js';
 
+// ============================================================================
+// Provider Types and Errors
+// ============================================================================
+
+// Error classes (runtime exports)
+export { ProviderError, AuthError, NotFoundError } from './providers/index.js';
+
+// Provider types
+export type {
+  BacklogProviderName,
+  TicketState,
+  TicketCreateParams as BacklogTicketCreateParams,
+  TicketUpdates as BacklogTicketUpdates,
+  Ticket as BacklogTicket,
+  AuthCheckResult,
+  BacklogProvider,
+} from './providers/index.js';
+
 // Default export for plugin
 import { SpecKitPlugin } from './plugin.js';
 export default SpecKitPlugin;
