@@ -10,23 +10,23 @@
 
 ## Phase 1: Foundation - Utility Functions
 
-- [ ] T001 [P] Create `src/utils/fs.ts` with file system utilities (`exists`, `findRepoRoot`, `readDir`)
-- [ ] T002 [P] Create `src/utils/git.ts` with git utilities (`isGitRepo`, `getCurrentBranch`)
-- [ ] T003 Update `src/utils/index.ts` to export new utility modules
+- [X] T001 [P] Create `src/utils/fs.ts` with file system utilities (`exists`, `findRepoRoot`, `readDir`)
+- [X] T002 [P] Create `src/utils/git.ts` with git utilities (`isGitRepo`, `getCurrentBranch`)
+- [X] T003 Update `src/utils/index.ts` to export new utility modules
 
 ## Phase 2: Core Implementation
 
-- [ ] T004 Create `src/tools/get-paths.ts` with `createGetPathsTool` factory function
-- [ ] T005 Implement path resolution logic (SPECIFY_FEATURE → branch → extract name → build paths)
-- [ ] T006 Add config-based file name customization support (specDirectory, fileNames, directoryNames)
-- [ ] T007 Implement error handling (FEATURE_DIR_NOT_FOUND, INVALID_BRANCH_NAME)
-- [ ] T008 Update `src/tools/index.ts` to export the new tool
+- [X] T004 Create `src/tools/get-paths.ts` with `createGetPathsTool` factory function
+- [X] T005 Implement path resolution logic (SPECIFY_FEATURE → branch → extract name → build paths)
+- [X] T006 Add config-based file name customization support (specDirectory, fileNames, directoryNames)
+- [X] T007 Implement error handling (FEATURE_DIR_NOT_FOUND, INVALID_BRANCH_NAME)
+- [X] T008 Update `src/tools/index.ts` to export the new tool
 
 ## Phase 3: Testing
 
-- [ ] T009 [P] Create `tests/utils/fs.test.ts` with unit tests for fs utilities
-- [ ] T010 [P] Create `tests/utils/git.test.ts` with unit tests for git utilities
-- [ ] T011 Create `tests/tools/get-paths.test.ts` with unit tests for the tool:
+- [X] T009 [P] Create `tests/utils/fs.test.ts` with unit tests for fs utilities
+- [X] T010 [P] Create `tests/utils/git.test.ts` with unit tests for git utilities
+- [X] T011 Create `tests/tools/get-paths.test.ts` with unit tests for the tool:
   - Test explicit branch parameter
   - Test SPECIFY_FEATURE env var override
   - Test current branch detection
@@ -36,9 +36,9 @@
 
 ## Phase 4: Integration & Verification
 
-- [ ] T012 Run full test suite and fix any failures
-- [ ] T013 Build package and verify no TypeScript errors
-- [ ] T014 Manual verification: test tool with actual git branch
+- [X] T012 Run full test suite and fix any failures
+- [X] T013 Build package and verify no TypeScript errors
+- [X] T014 [manual] Manual verification: test tool with actual git branch
 
 ## Dependencies & Execution Order
 
