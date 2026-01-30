@@ -10,22 +10,22 @@
 
 ## Phase 1: Error Types
 
-- [ ] T001 [AC4] Create `packages/backlog/src/providers/errors.ts` with ProviderError base class
-- [ ] T002 [P] [AC4] Add AuthError class extending ProviderError in `packages/backlog/src/providers/errors.ts`
-- [ ] T003 [P] [AC4] Add NotFoundError class with optional ref property in `packages/backlog/src/providers/errors.ts`
+- [x] T001 [AC4] Create `packages/agency-plugin-spec-kit/src/providers/errors.ts` with ProviderError base class
+- [x] T002 [P] [AC4] Add AuthError class extending ProviderError in `packages/agency-plugin-spec-kit/src/providers/errors.ts`
+- [x] T003 [P] [AC4] Add NotFoundError class with optional ref property in `packages/agency-plugin-spec-kit/src/providers/errors.ts`
 
 ## Phase 2: Interface Types
 
-- [ ] T004 [AC1] Create `packages/backlog/src/providers/types.ts` with BacklogProvider interface
-- [ ] T005 [P] [AC2] Add TicketCreateParams interface in `packages/backlog/src/providers/types.ts`
-- [ ] T006 [P] [AC2] Add TicketUpdates type alias in `packages/backlog/src/providers/types.ts`
-- [ ] T007 [P] [AC2] Add Ticket interface in `packages/backlog/src/providers/types.ts`
-- [ ] T008 [AC5] Add JSDoc comments documenting optional vs required methods in `packages/backlog/src/providers/types.ts`
+- [x] T004 [AC1] Create `packages/agency-plugin-spec-kit/src/providers/types.ts` with BacklogProvider interface
+- [x] T005 [P] [AC2] Add TicketCreateParams interface in `packages/agency-plugin-spec-kit/src/providers/types.ts`
+- [x] T006 [P] [AC2] Add TicketUpdates type alias in `packages/agency-plugin-spec-kit/src/providers/types.ts`
+- [x] T007 [P] [AC2] Add Ticket interface in `packages/agency-plugin-spec-kit/src/providers/types.ts`
+- [x] T008 [AC5] Add JSDoc comments documenting optional vs required methods in `packages/agency-plugin-spec-kit/src/providers/types.ts`
 
 ## Phase 3: Module Exports
 
-- [ ] T009 Create `packages/backlog/src/providers/index.ts` with re-exports for types and errors
-- [ ] T010 Update `packages/backlog/src/index.ts` to export providers module
+- [x] T009 Create `packages/agency-plugin-spec-kit/src/providers/index.ts` with re-exports for types and errors
+- [x] T010 Update `packages/agency-plugin-spec-kit/src/index.ts` to export providers module
 
 ## Dependencies & Execution Order
 
