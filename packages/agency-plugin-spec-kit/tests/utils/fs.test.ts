@@ -6,7 +6,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { exists, readDir, findRepoRoot } from '../../src/utils/fs.js';
+import {
+  exists,
+  readDir,
+  findRepoRoot,
+  FileNotFoundError,
+  RepoNotFoundError,
+} from '../../src/utils/fs.js';
 
 describe('fs utilities', () => {
   let testDir: string;
@@ -61,12 +67,10 @@ describe('fs utilities', () => {
       expect(entries).toHaveLength(3);
     });
 
-    it('should return empty array for non-existent directory', async () => {
+    it('should throw FileNotFoundError for non-existent directory', async () => {
       const fakePath = join(testDir, 'does-not-exist');
 
-      const entries = await readDir(fakePath);
-
-      expect(entries).toEqual([]);
+      await expect(readDir(fakePath)).rejects.toThrow(FileNotFoundError);
     });
 
     it('should return empty array for empty directory', async () => {
@@ -93,19 +97,6 @@ describe('fs utilities', () => {
       expect(root).toBe(repoDir);
     });
 
-    it('should find repo root with specs directory (non-git)', async () => {
-      // Create a mock non-git repo with specs directory
-      const repoDir = join(testDir, 'project');
-      await fs.mkdir(repoDir);
-      await fs.mkdir(join(repoDir, 'specs'));
-      const nestedDir = join(repoDir, 'src', 'utils');
-      await fs.mkdir(nestedDir, { recursive: true });
-
-      const root = await findRepoRoot(nestedDir);
-
-      expect(root).toBe(repoDir);
-    });
-
     it('should prefer .git over specs if both exist', async () => {
       // Create a directory with both .git and specs
       const repoDir = join(testDir, 'repo');
@@ -120,14 +111,12 @@ describe('fs utilities', () => {
       expect(root).toBe(repoDir);
     });
 
-    it('should return null if no repo root found', async () => {
+    it('should throw RepoNotFoundError if no repo root found', async () => {
       // Use a path with no parent markers
       const orphanDir = join(testDir, 'orphan');
       await fs.mkdir(orphanDir);
 
-      const root = await findRepoRoot(orphanDir);
-
-      expect(root).toBeNull();
+      await expect(findRepoRoot(orphanDir)).rejects.toThrow(RepoNotFoundError);
     });
   });
 });

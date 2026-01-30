@@ -11,7 +11,14 @@ import type { FeaturePaths } from '../types/feature.js';
 import type { SpecKitConfig } from '../config.js';
 import { FEATURE_NAME_PATTERN } from '../types/patterns.js';
 import { createError } from '../types/errors.js';
-import { exists, readDir, findRepoRoot, isGitRepo, getCurrentBranch } from '../utils/index.js';
+import {
+  exists,
+  readDir,
+  findRepoRoot,
+  isGitRepo,
+  getCurrentBranch,
+  RepoNotFoundError,
+} from '../utils/index.js';
 
 /**
  * Parameters for the get_paths tool
@@ -166,22 +173,27 @@ export function createGetPathsTool(
       const workDir = cwd || process.cwd();
 
       // Find repo root
-      const repoRoot = await findRepoRoot(workDir);
-      if (!repoRoot) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                success: false,
-                error: createError(
-                  'FEATURE_DIR_NOT_FOUND',
-                  'Could not find repository root'
-                ),
-              }),
-            },
-          ],
-        };
+      let repoRoot: string;
+      try {
+        repoRoot = await findRepoRoot(workDir);
+      } catch (error) {
+        if (error instanceof RepoNotFoundError) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  success: false,
+                  error: createError(
+                    'FEATURE_DIR_NOT_FOUND',
+                    'Could not find repository root'
+                  ),
+                }),
+              },
+            ],
+          };
+        }
+        throw error;
       }
 
       // Determine specs directory path
