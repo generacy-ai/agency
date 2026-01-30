@@ -1,0 +1,336 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Humancy Clarification API Contract",
+  "description": "Interface definitions for Humancy integration with speckit clarifications",
+  "definitions": {
+    "ClarificationQuestion": {
+      "type": "object",
+      "description": "A single clarification question",
+      "required": ["number", "topic", "context", "question"],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Unique question number (sequential across all batches)"
+        },
+        "topic": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50,
+          "description": "Short topic identifier"
+        },
+        "context": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 500,
+          "description": "Why this question matters"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 1000,
+          "description": "The actual question"
+        },
+        "options": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ClarificationOption" },
+          "description": "Multiple-choice options (optional)"
+        },
+        "answer": {
+          "type": ["string", "null"],
+          "description": "Human's answer (null if pending)"
+        },
+        "decisionId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Humancy decision ID for tracking"
+        },
+        "urgency": {
+          "$ref": "#/definitions/ClarificationUrgency"
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1000,
+          "description": "Custom timeout in milliseconds"
+        }
+      }
+    },
+    "ClarificationOption": {
+      "type": "object",
+      "required": ["label", "description"],
+      "properties": {
+        "label": {
+          "type": "string",
+          "pattern": "^[A-Z]$",
+          "description": "Option identifier (A, B, C, etc.)"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "What this option means"
+        }
+      }
+    },
+    "ClarificationUrgency": {
+      "type": "string",
+      "enum": ["blocking", "important", "optional"],
+      "description": "Question urgency level"
+    },
+    "ClarificationBatch": {
+      "type": "object",
+      "required": ["number", "timestamp", "questions"],
+      "properties": {
+        "number": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Batch number"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When batch was created"
+        },
+        "questions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ClarificationQuestion" },
+          "minItems": 1,
+          "maxItems": 20
+        }
+      }
+    },
+    "HumancyQuestionRequest": {
+      "type": "object",
+      "description": "Request to Humancy ask_question tool",
+      "required": ["question"],
+      "properties": {
+        "question": {
+          "type": "string",
+          "description": "The question text"
+        },
+        "context": {
+          "type": "string",
+          "description": "Additional context"
+        },
+        "urgency": {
+          "type": "string",
+          "enum": ["blocking_now", "blocking_soon", "when_available"]
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Timeout in milliseconds"
+        }
+      }
+    },
+    "HumancyQuestionResponse": {
+      "type": "object",
+      "required": ["answer"],
+      "properties": {
+        "answer": {
+          "type": "string",
+          "description": "Human's text answer"
+        },
+        "decisionId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Decision ID for tracking"
+        }
+      }
+    },
+    "HumancyDecisionRequest": {
+      "type": "object",
+      "description": "Request to Humancy request_decision tool",
+      "required": ["question", "options"],
+      "properties": {
+        "question": {
+          "type": "string",
+          "description": "The decision question"
+        },
+        "options": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/HumancyDecisionOption" },
+          "minItems": 2
+        },
+        "domain": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Domain tags for principle matching"
+        },
+        "decisionContext": {
+          "type": "object",
+          "properties": {
+            "projectConstraints": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "relatedIssue": {
+              "type": "string"
+            }
+          }
+        },
+        "includeRecommendations": {
+          "type": "boolean",
+          "description": "Enable three-layer recommendations"
+        },
+        "urgency": {
+          "type": "string",
+          "enum": ["blocking_now", "blocking_soon", "when_available"]
+        },
+        "timeout": {
+          "type": "integer"
+        }
+      }
+    },
+    "HumancyDecisionOption": {
+      "type": "object",
+      "required": ["id", "label"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier"
+        },
+        "label": {
+          "type": "string",
+          "description": "Display label"
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description"
+        }
+      }
+    },
+    "HumancyDecisionResponse": {
+      "type": "object",
+      "required": ["selectedOption"],
+      "properties": {
+        "selectedOption": {
+          "type": "string",
+          "description": "Selected option ID"
+        },
+        "decisionId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "baseline": { "$ref": "#/definitions/Recommendation" },
+        "protege": { "$ref": "#/definitions/ProtegeRecommendation" },
+        "human": { "$ref": "#/definitions/HumanDecision" }
+      }
+    },
+    "Recommendation": {
+      "type": "object",
+      "required": ["optionId", "confidence", "reasoning"],
+      "properties": {
+        "optionId": { "type": "string" },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "reasoning": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "ProtegeRecommendation": {
+      "allOf": [
+        { "$ref": "#/definitions/Recommendation" },
+        {
+          "type": "object",
+          "required": ["appliedPrinciples"],
+          "properties": {
+            "appliedPrinciples": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      ]
+    },
+    "HumanDecision": {
+      "type": "object",
+      "required": ["optionId", "matchedProtege"],
+      "properties": {
+        "optionId": { "type": "string" },
+        "matchedProtege": { "type": "boolean" },
+        "coaching": { "type": ["string", "null"] }
+      }
+    },
+    "UrgencyMapping": {
+      "type": "object",
+      "description": "Maps clarification urgency to Humancy urgency",
+      "properties": {
+        "blocking": {
+          "const": "blocking_now",
+          "description": "Agent is blocked, needs immediate response"
+        },
+        "important": {
+          "const": "blocking_soon",
+          "description": "Agent can continue briefly"
+        },
+        "optional": {
+          "const": "when_available",
+          "description": "Non-blocking, answer when convenient"
+        }
+      }
+    }
+  },
+  "tools": {
+    "manage_clarifications": {
+      "description": "Speckit tool for managing clarifications",
+      "operations": {
+        "read": {
+          "description": "Read clarifications from file",
+          "parameters": {
+            "feature_dir": { "type": "string", "description": "Feature directory path (optional)" },
+            "issue_number": { "type": "integer", "description": "GitHub issue to fetch answers from" }
+          },
+          "returns": {
+            "batches": { "type": "array", "items": { "$ref": "#/definitions/ClarificationBatch" } },
+            "pending_count": { "type": "integer" },
+            "answered_count": { "type": "integer" }
+          }
+        },
+        "append": {
+          "description": "Append new questions to file and send to Humancy",
+          "parameters": {
+            "questions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["topic", "context", "question"],
+                "properties": {
+                  "topic": { "type": "string" },
+                  "context": { "type": "string" },
+                  "question": { "type": "string" },
+                  "options": { "type": "array" },
+                  "urgency": { "$ref": "#/definitions/ClarificationUrgency" },
+                  "timeout": { "type": "integer" }
+                }
+              }
+            },
+            "issue_number": { "type": "integer", "description": "GitHub issue (fallback mode)" },
+            "use_humancy": { "type": "boolean", "default": true }
+          },
+          "returns": {
+            "batch_number": { "type": "integer" },
+            "questions_added": { "type": "integer" },
+            "decision_ids": { "type": "array", "items": { "type": "string" } },
+            "channel": { "type": "string", "enum": ["humancy", "github"] }
+          }
+        },
+        "update_answer": {
+          "description": "Update answer for a specific question",
+          "parameters": {
+            "question_number": { "type": "integer" },
+            "answer": { "type": "string" }
+          },
+          "returns": {
+            "success": { "type": "boolean" },
+            "remaining_pending": { "type": "integer" }
+          }
+        }
+      }
+    }
+  }
+}
