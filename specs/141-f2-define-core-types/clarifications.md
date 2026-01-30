@@ -12,7 +12,7 @@ Questions and answers to clarify the feature specification.
 - B: String with known values as constants (flexible, less type safety)
 - C: Discriminated union with 'other' fallback (balance of safety and flexibility)
 
-**Answer**: *Pending*
+**Answer**: B: String with known values as constants (flexible, less type safety) - We will want to open up allowing new/custom providers to be defined/registered via Agency plugins.
 
 ### Q2: Config Schema Scope
 **Context**: The spec mentions 'SpecKitConfig schema with Zod' but the existing speckit config has many options. Defining scope prevents over/under-engineering.
@@ -22,7 +22,7 @@ Questions and answers to clarify the feature specification.
 - B: Full parity: port all existing speckit config options
 - C: Core + extensible: essential options with room for plugins to extend
 
-**Answer**: *Pending*
+**Answer**: C: Core + extensible - Essential options with room for plugins to extend.
 
 ### Q3: Type Porting Strategy
 **Context**: Existing speckit types include utility functions (buildTaskId, escapeRegex, etc.) alongside type definitions. This affects package scope and maintenance.
@@ -32,5 +32,5 @@ Questions and answers to clarify the feature specification.
 - B: Types + utilities: include related helper functions
 - C: Types + core utilities: only fundamental utilities like ID builders
 
-**Answer**: *Pending*
+**Answer**: B: Types + utilities - Include related helper functions alongside type definitions.
 
