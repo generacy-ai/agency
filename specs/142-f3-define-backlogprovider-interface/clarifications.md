@@ -11,7 +11,7 @@ Questions and answers to clarify the feature specification.
 - A: Import from F2 core types - assume TicketRef is already defined there
 - B: Define locally in types.ts as { provider: string; id: string }
 
-**Answer**: *Pending*
+**Answer**: A - Import from F2 core types. Assume TicketRef is already defined there.
 
 ### Q2: TicketUpdates Interface
 **Context**: The updateTicket method uses TicketUpdates type which is not defined in the spec. This affects what fields can be updated.
@@ -21,7 +21,7 @@ Questions and answers to clarify the feature specification.
 - B: Include state transitions (open/closed/in_progress) in addition to title, body, labels
 - C: Add assignee and milestone fields for providers that support them
 
-**Answer**: *Pending*
+**Answer**: A - Partial<TicketCreateParams>. Only title, body, labels can be updated.
 
 ### Q3: Error Categories
 **Context**: The spec requires src/providers/errors.ts but doesn't specify what error types to define. Error handling is critical for robust provider implementations.
@@ -30,7 +30,7 @@ Questions and answers to clarify the feature specification.
 - A: Minimal: AuthError, NotFoundError, ProviderError (generic)
 - B: Comprehensive: AuthError, NotFoundError, RateLimitError, ValidationError, NetworkError, ProviderError
 
-**Answer**: *Pending*
+**Answer**: A - Minimal error categories: AuthError, NotFoundError, ProviderError (generic).
 
 ### Q4: Provider Config Types
 **Context**: The spec mentions 'define provider-specific config types' but doesn't specify what configuration each provider needs (e.g., API tokens, base URLs, project identifiers).
@@ -40,7 +40,7 @@ Questions and answers to clarify the feature specification.
 - B: Define placeholder interfaces for each provider (GitHubConfig, JiraConfig, etc.)
 - C: Defer to individual provider tasks - only define the interface contract here
 
-**Answer**: *Pending*
+**Answer**: C - Defer to individual provider tasks. Only define the interface contract here.
 
 ### Q5: deleteTicket Method
 **Context**: The interface has getTicket, createTicket, updateTicket but no deleteTicket. Some workflows may need ticket deletion capability.
@@ -49,5 +49,5 @@ Questions and answers to clarify the feature specification.
 - A: Yes, add deleteTicket?(ref: string): Promise<void> as optional
 - B: No, deletion is out of scope - use updateTicket to close instead
 
-**Answer**: *Pending*
+**Answer**: B - No deletion. Deletion is out of scope - use updateTicket to close instead.
 

@@ -4,6 +4,8 @@
 
 ## Summary
 
+Define the `BacklogProvider` interface that abstracts ticket/issue operations across different backlog systems (GitHub, Jira, Shortcut, local), along with minimal error types.
+
 ## Parent Epic
 Part of #139
 
@@ -13,34 +15,36 @@ Define the `BacklogProvider` interface that abstracts ticket/issue operations ac
 ## Acceptance Criteria
 - [ ] Create `src/providers/types.ts` with BacklogProvider interface
 - [ ] Define all required methods with clear contracts
-- [ ] Define provider-specific config types
-- [ ] Create `src/providers/errors.ts` for provider-specific errors
+- [ ] Create `src/providers/errors.ts` with minimal error types (AuthError, NotFoundError, ProviderError)
 - [ ] Document which methods are optional vs required
+- [ ] Import TicketRef from F2 core types (do not define locally)
 
 ## Interface Design
 
 ```typescript
+import { TicketRef } from '../types'; // From F2 core types
+
 interface BacklogProvider {
   readonly name: 'github' | 'jira' | 'shortcut' | 'local';
-  
+
   // Ticket CRUD
   getTicket(ref: string): Promise<Ticket>;
   createTicket(params: TicketCreateParams): Promise<Ticket>;
   updateTicket(ref: string, updates: TicketUpdates): Promise<Ticket>;
-  
+
   // Labels/Tags (optional - some systems may not support)
   setLabels?(ref: string, labels: string[]): Promise<void>;
   getLabels?(ref: string): Promise<string[]>;
-  
+
   // Search (optional)
   searchTickets?(query: string): Promise<Ticket[]>;
-  
+
   // Auth
   checkAuth(): Promise<{ ok: boolean; message?: string }>;
-  
+
   // URL generation
   getTicketUrl(ref: string): string;
-  
+
   // Reference parsing
   parseRef(input: string): TicketRef | null;
 }
@@ -51,6 +55,9 @@ interface TicketCreateParams {
   labels?: string[];
   // Provider-specific fields via generics or extension
 }
+
+// TicketUpdates is Partial<TicketCreateParams> - only title, body, labels can be updated
+type TicketUpdates = Partial<TicketCreateParams>;
 
 interface Ticket {
   ref: TicketRef;
@@ -64,6 +71,36 @@ interface Ticket {
 }
 ```
 
+## Error Types
+
+```typescript
+// src/providers/errors.ts - Minimal error categories
+
+/** Base error for all provider errors */
+class ProviderError extends Error {
+  constructor(message: string, public readonly provider: string) {
+    super(message);
+    this.name = 'ProviderError';
+  }
+}
+
+/** Authentication failed or credentials missing */
+class AuthError extends ProviderError {
+  constructor(message: string, provider: string) {
+    super(message, provider);
+    this.name = 'AuthError';
+  }
+}
+
+/** Resource not found (ticket, label, etc.) */
+class NotFoundError extends ProviderError {
+  constructor(message: string, provider: string, public readonly ref?: string) {
+    super(message, provider);
+    this.name = 'NotFoundError';
+  }
+}
+```
+
 ## Dependencies
 - F1 (package structure)
 - F2 (core types for Ticket, TicketRef)
@@ -71,37 +108,21 @@ interface Ticket {
 ## References
 - Current GitHub integration: `/workspaces/claude-plugins/plugins/speckit/mcp-server/src/utils/github.ts`
 
-## User Stories
+## Clarifications Applied
 
-### US1: [Primary User Story]
-
-**As a** [user type],
-**I want** [capability],
-**So that** [benefit].
-
-**Acceptance Criteria**:
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
-
-## Functional Requirements
-
-| ID | Requirement | Priority | Notes |
-|----|-------------|----------|-------|
-| FR-001 | [Description] | P1 | |
-
-## Success Criteria
-
-| ID | Metric | Target | Measurement |
-|----|--------|--------|-------------|
-| SC-001 | [Metric] | [Target] | [How to measure] |
-
-## Assumptions
-
-- [Assumption 1]
+| Topic | Decision | Rationale |
+|-------|----------|-----------|
+| TicketRef Definition | Import from F2 core types | Already defined in dependency |
+| TicketUpdates Interface | `Partial<TicketCreateParams>` | Only title, body, labels updatable |
+| Error Categories | Minimal (AuthError, NotFoundError, ProviderError) | Keep simple, expand later if needed |
+| Provider Config Types | Deferred to individual provider tasks | Interface contract only here |
+| deleteTicket Method | Not included | Out of scope; use state changes instead |
 
 ## Out of Scope
 
-- [Exclusion 1]
+- Provider-specific configuration types (deferred to individual provider implementations)
+- Ticket deletion functionality (use state changes via updateTicket instead)
+- Rate limiting error handling (can be added later if needed)
 
 ---
 
