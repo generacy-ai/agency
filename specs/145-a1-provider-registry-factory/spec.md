@@ -4,6 +4,8 @@
 
 ## Summary
 
+Create the provider registry and factory that manages BacklogProvider instances based on configuration. The registry supports both name-based lookups and config-based creation, with singleton caching per provider type.
+
 ## Parent Epic
 Part of #139
 
@@ -15,27 +17,32 @@ Create the provider registry and factory that manages BacklogProvider instances 
 
 ## Acceptance Criteria
 - [ ] Create `src/providers/index.ts` with provider registry
-- [ ] Implement `createProvider(config: BacklogConfig): BacklogProvider`
-- [ ] Implement `getProvider(name: string): BacklogProvider`
+- [ ] Implement `createProvider(config: BacklogConfig): BacklogProvider` - factory function
+- [ ] Implement `getProvider(name: string): BacklogProvider` - name-based lookup
+- [ ] Implement `getConfiguredProvider(config: BacklogConfig): BacklogProvider` - config-based creation with caching
 - [ ] Support lazy initialization of providers
-- [ ] Handle provider not found errors gracefully
-- [ ] Cache provider instances (singleton per config)
+- [ ] Handle provider not found errors gracefully with `ProviderNotFoundError`
+- [ ] Cache provider instances using provider name as key (one instance per provider type)
+
+## Design Decisions (from clarifications)
+
+1. **API Design**: Support both lookup methods - `getProvider(name)` for named lookups and `getConfiguredProvider(config)` for config-based creation
+2. **Provider Registration**: No manual registration - providers only created via `createProvider` factory
+3. **Cache Key Strategy**: Use simple provider name as key (one instance per provider type)
 
 ## Implementation
 
 ```typescript
 // src/providers/index.ts
 import type { BacklogProvider, BacklogConfig } from './types.js';
+import { ProviderNotFoundError } from './errors.js';
 
+// Cache uses provider name as key (one instance per provider type)
 const providers = new Map<string, BacklogProvider>();
-
-export function registerProvider(provider: BacklogProvider): void {
-  providers.set(provider.name, provider);
-}
 
 export function createProvider(config: BacklogConfig): BacklogProvider {
   const { provider: name } = config;
-  
+
   switch (name) {
     case 'github':
       return new GitHubProvider(config.github);
@@ -50,12 +57,20 @@ export function createProvider(config: BacklogConfig): BacklogProvider {
   }
 }
 
-export function getConfiguredProvider(config: BacklogConfig): BacklogProvider {
-  const key = JSON.stringify(config);
-  if (!providers.has(key)) {
-    providers.set(key, createProvider(config));
+export function getProvider(name: string): BacklogProvider {
+  const provider = providers.get(name);
+  if (!provider) {
+    throw new ProviderNotFoundError(name);
   }
-  return providers.get(key)!;
+  return provider;
+}
+
+export function getConfiguredProvider(config: BacklogConfig): BacklogProvider {
+  const name = config.provider;
+  if (!providers.has(name)) {
+    providers.set(name, createProvider(config));
+  }
+  return providers.get(name)!;
 }
 ```
 
@@ -68,35 +83,41 @@ export function getConfiguredProvider(config: BacklogConfig): BacklogProvider {
 
 ## User Stories
 
-### US1: [Primary User Story]
+### US1: Provider Instance Access
 
-**As a** [user type],
-**I want** [capability],
-**So that** [benefit].
+**As a** backlog tool developer,
+**I want** to get a configured provider instance by name or config,
+**So that** I can interact with the backlog system without managing provider lifecycle.
 
 **Acceptance Criteria**:
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
+- [ ] Can retrieve provider by name after it has been configured
+- [ ] Can get or create provider instance from config (lazy initialization)
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | [Description] | P1 | |
+| FR-001 | Factory creates providers from config | P1 | Switch on provider name |
+| FR-002 | Named lookup returns cached instances | P1 | Throws if not found |
+| FR-003 | Config-based lookup creates lazily | P1 | Caches by provider name |
+| FR-004 | Invalid provider names throw error | P1 | ProviderNotFoundError |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | [Metric] | [Target] | [How to measure] |
+| SC-001 | Provider creation | Works for all 4 types | Unit tests pass |
+| SC-002 | Caching behavior | One instance per type | Multiple calls return same instance |
 
 ## Assumptions
 
-- [Assumption 1]
+- Provider implementations (GitHubProvider, JiraProvider, etc.) exist or will be stubbed
+- BacklogConfig and BacklogProvider types are defined in `./types.js`
 
 ## Out of Scope
 
-- [Exclusion 1]
+- Manual provider registration (not needed per clarification)
+- Multiple instances of same provider type with different configs
 
 ---
 

@@ -12,7 +12,7 @@ Questions and answers to clarify the feature specification.
 - B: Config-only - use getConfiguredProvider(config) as the primary API
 - C: Name-only - use getProvider(name) which internally uses a default config
 
-**Answer**: *Pending*
+**Answer**: A - Both lookup methods: getProvider(name) for named lookups, getConfiguredProvider(config) for config-based creation. (via GitHub comment from @christrudelpw)
 
 ### Q2: Provider Registration
 **Context**: The implementation includes registerProvider(provider) function that allows manual registration, but this is not mentioned in the acceptance criteria.
@@ -21,7 +21,7 @@ Questions and answers to clarify the feature specification.
 - A: Manual registration required - allow runtime provider injection for testing/plugins
 - B: No manual registration - providers only created via createProvider factory
 
-**Answer**: *Pending*
+**Answer**: B - No manual registration. Providers only created via createProvider factory. (via GitHub comment from @christrudelpw)
 
 ### Q3: Cache Key Strategy
 **Context**: Using JSON.stringify(config) as cache key may have issues with property ordering causing duplicate instances for equivalent configs.
@@ -31,5 +31,5 @@ Questions and answers to clarify the feature specification.
 - B: Use simple provider name as key (one instance per provider type)
 - C: Current approach is acceptable - trust configs to be consistently ordered
 
-**Answer**: *Pending*
+**Answer**: B - Use simple provider name as key (one instance per provider type). (via GitHub comment from @christrudelpw)
 
