@@ -182,11 +182,24 @@ export {
 } from './utils/index.js';
 
 // ============================================================================
-// Provider Types and Errors
+// Provider Types, Errors, and Registry
 // ============================================================================
 
 // Error classes (runtime exports)
-export { ProviderError, AuthError, NotFoundError } from './providers/index.js';
+export {
+  ProviderError,
+  AuthError,
+  NotFoundError,
+  ProviderNotFoundError,
+} from './providers/index.js';
+
+// Registry functions (runtime exports)
+export {
+  createProvider,
+  getProvider,
+  getConfiguredProvider,
+  clearProviderCache,
+} from './providers/index.js';
 
 // Provider types
 export type {
@@ -197,6 +210,7 @@ export type {
   Ticket as BacklogTicket,
   AuthCheckResult,
   BacklogProvider,
+  BacklogConfig,
 } from './providers/index.js';
 
 // Default export for plugin

@@ -158,3 +158,36 @@ export class NotFoundError extends ProviderError {
     }
   }
 }
+
+/**
+ * Error thrown when a provider is not found in the registry.
+ *
+ * Use this error for:
+ * - Unknown provider name in factory function
+ * - Provider not registered/cached when using getProvider
+ *
+ * @example
+ * ```typescript
+ * // Unknown provider type
+ * throw new ProviderNotFoundError('unknown');
+ *
+ * // Provider not in cache
+ * throw new ProviderNotFoundError('github');
+ * ```
+ */
+export class ProviderNotFoundError extends ProviderError {
+  /**
+   * Creates a new ProviderNotFoundError.
+   *
+   * @param providerName - The provider name that was not found
+   */
+  constructor(providerName: string) {
+    super(`Provider '${providerName}' not found`, providerName);
+    this.name = 'ProviderNotFoundError';
+
+    // Maintains proper stack trace for where error was thrown (V8 engines)
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, ProviderNotFoundError);
+    }
+  }
+}
