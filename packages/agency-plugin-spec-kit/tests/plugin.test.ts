@@ -4,8 +4,8 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { SpecKitPlugin, createSpecKitPlugin } from '../src/plugin.js';
-import { PLUGIN_MANIFEST } from '../src/manifest.js';
-import { DEFAULT_CONFIG, resolveConfig } from '../src/config.js';
+import { manifest, PLUGIN_MANIFEST } from '../src/manifest.js';
+import { DEFAULT_CONFIG, resolveConfig, parseConfig, SpecKitConfigSchema } from '../src/config.js';
 import type { AgencyCoreAPI, AgencyTool } from '@generacy-ai/agency';
 
 describe('SpecKitPlugin', () => {
@@ -41,9 +41,27 @@ describe('SpecKitPlugin', () => {
       expect(plugin.manifest.id).toBe('@generacy-ai/agency-plugin-spec-kit');
     });
 
-    it('should have empty tools array (skeleton)', () => {
+    it('should have correct name', () => {
       const plugin = new SpecKitPlugin();
-      expect(plugin.manifest.tools).toHaveLength(0);
+      expect(plugin.manifest.name).toBe('Spec Kit');
+    });
+
+    it('should have correct version', () => {
+      const plugin = new SpecKitPlugin();
+      expect(plugin.manifest.version).toBe('0.0.1');
+    });
+
+    it('should have declared tools list', () => {
+      const plugin = new SpecKitPlugin();
+      expect(plugin.manifest.tools).toContain('spec_kit.git_ops');
+      expect(plugin.manifest.tools).toContain('spec_kit.create_feature');
+      expect(plugin.manifest.tools).toContain('spec_kit.manage_clarifications');
+      expect(plugin.manifest.tools).toHaveLength(11);
+    });
+
+    it('should depend on humancy plugin', () => {
+      const plugin = new SpecKitPlugin();
+      expect(plugin.manifest.dependencies).toContain('@generacy-ai/agency-plugin-humancy');
     });
 
     it('should declare correct modes', () => {
@@ -52,7 +70,12 @@ describe('SpecKitPlugin', () => {
       expect(plugin.manifest.modes).toContain('coding');
     });
 
-    it('should match PLUGIN_MANIFEST constant', () => {
+    it('should match manifest constant', () => {
+      const plugin = new SpecKitPlugin();
+      expect(plugin.manifest).toEqual(manifest);
+    });
+
+    it('should match PLUGIN_MANIFEST constant (legacy)', () => {
       const plugin = new SpecKitPlugin();
       expect(plugin.manifest).toEqual(PLUGIN_MANIFEST);
     });
@@ -66,12 +89,13 @@ describe('SpecKitPlugin', () => {
       await expect(plugin.initialize(core)).resolves.toBeUndefined();
     });
 
-    it('should register no tools (skeleton)', async () => {
+    it('should register no tools (tools added in later features)', async () => {
       const plugin = new SpecKitPlugin();
       const core = createMockCoreAPI();
 
       await plugin.initialize(core);
 
+      // Note: createTools currently returns empty array; tools implemented in F5-F9
       expect(core.registerTool).toHaveBeenCalledTimes(0);
       expect(core.registeredTools).toHaveLength(0);
     });
@@ -80,12 +104,27 @@ describe('SpecKitPlugin', () => {
       const plugin = new SpecKitPlugin();
       const core = createMockCoreAPI();
       core.getConfig = vi.fn(() => ({
-        specDirectory: 'custom-specs',
+        paths: { specs: 'custom-specs' },
       }));
 
       await plugin.initialize(core);
 
-      expect(core.getConfig).toHaveBeenCalledWith('plugins.spec-kit');
+      expect(core.getConfig).toHaveBeenCalledWith('plugins.speckit');
+    });
+
+    it('should expose parsed config via getConfig', async () => {
+      const plugin = new SpecKitPlugin();
+      const core = createMockCoreAPI();
+      core.getConfig = vi.fn(() => ({
+        paths: { specs: 'custom-specs' },
+      }));
+
+      await plugin.initialize(core);
+      const config = plugin.getConfig();
+
+      expect(config).toBeDefined();
+      expect(config!.paths.specs).toBe('custom-specs');
+      expect(config!.paths.templates).toBe('.specify/templates'); // default
     });
   });
 
@@ -98,14 +137,15 @@ describe('SpecKitPlugin', () => {
       await expect(plugin.shutdown()).resolves.toBeUndefined();
     });
 
-    it('should unregister all tools (none in skeleton)', async () => {
+    it('should attempt to unregister declared tools', async () => {
       const plugin = new SpecKitPlugin();
       const core = createMockCoreAPI();
 
       await plugin.initialize(core);
       await plugin.shutdown();
 
-      expect(core.unregisterTool).toHaveBeenCalledTimes(0);
+      // Should attempt to unregister all 11 declared tools
+      expect(core.unregisterTool).toHaveBeenCalledTimes(11);
     });
   });
 
@@ -118,26 +158,69 @@ describe('SpecKitPlugin', () => {
 });
 
 describe('config', () => {
-  describe('DEFAULT_CONFIG', () => {
-    it('should have specDirectory', () => {
-      expect(DEFAULT_CONFIG.specDirectory).toBe('specs');
+  describe('DEFAULT_CONFIG (Zod schema)', () => {
+    it('should have paths.specs default', () => {
+      expect(DEFAULT_CONFIG.paths.specs).toBe('specs');
     });
 
-    it('should have templateDirectory', () => {
-      expect(DEFAULT_CONFIG.templateDirectory).toBe('.spec-templates');
+    it('should have paths.templates default', () => {
+      expect(DEFAULT_CONFIG.paths.templates).toBe('.specify/templates');
+    });
+
+    it('should have branches defaults', () => {
+      expect(DEFAULT_CONFIG.branches.pattern).toBe('{paddedNumber}-{slug}');
+      expect(DEFAULT_CONFIG.branches.numberPadding).toBe(3);
+      expect(DEFAULT_CONFIG.branches.maxSlugWords).toBe(4);
+    });
+
+    it('should have backlog.provider default', () => {
+      expect(DEFAULT_CONFIG.backlog.provider).toBe('github');
     });
   });
 
-  describe('resolveConfig', () => {
-    it('should return defaults when no user config', () => {
-      const config = resolveConfig();
+  describe('parseConfig', () => {
+    it('should return defaults when no config provided', () => {
+      const config = parseConfig();
       expect(config).toEqual(DEFAULT_CONFIG);
     });
 
-    it('should merge user config with defaults', () => {
+    it('should merge partial config with defaults', () => {
+      const config = parseConfig({
+        paths: { specs: 'features' },
+      });
+      expect(config.paths.specs).toBe('features');
+      expect(config.paths.templates).toBe('.specify/templates'); // default
+    });
+
+    it('should parse backlog provider config', () => {
+      const config = parseConfig({
+        backlog: {
+          provider: 'jira',
+          jira: {
+            baseUrl: 'https://jira.example.com',
+            projectKey: 'PROJ',
+          },
+        },
+      });
+      expect(config.backlog.provider).toBe('jira');
+      expect(config.backlog.jira).toEqual({
+        baseUrl: 'https://jira.example.com',
+        projectKey: 'PROJ',
+      });
+    });
+  });
+
+  describe('resolveConfig (legacy)', () => {
+    it('should return legacy format with defaults', () => {
+      const config = resolveConfig();
+      expect(config.specDirectory).toBe('specs');
+      expect(config.templateDirectory).toBe('.specify/templates');
+    });
+
+    it('should merge user config', () => {
       const config = resolveConfig({ specDirectory: 'custom-specs' });
       expect(config.specDirectory).toBe('custom-specs');
-      expect(config.templateDirectory).toBe('.spec-templates');
+      expect(config.templateDirectory).toBe('.specify/templates');
     });
 
     it('should override all values when provided', () => {
