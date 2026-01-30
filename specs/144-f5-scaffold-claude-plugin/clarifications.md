@@ -12,7 +12,7 @@ Questions and answers to clarify the feature specification.
 - B: Basic template structure with TODO markers indicating what sections to fill
 - C: Copy the full content from existing speckit commands at /workspaces/claude-plugins/plugins/speckit/commands/
 
-**Answer**: *Pending*
+**Answer**: C - Copy the full content from existing speckit commands at /workspaces/claude-plugins/plugins/speckit/commands/
 
 ### Q2: Missing constitution.md
 **Context**: The existing speckit plugin has a constitution.md command that manages project governance principles, but it's not listed in this spec's command list.
@@ -21,5 +21,5 @@ Questions and answers to clarify the feature specification.
 - A: Include constitution.md in the list of commands to scaffold
 - B: Exclude it - constitution.md is not needed for this plugin
 
-**Answer**: *Pending*
+**Answer**: A - Include constitution.md in the list of commands to scaffold
 

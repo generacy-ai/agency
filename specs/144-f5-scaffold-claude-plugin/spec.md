@@ -14,7 +14,7 @@ Create the initial structure for the Claude Code plugin `agency-spec-kit` that w
 - [ ] Create `packages/claude-plugin-agency-spec-kit/` directory
 - [ ] Set up `.claude-plugin/plugin.json` with plugin metadata
 - [ ] Create `commands/` directory for slash command definitions
-- [ ] Create placeholder command files:
+- [ ] Copy command files from existing speckit plugin (`/workspaces/claude-plugins/plugins/speckit/commands/`):
   - `commands/specify.md`
   - `commands/clarify.md`
   - `commands/plan.md`
@@ -23,6 +23,7 @@ Create the initial structure for the Claude Code plugin `agency-spec-kit` that w
   - `commands/implement.md`
   - `commands/checklist.md`
   - `commands/analyze.md`
+  - `commands/constitution.md`
 - [ ] Document relationship with Agency plugin in README
 
 ## Plugin Structure
@@ -39,7 +40,8 @@ packages/claude-plugin-agency-spec-kit/
 │   ├── taskstoissues.md
 │   ├── implement.md
 │   ├── checklist.md
-│   └── analyze.md
+│   ├── analyze.md
+│   └── constitution.md
 └── README.md
 ```
 
