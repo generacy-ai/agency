@@ -10,28 +10,28 @@
 
 ## Phase 1: Setup & Tests
 
-- [ ] T001 Create test file `packages/agency-plugin-spec-kit/tests/tools/check-prereqs.test.ts` with test structure
-- [ ] T002 [P] Write test cases for valid prerequisites (all required files exist)
-- [ ] T003 [P] Write test cases for missing required files (spec.md, plan.md, tasks.md)
-- [ ] T004 [P] Write test cases for available docs detection (optional files, contracts, checklists)
-- [ ] T005 [P] Write test cases for edge cases (feature dir not found, invalid branch, include_tasks)
+- [X] T001 Create test file `packages/agency-plugin-spec-kit/tests/tools/check-prereqs.test.ts` with test structure
+- [X] T002 [P] Write test cases for valid prerequisites (all required files exist)
+- [X] T003 [P] Write test cases for missing required files (spec.md, plan.md, tasks.md)
+- [X] T004 [P] Write test cases for available docs detection (optional files, contracts, checklists)
+- [X] T005 [P] Write test cases for edge cases (feature dir not found, invalid branch, include_tasks)
 
 ## Phase 2: Core Implementation
 
-- [ ] T006 Create `packages/agency-plugin-spec-kit/src/tools/check-prereqs.ts` with tool factory function
-- [ ] T007 Implement `CheckPrereqsParams` interface for type-safe parameters
-- [ ] T008 Implement feature directory resolution using existing get-paths pattern
-- [ ] T009 Implement required file validation (spec.md, plan.md, tasks.md with configurable flags)
-- [ ] T010 Implement available docs detection (research.md, data-model.md, quickstart.md)
-- [ ] T011 Implement contracts directory scanning (list .md files in contracts/)
-- [ ] T012 Implement checklists directory scanning (list .md files in checklists/)
-- [ ] T013 Implement `include_tasks` parameter behavior for optional tasks.md inclusion
+- [X] T006 Create `packages/agency-plugin-spec-kit/src/tools/check-prereqs.ts` with tool factory function
+- [X] T007 Implement `CheckPrereqsParams` interface for type-safe parameters
+- [X] T008 Implement feature directory resolution using existing get-paths pattern
+- [X] T009 Implement required file validation (spec.md, plan.md, tasks.md with configurable flags)
+- [X] T010 Implement available docs detection (research.md, data-model.md, quickstart.md)
+- [X] T011 Implement contracts directory scanning (list .md files in contracts/)
+- [X] T012 Implement checklists directory scanning (list .md files in checklists/)
+- [X] T013 Implement `include_tasks` parameter behavior for optional tasks.md inclusion
 
 ## Phase 3: Integration
 
-- [ ] T014 Add export to `packages/agency-plugin-spec-kit/src/tools/index.ts`
-- [ ] T015 Run tests and verify all pass
-- [ ] T016 Manual verification: test tool with CLI against real feature directory
+- [X] T014 Add export to `packages/agency-plugin-spec-kit/src/tools/index.ts`
+- [X] T015 Run tests and verify all pass
+- [X] T016 Manual verification: test tool with CLI against real feature directory
 
 ## Dependencies & Execution Order
 
