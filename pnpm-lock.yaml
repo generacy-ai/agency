@@ -187,6 +187,10 @@ importers:
         version: 3.2.4(@types/node@20.19.30)(yaml@2.8.2)
 
   packages/agency-plugin-spec-kit:
+    dependencies:
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
     devDependencies:
       '@generacy-ai/agency':
         specifier: workspace:*
