@@ -1,12 +1,18 @@
 /**
  * Utility functions for spec-kit
  *
- * Provides task ID builders, regex utilities, and other helper functions
- * used throughout the spec-kit package.
+ * Provides task ID builders, regex utilities, ticket reference detection,
+ * and other helper functions used throughout the spec-kit package.
  */
 
 import type { TaskIdConfig } from '../types/task.js';
 import { DEFAULT_TASK_ID_CONFIG } from '../types/task.js';
+
+// ============================================================================
+// Ticket Reference Detection
+// ============================================================================
+
+export { detectTicketRef } from './detect-ticket-ref.js';
 
 /**
  * Build a task ID from a number.

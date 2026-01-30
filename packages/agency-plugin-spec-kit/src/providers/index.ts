@@ -1,8 +1,8 @@
 /**
- * Provider interfaces and error types for @generacy-ai/agency-plugin-spec-kit
+ * Provider interfaces and implementations for @generacy-ai/agency-plugin-spec-kit
  *
- * This module exports the BacklogProvider interface and supporting types
- * for implementing backlog system integrations.
+ * This module exports the BacklogProvider interface, supporting types,
+ * error classes, and provider implementations.
  *
  * @example
  * ```typescript
@@ -13,6 +13,8 @@
  *   ProviderError,
  *   AuthError,
  *   NotFoundError,
+ *   ProviderRegistry,
+ *   GitHubProvider,
  * } from '@generacy-ai/agency-plugin-spec-kit/providers';
  * ```
  */
@@ -36,3 +38,22 @@ export type {
   AuthCheckResult,
   BacklogProvider,
 } from './types.js';
+
+// ============================================================================
+// Registry
+// ============================================================================
+
+export {
+  ProviderRegistry,
+  registerProviderFactory,
+  type ProviderFactory,
+} from './registry.js';
+
+// ============================================================================
+// Provider Implementations
+// ============================================================================
+
+export { GitHubProvider } from './github.js';
+export { JiraProvider } from './jira.js';
+export { ShortcutProvider } from './shortcut.js';
+export { LocalProvider } from './local.js';
