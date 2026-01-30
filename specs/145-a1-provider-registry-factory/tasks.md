@@ -10,25 +10,25 @@
 
 ## Phase 1: Error Class
 
-- [ ] T001 [US1] Add `ProviderNotFoundError` class to `packages/agency-plugin-spec-kit/src/providers/errors.ts` extending `ProviderError`
+- [x] T001 [US1] Add `ProviderNotFoundError` class to `packages/agency-plugin-spec-kit/src/providers/errors.ts` extending `ProviderError`
 
 ## Phase 2: Registry Implementation
 
-- [ ] T002 [US1] Add provider cache Map to `packages/agency-plugin-spec-kit/src/providers/index.ts`
-- [ ] T003 [US1] Implement `createProvider(config: BacklogConfig): BacklogProvider` factory function in `packages/agency-plugin-spec-kit/src/providers/index.ts`
-- [ ] T004 [US1] Implement `getProvider(name: string): BacklogProvider` lookup function in `packages/agency-plugin-spec-kit/src/providers/index.ts`
-- [ ] T005 [US1] Implement `getConfiguredProvider(config: BacklogConfig): BacklogProvider` with lazy caching in `packages/agency-plugin-spec-kit/src/providers/index.ts`
+- [x] T002 [US1] Add provider cache Map to `packages/agency-plugin-spec-kit/src/providers/index.ts`
+- [x] T003 [US1] Implement `createProvider(config: BacklogConfig): BacklogProvider` factory function in `packages/agency-plugin-spec-kit/src/providers/index.ts`
+- [x] T004 [US1] Implement `getProvider(name: string): BacklogProvider` lookup function in `packages/agency-plugin-spec-kit/src/providers/index.ts`
+- [x] T005 [US1] Implement `getConfiguredProvider(config: BacklogConfig): BacklogProvider` with lazy caching in `packages/agency-plugin-spec-kit/src/providers/index.ts`
 
 ## Phase 3: Exports
 
-- [ ] T006 [US1] Update `packages/agency-plugin-spec-kit/src/index.ts` to re-export registry functions
+- [x] T006 [US1] Update `packages/agency-plugin-spec-kit/src/index.ts` to re-export registry functions
 
 ## Phase 4: Testing
 
-- [ ] T007 [P] [US1] Create unit tests for `createProvider` factory in `packages/agency-plugin-spec-kit/src/providers/__tests__/registry.test.ts`
-- [ ] T008 [P] [US1] Create unit tests for `getProvider` lookup in `packages/agency-plugin-spec-kit/src/providers/__tests__/registry.test.ts`
-- [ ] T009 [P] [US1] Create unit tests for `getConfiguredProvider` caching behavior in `packages/agency-plugin-spec-kit/src/providers/__tests__/registry.test.ts`
-- [ ] T010 [P] [US1] Create unit tests for `ProviderNotFoundError` in `packages/agency-plugin-spec-kit/src/providers/__tests__/errors.test.ts`
+- [x] T007 [P] [US1] Create unit tests for `createProvider` factory in `packages/agency-plugin-spec-kit/tests/providers/registry.test.ts`
+- [x] T008 [P] [US1] Create unit tests for `getProvider` lookup in `packages/agency-plugin-spec-kit/tests/providers/registry.test.ts`
+- [x] T009 [P] [US1] Create unit tests for `getConfiguredProvider` caching behavior in `packages/agency-plugin-spec-kit/tests/providers/registry.test.ts`
+- [x] T010 [P] [US1] Create unit tests for `ProviderNotFoundError` in `packages/agency-plugin-spec-kit/tests/providers/errors.test.ts`
 
 ## Dependencies & Execution Order
 
