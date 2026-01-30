@@ -10,15 +10,15 @@
 
 ## Phase 1: Core Files
 
-- [ ] T001 [P] [AC1] Create `packages/agency-plugin-spec-kit/src/manifest.ts` with PluginManifest definition
-- [ ] T002 [P] [AC2] Create `packages/agency-plugin-spec-kit/src/config.ts` with Zod schema
-- [ ] T003 [P] [AC3] Create `packages/agency-plugin-spec-kit/src/plugin.ts` with SpecKitPlugin class
-- [ ] T004 [P] [AC4] Create `packages/agency-plugin-spec-kit/src/index.ts` with exports
+- [X] T001 [P] [AC1] Create `packages/agency-plugin-spec-kit/src/manifest.ts` with PluginManifest definition
+- [X] T002 [P] [AC2] Create `packages/agency-plugin-spec-kit/src/config.ts` with Zod schema
+- [X] T003 [P] [AC3] Create `packages/agency-plugin-spec-kit/src/plugin.ts` with SpecKitPlugin class
+- [X] T004 [P] [AC4] Create `packages/agency-plugin-spec-kit/src/index.ts` with exports
 
 ## Phase 2: Validation
 
-- [ ] T005 [AC5] Build the package and verify TypeScript compilation succeeds
-- [ ] T006 [AC5] Verify plugin initializes without errors (manual smoke test)
+- [X] T005 [AC5] Build the package and verify TypeScript compilation succeeds
+- [X] T006 [AC5] Verify plugin initializes without errors (manual smoke test)
 
 ## Dependencies & Execution Order
 

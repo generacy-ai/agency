@@ -12,11 +12,20 @@
 // Plugin
 export { SpecKitPlugin, createSpecKitPlugin } from './plugin.js';
 
-// Configuration
-export { DEFAULT_CONFIG, resolveConfig } from './config.js';
+// Configuration (plugin-level config with backlog provider settings)
+export {
+  SpecKitConfigSchema as PluginConfigSchema,
+  PathsConfigSchema,
+  BranchesConfigSchema,
+  BacklogConfigSchema,
+  parseConfig as parsePluginConfig,
+  DEFAULT_CONFIG,
+  resolveConfig,
+} from './config.js';
+export type { SpecKitConfig as PluginConfig } from './config.js';
 
 // Manifest
-export { PLUGIN_MANIFEST } from './manifest.js';
+export { manifest, modeAffiliations, PLUGIN_MANIFEST } from './manifest.js';
 
 // ============================================================================
 // Types - Re-export all types from types module
