@@ -10,31 +10,31 @@
 
 ## Phase 1: Implementation
 
-- [ ] T001 Create `packages/agency-plugin-spec-kit/src/tools/create-ticket.ts` with factory function
-- [ ] T002 Add input validation for required `title` parameter
-- [ ] T003 Add structured error response for invalid input
-- [ ] T004 Implement execute handler calling provider.createTicket()
-- [ ] T005 Return terse JSON response: `{ created: true, id, url }`
+- [X] T001 Create `packages/agency-plugin-spec-kit/src/tools/create-ticket.ts` with factory function
+- [X] T002 Add input validation for required `title` parameter
+- [X] T003 Add structured error response for invalid input
+- [X] T004 Implement execute handler calling provider.createTicket()
+- [X] T005 Return terse JSON response: `{ created: true, id, url }`
 
 ## Phase 2: Integration
 
-- [ ] T006 Update `packages/agency-plugin-spec-kit/src/tools/index.ts` to import createCreateTicketTool
-- [ ] T007 Add createCreateTicketTool to createTools() array
-- [ ] T008 Export createCreateTicketTool from index.ts
+- [X] T006 Update `packages/agency-plugin-spec-kit/src/tools/index.ts` to import createCreateTicketTool
+- [X] T007 Add createCreateTicketTool to createTools() array
+- [X] T008 Export createCreateTicketTool from index.ts
 
 ## Phase 3: Testing
 
-- [ ] T009 [P] Create `packages/agency-plugin-spec-kit/tests/create-ticket-tool.test.ts`
-- [ ] T010 [P] Add unit test for successful ticket creation
-- [ ] T011 [P] Add unit test for missing title validation error
-- [ ] T012 [P] Add unit test for empty title validation error
-- [ ] T013 Verify all providers work with create_ticket (GitHub, Jira, Shortcut, Local)
+- [X] T009 [P] Create `packages/agency-plugin-spec-kit/tests/create-ticket-tool.test.ts`
+- [X] T010 [P] Add unit test for successful ticket creation
+- [X] T011 [P] Add unit test for missing title validation error
+- [X] T012 [P] Add unit test for empty title validation error
+- [X] T013 Verify all providers work with create_ticket (GitHub, Jira, Shortcut, Local)
 
 ## Phase 4: Verification
 
-- [ ] T014 Run `pnpm build` and verify no type errors
-- [ ] T015 Run `pnpm test` in agency-plugin-spec-kit package
-- [ ] T016 Verify tool appears in MCP server tool listing
+- [X] T014 Run `pnpm build` and verify no type errors
+- [X] T015 Run `pnpm test` in agency-plugin-spec-kit package
+- [X] T016 Verify tool appears in MCP server tool listing
 
 ## Dependencies & Execution Order
 
