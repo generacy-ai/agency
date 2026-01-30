@@ -1,0 +1,45 @@
+{
+  "name": "@generacy-ai/agency-plugin-spec-kit",
+  "version": "0.0.0",
+  "description": "Specification management plugin for Agency - structured feature development tools for agents",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": ["mcp", "agent", "generacy", "spec", "specification", "feature"],
+  "author": "Generacy AI",
+  "license": "MIT",
+  "peerDependencies": {
+    "@generacy-ai/agency": "workspace:*"
+  },
+  "devDependencies": {
+    "@generacy-ai/agency": "workspace:*",
+    "@types/node": "^20.17.12",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.4"
+  },
+  "agency": {
+    "id": "@generacy-ai/agency-plugin-spec-kit",
+    "name": "Spec Kit Plugin",
+    "tools": [],
+    "modes": ["research", "coding"],
+    "dependencies": [],
+    "critical": false
+  }
+}
