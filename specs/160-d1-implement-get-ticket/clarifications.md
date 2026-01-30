@@ -12,7 +12,7 @@ Questions and answers to clarify the feature specification.
 - B: Implement minimal inline versions (just enough to work for GitHub) and refactor when A1/A5 land
 - C: Implement the full getProvider/detectTicketRef logic as part of this issue (effectively absorbing A1/A5 scope)
 
-**Answer**: *Pending*
+**Answer**: C - Implement the full getProvider/detectTicketRef logic as part of this issue (effectively absorbing A1/A5 scope). This includes provider registry and reference auto-detection functionality.
 
 ### Q2: Config Structure
 **Context**: The spec code references config.backlog.provider but SpecKitPluginConfig currently only has specDirectory and templateDirectory. Backlog config structure is undefined.
@@ -22,7 +22,7 @@ Questions and answers to clarify the feature specification.
 - B: Use environment detection (e.g., detect GitHub from git remote) rather than explicit config
 - C: Accept provider as a parameter to createGetTicketTool factory, deferring config design to another issue
 
-**Answer**: *Pending*
+**Answer**: A - Extend SpecKitPluginConfig with a backlog section containing provider name and settings.
 
 ### Q3: Error Handling Scope
 **Context**: The spec lists graceful not-found handling but doesn't specify behavior for: auth failures, network errors, rate limiting, or malformed refs.
@@ -32,5 +32,5 @@ Questions and answers to clarify the feature specification.
 - B: Let provider exceptions propagate (caller handles errors)
 - C: Use existing ProviderError/AuthError/NotFoundError types and map to appropriate MCP error responses
 
-**Answer**: *Pending*
+**Answer**: B - Let provider exceptions propagate (caller handles errors).
 
