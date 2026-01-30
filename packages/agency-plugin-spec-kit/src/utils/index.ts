@@ -1,12 +1,29 @@
 /**
  * Utility functions for spec-kit
  *
- * Provides task ID builders, regex utilities, and other helper functions
- * used throughout the spec-kit package.
+ * Provides task ID builders, regex utilities, file system utilities,
+ * and other helper functions used throughout the spec-kit package.
  */
 
 import type { TaskIdConfig } from '../types/task.js';
 import { DEFAULT_TASK_ID_CONFIG } from '../types/task.js';
+
+// Re-export file system utilities
+export {
+  // Error classes
+  FileNotFoundError,
+  PermissionError,
+  RepoNotFoundError,
+  // Functions
+  exists,
+  isDirectory,
+  isFile,
+  readFile,
+  writeFile,
+  mkdir,
+  readDir,
+  findRepoRoot,
+} from './fs.js';
 
 /**
  * Build a task ID from a number.

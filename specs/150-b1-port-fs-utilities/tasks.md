@@ -10,7 +10,7 @@
 
 ## Phase 1: Error Classes
 
-- [ ] T001 [US2] Create custom error classes in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
+- [X] T001 [US2] Create custom error classes in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
   - `FileNotFoundError` with `path` property and `cause` support
   - `PermissionError` with `path` property and `cause` support
   - `RepoNotFoundError` with `path` property and `cause` support
@@ -18,52 +18,52 @@
 
 ## Phase 2: Core Functions
 
-- [ ] T002 [P] [US2] Implement `exists(path)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
+- [X] T002 [P] [US2] Implement `exists(path)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
   - Use `fs.access()` for efficient existence check
   - Return `true` if path exists, `false` otherwise
 
-- [ ] T003 [P] [US2] Implement `isDirectory(path)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
+- [X] T003 [P] [US2] Implement `isDirectory(path)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
   - Use `fs.stat()` to check if path is a directory
   - Return `false` if path doesn't exist (don't throw)
 
-- [ ] T004 [P] [US2] Implement `isFile(path)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
+- [X] T004 [P] [US2] Implement `isFile(path)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
   - Use `fs.stat()` to check if path is a regular file
   - Return `false` if path doesn't exist (don't throw)
 
-- [ ] T005 [P] [US2] Implement `readFile(path)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
+- [X] T005 [P] [US2] Implement `readFile(path)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
   - Read file as UTF-8 string
   - Throw `FileNotFoundError` if file doesn't exist (ENOENT)
   - Throw `PermissionError` if access denied (EACCES)
 
-- [ ] T006 [P] [US2] Implement `writeFile(path, content)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
+- [X] T006 [P] [US2] Implement `writeFile(path, content)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
   - Write string content to file
   - Create parent directories if needed
   - Throw `PermissionError` if access denied (EACCES)
 
-- [ ] T007 [P] [US2] Implement `mkdir(path, recursive?)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
+- [X] T007 [P] [US2] Implement `mkdir(path, recursive?)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
   - Default `recursive` to `true`
   - Use `fs.mkdir()` with recursive option
   - Throw `PermissionError` if access denied
 
-- [ ] T008 [P] [US2] Implement `readDir(path)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
+- [X] T008 [P] [US2] Implement `readDir(path)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
   - List directory contents
   - Throw `FileNotFoundError` if directory doesn't exist
   - Throw `PermissionError` if access denied
 
 ## Phase 3: Repository Root Detection
 
-- [ ] T009 [US1] Implement `findRepoRoot(startPath?)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
+- [X] T009 [US1] Implement `findRepoRoot(startPath?)` in `packages/agency-plugin-spec-kit/src/utils/fs.ts`
   - Start from `startPath` or `process.cwd()`
   - Traverse up directories looking for `.git/` directory
   - Throw `RepoNotFoundError` when reaching filesystem root without finding `.git/`
 
 ## Phase 4: Integration
 
-- [ ] T010 Update `packages/agency-plugin-spec-kit/src/utils/index.ts` to export fs utilities
+- [X] T010 Update `packages/agency-plugin-spec-kit/src/utils/index.ts` to export fs utilities
   - Export all functions: `exists`, `isDirectory`, `isFile`, `readFile`, `writeFile`, `mkdir`, `readDir`, `findRepoRoot`
   - Export all error classes: `FileNotFoundError`, `PermissionError`, `RepoNotFoundError`
 
-- [ ] T011 Verify TypeScript compilation with `pnpm build`
+- [X] T011 Verify TypeScript compilation with `pnpm build`
   - Ensure no type errors
   - Verify exports are accessible
 
