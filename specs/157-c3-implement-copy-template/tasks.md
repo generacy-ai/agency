@@ -10,28 +10,28 @@
 
 ## Phase 1: Setup & Tests
 
-- [ ] T001 Create test file `packages/agency-plugin-spec-kit/tests/tools/copy-template.test.ts` with test scaffolding
-- [ ] T002 [P] Write tests for single template copy (spec, plan, tasks)
-- [ ] T003 [P] Write tests for checklist template (checklists/ subdirectory handling)
-- [ ] T004 [P] Write tests for agent-file template (repo root destination)
-- [ ] T005 [P] Write tests for multiple templates in single call
-- [ ] T006 Write tests for custom dest_filename (single template only)
-- [ ] T007 Write tests for error cases (dest_filename with multiple templates, missing template, no feature_dir)
+- [x] T001 Create test file `packages/agency-plugin-spec-kit/tests/tools/copy-template.test.ts` with test scaffolding
+- [x] T002 [P] Write tests for single template copy (spec, plan, tasks)
+- [x] T003 [P] Write tests for checklist template (checklists/ subdirectory handling)
+- [x] T004 [P] Write tests for agent-file template (repo root destination)
+- [x] T005 [P] Write tests for multiple templates in single call
+- [x] T006 Write tests for custom dest_filename (single template only)
+- [x] T007 Write tests for error cases (dest_filename with multiple templates, missing template, no feature_dir)
 
 ## Phase 2: Core Implementation
 
-- [ ] T008 Create `packages/agency-plugin-spec-kit/src/tools/copy-template.ts` with template mapping constant
-- [ ] T009 Implement `resolveTemplatePath()` helper to find template source files using config.paths.templates
-- [ ] T010 Implement `resolveDestinationPath()` helper for template-specific destination logic
-- [ ] T011 Implement main `execute()` function with input validation (dest_filename + multiple templates check)
-- [ ] T012 Add directory creation logic using `mkdir` utility for parent directories
-- [ ] T013 Add skip-if-exists behavior with tracking for output
+- [x] T008 Create `packages/agency-plugin-spec-kit/src/tools/copy-template.ts` with template mapping constant
+- [x] T009 Implement `resolveTemplatePath()` helper to find template source files using config.paths.templates
+- [x] T010 Implement `resolveDestinationPath()` helper for template-specific destination logic
+- [x] T011 Implement main `execute()` function with input validation (dest_filename + multiple templates check)
+- [x] T012 Add directory creation logic using `mkdir` utility for parent directories
+- [x] T013 Add skip-if-exists behavior with tracking for output
 
 ## Phase 3: Integration & Export
 
-- [ ] T014 Export `createCopyTemplateTool` from `packages/agency-plugin-spec-kit/src/tools/index.ts`
-- [ ] T015 Register tool in plugin initialization if not auto-registered
-- [ ] T016 Run tests to verify all scenarios pass
+- [x] T014 Export `createCopyTemplateTool` from `packages/agency-plugin-spec-kit/src/tools/index.ts`
+- [x] T015 Register tool in plugin initialization if not auto-registered
+- [x] T016 Run tests to verify all scenarios pass
 
 ## Dependencies & Execution Order
 
