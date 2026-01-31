@@ -32,10 +32,14 @@ export const BranchesConfigSchema = z.object({
  * Zod schema for Jira provider configuration
  */
 export const JiraConfigSchema = z.object({
-  /** Jira base URL */
+  /** Jira base URL (e.g., https://company.atlassian.net) */
   baseUrl: z.string(),
-  /** Jira project key */
+  /** Jira project key (e.g., PROJ) */
   projectKey: z.string(),
+  /** Jira user email for authentication (optional, can use JIRA_EMAIL env var) */
+  email: z.string().optional(),
+  /** Jira API token for authentication (optional, can use JIRA_API_TOKEN env var) */
+  apiToken: z.string().optional(),
 });
 
 /**
