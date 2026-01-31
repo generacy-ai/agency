@@ -14,6 +14,7 @@ import { createCheckPrereqsTool } from './check-prereqs.js';
 import { createManageClarificationsTool } from './manage-clarifications.js';
 import { createCopyTemplateTool } from './copy-template.js';
 import { createGitOpsTool } from './git-ops.js';
+import { createUpdateAgentTool } from './update-agent.js';
 
 // Import providers to register their factories
 import '../providers/github.js';
@@ -30,6 +31,7 @@ export { createCheckPrereqsTool } from './check-prereqs.js';
 export { createManageClarificationsTool } from './manage-clarifications.js';
 export { createCopyTemplateTool } from './copy-template.js';
 export { createGitOpsTool } from './git-ops.js';
+export { createUpdateAgentTool } from './update-agent.js';
 
 /**
  * Create all spec tools
@@ -69,6 +71,7 @@ export function createTools(
     createManageClarificationsTool(resolvedConfig, core),
 createCopyTemplateTool(resolvedConfig, core),
     createGitOpsTool(),
+    createUpdateAgentTool(resolvedConfig, core),
   ];
 }
 
