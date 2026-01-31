@@ -1,34 +1,44 @@
 /**
  * create_feature tool implementation for spec-kit
  *
- * Creates a new feature branch and spec directory from a description.
- * Auto-generates feature number and short name from the description.
+ * Creates a new feature branch and initializes the spec directory
+ * with template files.
  */
 
-import { join } from 'node:path';
-import type { AgencyTool, ToolResult, AgencyCoreAPI } from '@generacy-ai/agency';
+import type { AgencyTool, AgencyCoreAPI, ToolResult } from '@generacy-ai/agency';
 import type { SpecKitConfig } from '../config.js';
+import * as path from 'node:path';
 import { createError } from '../types/errors.js';
 import {
+  findRepoRoot,
   exists,
   mkdir,
-  readDir,
-  readFile,
   writeFile,
-  findRepoRoot,
+  readFile,
+  readDir,
   RepoNotFoundError,
+  isGitRepo,
 } from '../utils/index.js';
+import { generateSlug } from '../utils/slug.js';
+import { findNextFeatureNumber, padFeatureNumber } from '../utils/numbering.js';
+
+/** Pattern to match valid feature branch names */
+const FEATURE_NAME_PATTERN = /^(?:[a-z][a-z0-9-]*\/)?(\d+)[-_]([a-z0-9]+(?:-[a-z0-9]+)*)$/;
+
+/** Pattern to match typed branch names for issue number extraction */
+const TYPED_BRANCH_PATTERN =
+  /^(?:([a-z][a-z0-9-]*)\/)?(\d+)[_-]([a-z0-9]+(?:-[a-z0-9]+)*)$/;
 
 /**
  * Parameters for the create_feature tool
  */
-export interface CreateFeatureParams {
-  /** Feature description - used to generate spec content and short name */
+interface CreateFeatureParams {
+  /** Feature description used to generate spec content */
   description: string;
-  /** Optional explicit feature number (1-999). If not provided, auto-generated. */
-  number?: number;
-  /** Optional explicit short name. If not provided, generated from description. */
+  /** Optional 2-4 word short name for the branch */
   short_name?: string;
+  /** Optional explicit branch number */
+  number?: number;
   /** Parent epic branch to branch from (for epic children) */
   parent_epic_branch?: string;
   /** Working directory (defaults to process.cwd()) */
@@ -36,513 +46,158 @@ export interface CreateFeatureParams {
 }
 
 /**
- * Result of the create_feature operation
+ * Result of a successful create_feature operation
  */
-export interface CreateFeatureResult {
-  /** Whether the operation succeeded */
-  success: boolean;
-  /** Feature number as string (e.g., "168") */
-  feature_number: string;
-  /** Full branch name (e.g., "168-e4-claude-code-plugin") */
-  branch: string;
-  /** Absolute path to feature directory */
-  feature_dir: string;
-  /** Absolute path to created spec.md file */
+interface CreateFeatureResult {
+  success: true;
+  /** Full branch name (e.g., "153-implement-create-feature") */
+  branch_name: string;
+  /** Feature number as padded string (e.g., "153") */
+  feature_num: string;
+  /** Full path to the spec.md file */
   spec_file: string;
-  /** Git status - whether a new branch was created */
-  branch_created: boolean;
-  /** Error message if success is false */
-  error?: string;
+  /** Full path to the feature directory */
+  feature_dir: string;
+  /** Whether a git branch was created */
+  git_branch_created: boolean;
+  /** Whether the branch was created from an epic branch */
+  branched_from_epic: boolean;
+  /** Parent epic branch name (if branched from epic) */
+  parent_epic_branch?: string;
 }
 
 /**
- * Error codes specific to create_feature
+ * Build branch name from pattern and parameters.
+ *
+ * Pattern variables:
+ * - {paddedNumber}: Zero-padded issue number (e.g., "042")
+ * - {number}: Raw issue number (e.g., "42")
+ * - {slug}: Generated slug from description
+ * - {type}: Branch type (e.g., "feature")
  */
-export type CreateFeatureErrorCode =
-  | 'INVALID_DESCRIPTION'
-  | 'INVALID_FEATURE_NUMBER'
-  | 'INVALID_SHORT_NAME'
-  | 'FEATURE_NUMBER_EXISTS'
-  | 'GIT_NOT_INITIALIZED'
-  | 'GIT_OPERATION_FAILED'
-  | 'DIRECTORY_CREATE_FAILED'
-  | 'TEMPLATE_NOT_FOUND'
-  | 'WRITE_FAILED';
-
-/**
- * Stop words to filter out when generating short names
- */
-const STOP_WORDS = new Set([
-  'a', 'an', 'the', 'is', 'are', 'for', 'to', 'and', 'or', 'with',
-  'of', 'in', 'on', 'at', 'by', 'from', 'as', 'be', 'was', 'were',
-  'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
-  'would', 'could', 'should', 'may', 'might', 'must', 'can', 'this',
-  'that', 'these', 'those', 'it', 'its',
-]);
-
-/**
- * Validate description
- */
-function isValidDescription(desc: string): boolean {
-  return typeof desc === 'string' && desc.trim().length > 0 && desc.length <= 1000;
+function buildBranchName(
+  pattern: string,
+  issueNumber: number,
+  slug: string,
+  numberPadding: number
+): string {
+  const paddedNumber = padFeatureNumber(issueNumber, numberPadding);
+  let branchName = pattern;
+  branchName = branchName.replace('{paddedNumber}', paddedNumber);
+  branchName = branchName.replace('{number}', String(issueNumber));
+  branchName = branchName.replace('{slug}', slug);
+  branchName = branchName.replace('{type}', 'feature');
+  return branchName;
 }
 
 /**
- * Validate feature number
+ * Check if a branch name matches an issue number.
  */
-function isValidFeatureNumber(n: number): boolean {
-  return Number.isInteger(n) && n >= 1 && n <= 999;
-}
-
-/**
- * Validate short name
- */
-function isValidShortName(name: string): boolean {
-  return /^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$|^[a-z0-9]$/.test(name);
-}
-
-/**
- * Generate short name from description
- */
-function generateShortName(description: string, maxWords: number = 4): string {
-  const words = description
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length > 2 && !STOP_WORDS.has(w))
-    .slice(0, maxWords);
-
-  return words.join('-') || 'feature';
-}
-
-/**
- * Extract feature numbers from branch names and directory names
- */
-function extractFeatureNumbers(names: string[]): number[] {
-  const numbers: number[] = [];
-  for (const name of names) {
-    // Match patterns like "123-..." or "042-..."
-    const match = name.match(/^(\d+)-/);
-    if (match && match[1]) {
-      const num = parseInt(match[1], 10);
-      if (!isNaN(num)) {
-        numbers.push(num);
-      }
-    }
+function branchMatchesIssueNumber(
+  branchName: string,
+  issueNumber: number
+): boolean {
+  const match = branchName.match(TYPED_BRANCH_PATTERN);
+  if (match && match[2]) {
+    const num = parseInt(match[2], 10);
+    return num === issueNumber;
   }
-  return numbers;
-}
-
-/**
- * Find the next available feature number
- */
-async function findNextFeatureNumber(
-  repoRoot: string,
-  specsDir: string
-): Promise<number> {
-  const existingNumbers: number[] = [];
-
-  // Scan branches
-  try {
-    const { simpleGit } = await import('simple-git');
-    const git = simpleGit(repoRoot);
-    const branches = await git.branch();
-    existingNumbers.push(...extractFeatureNumbers(branches.all));
-  } catch {
-    // Git operations may fail, continue with directory scan
-  }
-
-  // Scan specs directory
-  const specsPath = join(repoRoot, specsDir);
-  if (await exists(specsPath)) {
-    try {
-      const dirs = await readDir(specsPath);
-      existingNumbers.push(...extractFeatureNumbers(dirs));
-    } catch {
-      // Directory read may fail, continue
-    }
-  }
-
-  // Find max and increment
-  const maxNumber = existingNumbers.length > 0 ? Math.max(...existingNumbers) : 0;
-  return maxNumber + 1;
-}
-
-/**
- * Check if feature number already exists
- */
-async function featureNumberExists(
-  num: number,
-  repoRoot: string,
-  specsDir: string
-): Promise<boolean> {
-  const paddedNum = String(num).padStart(3, '0');
-  const numStr = String(num);
-
-  // Check branches
-  try {
-    const { simpleGit } = await import('simple-git');
-    const git = simpleGit(repoRoot);
-    const branches = await git.branch();
-    for (const branchName of branches.all) {
-      if (branchName.startsWith(`${paddedNum}-`) || branchName.startsWith(`${numStr}-`)) {
-        return true;
-      }
-    }
-  } catch {
-    // Git operations may fail
-  }
-
-  // Check specs directory
-  const specsPath = join(repoRoot, specsDir);
-  if (await exists(specsPath)) {
-    try {
-      const dirs = await readDir(specsPath);
-      for (const dir of dirs) {
-        if (dir.startsWith(`${paddedNum}-`) || dir.startsWith(`${numStr}-`)) {
-          return true;
-        }
-      }
-    } catch {
-      // Directory read may fail
-    }
-  }
-
   return false;
 }
 
 /**
- * Apply template variable substitution
+ * Find any existing branches for the given issue number.
+ * Defense-in-depth: catches cases where workflow-level detection fails.
  */
-function applyTemplateVars(
-  template: string,
-  vars: { feature_name: string; branch_name: string; date: string; status: string }
+async function findExistingBranchesForNumber(
+  issueNumber: number,
+  repoRoot: string
+): Promise<string[]> {
+  if (!(await isGitRepo(repoRoot))) {
+    return [];
+  }
+
+  const matchingBranches: string[] = [];
+
+  try {
+    const { simpleGit } = await import('simple-git');
+    const git = simpleGit(repoRoot);
+
+    // Fetch remote branches to ensure we have latest info
+    try {
+      await git.fetch(['--all', '--prune']);
+    } catch {
+      // Continue even if fetch fails (might be offline)
+    }
+
+    // Check local branches
+    const localBranches = await git.branchLocal();
+    for (const branch of localBranches.all) {
+      if (branchMatchesIssueNumber(branch, issueNumber)) {
+        matchingBranches.push(branch);
+      }
+    }
+
+    // Check remote branches
+    try {
+      const remoteBranches = await git.branch(['-r']);
+      for (const remoteBranch of remoteBranches.all) {
+        if (
+          !remoteBranch.startsWith('origin/') ||
+          remoteBranch.includes('HEAD')
+        ) {
+          continue;
+        }
+        const branchName = remoteBranch.replace('origin/', '');
+        // Skip if already found locally
+        if (matchingBranches.includes(branchName)) {
+          continue;
+        }
+        if (branchMatchesIssueNumber(branchName, issueNumber)) {
+          matchingBranches.push(branchName);
+        }
+      }
+    } catch {
+      // Continue with local branches only
+    }
+  } catch {
+    // Git operations failed, return empty
+  }
+
+  return matchingBranches;
+}
+
+/**
+ * Create initial spec content from description.
+ */
+function createInitialSpecContent(
+  description: string,
+  branchName: string,
+  parentEpicBranch?: string
 ): string {
-  return template
-    .replace(/\{feature_name\}/g, vars.feature_name)
-    .replace(/\{branch_name\}/g, vars.branch_name)
-    .replace(/\{date\}/g, vars.date)
-    .replace(/\{status\}/g, vars.status);
-}
+  // Extract a title from the description
+  const firstSentence = description.split(/[.!?]/)[0] || description;
+  const title = firstSentence
+    .trim()
+    .replace(/^(add|create|implement|build)\s+/i, '')
+    .replace(/^\w/, (c) => c.toUpperCase());
 
-/**
- * Create the spec_kit.create_feature tool.
- *
- * This tool creates a new feature from a description:
- * - Auto-generates next feature number (or uses provided number)
- * - Generates short name from description (or uses provided short_name)
- * - Creates git branch: {number}-{short-name}
- * - Creates feature directory: specs/{number}-{short-name}/
- * - Initializes spec.md with description and template
- * - Creates checklists/ and contracts/ subdirectories
- *
- * @param config - Plugin configuration
- * @param _core - Agency core API (unused)
- * @returns AgencyTool instance
- */
-export function createCreateFeatureTool(
-  config: SpecKitConfig,
-  _core: AgencyCoreAPI
-): AgencyTool {
-  return {
-    name: 'spec_kit.create_feature',
-    description: 'Create a new feature branch and initialize the spec directory with template files',
-    namespace: 'spec_kit',
-    outputPattern: 'terse',
-    modes: ['coding'],
-    inputSchema: {
-      type: 'object',
-      properties: {
-        description: {
-          type: 'string',
-          description: 'Feature description used to generate spec content',
-        },
-        number: {
-          type: 'number',
-          description: 'Optional explicit branch number (1-999)',
-        },
-        short_name: {
-          type: 'string',
-          description: 'Optional 2-4 word short name for the branch',
-        },
-        parent_epic_branch: {
-          type: 'string',
-          description: 'Parent epic branch to branch from (for epic children). If provided, the new branch will be created from this branch instead of the current branch.',
-        },
-        cwd: {
-          type: 'string',
-          description: 'Working directory (defaults to process.cwd())',
-        },
-      },
-      required: ['description'],
-    },
-    async execute(params: unknown): Promise<ToolResult> {
-      const {
-        description,
-        number,
-        short_name,
-        parent_epic_branch,
-        cwd,
-      } = (params || {}) as CreateFeatureParams;
+  const dateStr = new Date().toISOString().split('T')[0];
 
-      const workDir = cwd || process.cwd();
+  let epicSection = '';
+  if (parentEpicBranch) {
+    epicSection = `
+## Parent Epic
+Part of branch: \`${parentEpicBranch}\`
+`;
+  }
 
-      // Validate description
-      if (!isValidDescription(description)) {
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              success: false,
-              error: createError(
-                'INVALID_CONFIG',
-                description
-                  ? 'Description is too long (max 1000 characters)'
-                  : 'Description is required and cannot be empty'
-              ),
-            }),
-          }],
-        };
-      }
+  return `# Feature Specification: ${title}
 
-      // Find repo root
-      let repoRoot: string;
-      try {
-        repoRoot = await findRepoRoot(workDir);
-      } catch (error) {
-        if (error instanceof RepoNotFoundError) {
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({
-                success: false,
-                error: createError('GIT_NOT_INITIALIZED', 'Could not find git repository root'),
-              }),
-            }],
-          };
-        }
-        throw error;
-      }
-
-      // Validate or generate feature number
-      let featureNumber: number;
-      if (number !== undefined) {
-        if (!isValidFeatureNumber(number)) {
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({
-                success: false,
-                error: createError(
-                  'INVALID_FEATURE_NUMBER',
-                  'Feature number must be an integer between 1 and 999'
-                ),
-              }),
-            }],
-          };
-        }
-        // Check if number already exists
-        if (await featureNumberExists(number, repoRoot, config.paths.specs)) {
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({
-                success: false,
-                error: createError(
-                  'BRANCH_EXISTS',
-                  `Feature number ${number} already exists as a branch or directory`
-                ),
-              }),
-            }],
-          };
-        }
-        featureNumber = number;
-      } else {
-        featureNumber = await findNextFeatureNumber(repoRoot, config.paths.specs);
-        if (featureNumber > 999) {
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({
-                success: false,
-                error: createError(
-                  'INVALID_FEATURE_NUMBER',
-                  'No available feature numbers (max 999)'
-                ),
-              }),
-            }],
-          };
-        }
-      }
-
-      // Validate or generate short name
-      let shortName: string;
-      if (short_name !== undefined) {
-        if (!isValidShortName(short_name)) {
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({
-                success: false,
-                error: createError(
-                  'INVALID_BRANCH_NAME',
-                  'Short name must be lowercase, use hyphens as separators, and be 1-50 characters'
-                ),
-              }),
-            }],
-          };
-        }
-        shortName = short_name;
-      } else {
-        shortName = generateShortName(description, config.branches.maxSlugWords);
-      }
-
-      // Build branch name
-      const branchName = `${featureNumber}-${shortName}`;
-
-      // Create git branch
-      let branchCreated = false;
-      try {
-        const { simpleGit } = await import('simple-git');
-        const git = simpleGit(repoRoot);
-
-        // If parent_epic_branch is provided, checkout that branch first
-        if (parent_epic_branch) {
-          try {
-            await git.checkout(parent_epic_branch);
-          } catch (checkoutError) {
-            return {
-              content: [{
-                type: 'text',
-                text: JSON.stringify({
-                  success: false,
-                  error: createError(
-                    'GIT_OPERATION_FAILED',
-                    `Could not checkout parent epic branch: ${parent_epic_branch}`,
-                    { parent_epic_branch }
-                  ),
-                }),
-              }],
-            };
-          }
-        }
-
-        await git.checkoutLocalBranch(branchName);
-        branchCreated = true;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              success: false,
-              error: createError(
-                'GIT_OPERATION_FAILED',
-                `Failed to create branch: ${message}`,
-                { branch: branchName }
-              ),
-            }),
-          }],
-        };
-      }
-
-      // Create feature directory structure
-      const featureDir = join(repoRoot, config.paths.specs, branchName);
-      try {
-        await mkdir(featureDir);
-        await mkdir(join(featureDir, 'checklists'));
-        await mkdir(join(featureDir, 'contracts'));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              success: false,
-              error: createError(
-                'FILE_WRITE_FAILED',
-                `Failed to create directory structure: ${message}`,
-                { feature_dir: featureDir }
-              ),
-            }),
-          }],
-        };
-      }
-
-      // Initialize spec.md
-      const specFile = join(featureDir, 'spec.md');
-      const templatePath = join(repoRoot, config.paths.templates, 'spec-template.md');
-
-      let specContent: string;
-      if (await exists(templatePath)) {
-        try {
-          const template = await readFile(templatePath);
-          const featureName = (description.split('\n')[0] ?? '').slice(0, 100);
-          specContent = applyTemplateVars(template, {
-            feature_name: featureName,
-            branch_name: branchName,
-            date: new Date().toISOString().split('T')[0] ?? '',
-            status: 'Draft',
-          });
-        } catch (error) {
-          // Fall back to basic spec
-          specContent = createBasicSpec(description, branchName);
-        }
-      } else {
-        specContent = createBasicSpec(description, branchName);
-      }
-
-      try {
-        await writeFile(specFile, specContent);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              success: false,
-              error: createError(
-                'FILE_WRITE_FAILED',
-                `Failed to write spec.md: ${message}`,
-                { spec_file: specFile }
-              ),
-            }),
-          }],
-        };
-      }
-
-      const result: CreateFeatureResult = {
-        success: true,
-        feature_number: String(featureNumber),
-        branch: branchName,
-        feature_dir: featureDir,
-        spec_file: specFile,
-        branch_created: branchCreated,
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(result),
-        }],
-      };
-    },
-  };
-}
-
-/**
- * Create a basic spec.md content when no template is available
- */
-function createBasicSpec(description: string, branchName: string): string {
-  const date = new Date().toISOString().split('T')[0] ?? '';
-  const featureName = (description.split('\n')[0] ?? '').slice(0, 100);
-
-  return `# Feature Specification: ${featureName}
-
-**Branch**: \`${branchName}\` | **Date**: ${date} | **Status**: Draft
+**Branch**: \`${branchName}\` | **Date**: ${dateStr} | **Status**: Draft
 
 ## Summary
-
+${epicSection}
 ${description}
 
 ## User Stories
@@ -581,4 +236,404 @@ ${description}
 
 *Generated by speckit*
 `;
+}
+
+/**
+ * Load spec template from custom path or use default content.
+ */
+async function loadSpecTemplate(
+  templatesPath: string | undefined,
+  repoRoot: string
+): Promise<string | null> {
+  // Try custom template path from config
+  if (templatesPath) {
+    const customTemplatePath = path.join(repoRoot, templatesPath, 'spec.md');
+    if (await exists(customTemplatePath)) {
+      try {
+        return await readFile(customTemplatePath);
+      } catch {
+        // Fall through to default
+      }
+    }
+  }
+
+  // Try default location
+  const defaultTemplatePath = path.join(
+    repoRoot,
+    '.specify',
+    'templates',
+    'spec.md'
+  );
+  if (await exists(defaultTemplatePath)) {
+    try {
+      return await readFile(defaultTemplatePath);
+    } catch {
+      // Fall through to null
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Populate template with feature values.
+ */
+function populateTemplate(
+  template: string,
+  branchName: string,
+  description: string,
+  parentEpicBranch?: string
+): string {
+  const firstSentence = description.split(/[.!?]/)[0] || description;
+  const title = firstSentence
+    .trim()
+    .replace(/^(add|create|implement|build)\s+/i, '')
+    .replace(/^\w/, (c) => c.toUpperCase());
+
+  const dateStr = new Date().toISOString().split('T')[0] || '';
+
+  let content = template;
+  content = content.replace(/\{\{title\}\}/g, title);
+  content = content.replace(/\{\{branch\}\}/g, branchName);
+  content = content.replace(/\{\{date\}\}/g, dateStr);
+  content = content.replace(/\{\{description\}\}/g, description);
+
+  // Handle optional epic section
+  if (parentEpicBranch) {
+    content = content.replace(
+      /\{\{epic_section\}\}/g,
+      `\n## Parent Epic\nPart of branch: \`${parentEpicBranch}\`\n`
+    );
+  } else {
+    content = content.replace(/\{\{epic_section\}\}/g, '');
+  }
+
+  return content;
+}
+
+/**
+ * Create the spec_kit.create_feature tool.
+ *
+ * This tool creates a new feature branch and initializes the spec directory:
+ * - Generates branch name from description (slug generation)
+ * - Auto-numbers features (finds next available number)
+ * - Creates feature directory structure
+ * - Initializes spec.md from template
+ * - Supports parent epic branches for hierarchical features
+ *
+ * @param config - SpecKit configuration
+ * @param core - Agency core API
+ * @returns AgencyTool instance
+ */
+export function createCreateFeatureTool(
+  config: SpecKitConfig,
+  core: AgencyCoreAPI
+): AgencyTool {
+  return {
+    name: 'spec_kit.create_feature',
+    description:
+      'Create a new feature branch and initialize the spec directory with template files',
+    namespace: 'spec_kit',
+    outputPattern: 'terse',
+    modes: ['coding'],
+    inputSchema: {
+      type: 'object',
+      properties: {
+        description: {
+          type: 'string',
+          description: 'Feature description used to generate spec content',
+        },
+        short_name: {
+          type: 'string',
+          description: 'Optional 2-4 word short name for the branch (lowercase, hyphens only)',
+        },
+        number: {
+          type: 'number',
+          description: 'Optional explicit branch number (1-999)',
+        },
+        parent_epic_branch: {
+          type: 'string',
+          description:
+            'Parent epic branch to branch from (for epic children). If provided, the new branch will be created from this branch instead of the current branch.',
+        },
+        cwd: {
+          type: 'string',
+          description: 'Working directory (defaults to process.cwd())',
+        },
+      },
+      required: ['description'],
+    },
+    async execute(params: unknown): Promise<ToolResult> {
+      const {
+        description,
+        short_name,
+        number,
+        parent_epic_branch,
+        cwd,
+      } = (params || {}) as CreateFeatureParams;
+
+      const workDir = cwd || process.cwd();
+
+      // Find repository root
+      let repoRoot: string;
+      try {
+        repoRoot = await findRepoRoot(workDir);
+      } catch (error) {
+        if (error instanceof RepoNotFoundError) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  success: false,
+                  error: createError(
+                    'FEATURE_DIR_NOT_FOUND',
+                    'Could not find repository root (no .git directory found)'
+                  ),
+                }),
+              },
+            ],
+          };
+        }
+        throw error;
+      }
+
+      const specsDir = config.paths.specs;
+      const specsDirPath = path.join(repoRoot, specsDir);
+
+      // Determine feature number
+      const featureNumInt = number
+        ? number
+        : await findNextFeatureNumber(repoRoot, specsDir);
+
+      // Validate number range
+      if (featureNumInt > 999) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: false,
+                error: createError(
+                  'INVALID_FEATURE_NUMBER',
+                  'Feature number must be between 1 and 999'
+                ),
+              }),
+            },
+          ],
+        };
+      }
+
+      // Defense-in-depth: Check if any branch already exists for this issue number
+      const existingBranches = await findExistingBranchesForNumber(
+        featureNumInt,
+        repoRoot
+      );
+      if (existingBranches.length > 0) {
+        const branchList = existingBranches.join(', ');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: false,
+                error: createError(
+                  'BRANCH_EXISTS_FOR_ISSUE',
+                  `A branch already exists for issue #${featureNumInt}: ${branchList}. ` +
+                    `Please use the existing branch instead of creating a new one.`,
+                  { existing_branches: existingBranches }
+                ),
+              }),
+            },
+          ],
+        };
+      }
+
+      // Generate slug from description or use provided short_name
+      const slug = short_name
+        ? short_name
+        : generateSlug(description, {
+            maxWords: config.branches.maxSlugWords,
+          });
+
+      // Build branch name using configured pattern
+      const branchName = buildBranchName(
+        config.branches.pattern,
+        featureNumInt,
+        slug,
+        config.branches.numberPadding
+      );
+
+      // Validate branch name
+      if (!FEATURE_NAME_PATTERN.test(branchName)) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: false,
+                error: createError(
+                  'INVALID_BRANCH_NAME',
+                  `Invalid branch name format: ${branchName}`,
+                  { pattern: FEATURE_NAME_PATTERN.source }
+                ),
+              }),
+            },
+          ],
+        };
+      }
+
+      // Create feature directory
+      const featureDir = path.join(specsDirPath, branchName);
+      if (await exists(featureDir)) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: false,
+                error: createError(
+                  'BRANCH_EXISTS',
+                  `Feature directory already exists: ${featureDir}`
+                ),
+              }),
+            },
+          ],
+        };
+      }
+
+      try {
+        // Create feature directory (spec.md only, no empty subdirectories per Q3 decision)
+        await mkdir(featureDir);
+
+        // Create git branch if in a git repo
+        let gitBranchCreated = false;
+        let branchedFromEpic = false;
+
+        if (await isGitRepo(repoRoot)) {
+          const { simpleGit } = await import('simple-git');
+          const git = simpleGit(repoRoot);
+          const branches = await git.branchLocal();
+
+          if (!branches.all.includes(branchName)) {
+            // If parent_epic_branch is provided, branch from it
+            if (parent_epic_branch) {
+              // Fetch first to ensure we have the latest
+              try {
+                await git.fetch(['--all', '--prune']);
+              } catch {
+                // Continue even if fetch fails
+              }
+
+              // Check if the epic branch exists locally or on remote
+              const allBranches = await git.branch(['-a']);
+              const epicBranchExists = allBranches.all.some(
+                (b) =>
+                  b === parent_epic_branch ||
+                  b === `remotes/origin/${parent_epic_branch}` ||
+                  b === `origin/${parent_epic_branch}`
+              );
+
+              if (epicBranchExists) {
+                // If on remote only, checkout tracking branch first
+                const localBranches = await git.branchLocal();
+                if (!localBranches.all.includes(parent_epic_branch)) {
+                  // Checkout remote tracking branch
+                  await git.checkout([
+                    '-b',
+                    parent_epic_branch,
+                    `origin/${parent_epic_branch}`,
+                  ]);
+                } else {
+                  await git.checkout(parent_epic_branch);
+                }
+                // Pull latest from remote
+                try {
+                  await git.pull('origin', parent_epic_branch);
+                } catch {
+                  // Continue even if pull fails
+                }
+                // Create new branch from epic branch
+                await git.checkoutLocalBranch(branchName);
+                branchedFromEpic = true;
+              } else {
+                // Epic branch not found, fall back to creating from current
+                await git.checkoutLocalBranch(branchName);
+              }
+            } else {
+              await git.checkoutLocalBranch(branchName);
+            }
+            gitBranchCreated = true;
+          } else {
+            // Branch exists, just checkout
+            await git.checkout(branchName);
+          }
+        }
+
+        // Create spec.md - try template first, then generate default
+        const specFile = path.join(featureDir, 'spec.md');
+        const template = await loadSpecTemplate(
+          config.paths.templates,
+          repoRoot
+        );
+
+        let specContent: string;
+        if (template) {
+          specContent = populateTemplate(
+            template,
+            branchName,
+            description,
+            parent_epic_branch
+          );
+        } else {
+          specContent = createInitialSpecContent(
+            description,
+            branchName,
+            parent_epic_branch
+          );
+        }
+
+        await writeFile(specFile, specContent);
+
+        const result: CreateFeatureResult = {
+          success: true,
+          branch_name: branchName,
+          feature_num: padFeatureNumber(featureNumInt, config.branches.numberPadding),
+          spec_file: specFile,
+          feature_dir: featureDir,
+          git_branch_created: gitBranchCreated,
+          branched_from_epic: branchedFromEpic,
+          ...(branchedFromEpic && { parent_epic_branch }),
+        };
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result),
+            },
+          ],
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown error occurred';
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: false,
+                error: createError('GIT_OPERATION_FAILED', message, {
+                  description,
+                  ...(short_name ? { short_name } : {}),
+                  ...(number ? { number } : {}),
+                  ...(parent_epic_branch ? { parent_epic_branch } : {}),
+                }),
+              }),
+            },
+          ],
+        };
+      }
+    },
+  };
 }
