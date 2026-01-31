@@ -64,6 +64,12 @@ export {
 // ============================================================================
 
 export { GitHubProvider } from './github.js';
+export {
+  GitHubCliProvider,
+  GitHubCliError,
+  GitHubCliAuthError,
+  GitHubCliNotFoundError,
+} from './github-cli.js';
 export { JiraProvider } from './jira.js';
 export { ShortcutProvider } from './shortcut.js';
 export { LocalProvider } from './local.js';
