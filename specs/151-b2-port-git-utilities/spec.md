@@ -54,35 +54,73 @@ export async function isGitRepo(cwd?: string): Promise<boolean>;
 
 ## User Stories
 
-### US1: [Primary User Story]
+### US1: Developer Git Operations
 
-**As a** [user type],
-**I want** [capability],
-**So that** [benefit].
+**As a** plugin developer,
+**I want** a set of git utility functions,
+**So that** I can perform git operations programmatically in MCP tools.
 
 **Acceptance Criteria**:
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
+- [ ] Can get current branch name
+- [ ] Can check if a branch exists (local or remote)
+- [ ] Can create and checkout branches
+- [ ] Can fetch from remote with options
+- [ ] Can get working tree status
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | [Description] | P1 | |
+| FR-001 | Implement getCurrentBranch() | P1 | Returns current branch name |
+| FR-002 | Implement branchExists() | P1 | Check local first, then origin/ |
+| FR-003 | Implement createBranch() | P1 | Create with optional checkout |
+| FR-004 | Implement checkout() | P1 | Switch branches |
+| FR-005 | Implement fetch() | P1 | Support all/prune options |
+| FR-006 | Implement getStatus() | P1 | Return minimal GitStatus |
+| FR-007 | Implement isGitRepo() | P1 | Validate directory |
+| FR-008 | Add simple-git dependency | P1 | Package dependency |
+
+## Technical Decisions
+
+### GitStatus Type (Clarification Q1)
+Use minimal type definition:
+```typescript
+interface GitStatus {
+  isClean: boolean;
+  currentBranch: string;
+  hasChanges: boolean;
+}
+```
+
+### Error Handling (Clarification Q2)
+Throw errors for all failures with descriptive messages. No silent failures or null returns.
+
+### branchExists Scope (Clarification Q3)
+Check both local and remote branches - local first, then origin/.
+
+### Target Location (Clarification Q4)
+Create new file at `packages/agency/src/utils/git.ts` (separate from spec-kit).
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | [Metric] | [Target] | [How to measure] |
+| SC-001 | All functions implemented | 8/8 | Unit tests pass |
+| SC-002 | TypeScript compiles | No errors | Build succeeds |
+| SC-003 | simple-git added | In package.json | Dependency check |
 
 ## Assumptions
 
-- [Assumption 1]
+- simple-git library provides sufficient API for all required operations
+- Working directory will be a valid git repository when functions are called
+- Remote is named 'origin'
 
 ## Out of Scope
 
-- [Exclusion 1]
+- Advanced git operations (merge, rebase, cherry-pick)
+- Git credential management
+- Multi-remote support
+- Git LFS operations
 
 ---
 

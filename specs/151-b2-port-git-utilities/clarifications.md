@@ -11,7 +11,7 @@ Questions and answers to clarify the feature specification.
 - A: Minimal: isClean, currentBranch, hasChanges
 - B: Full: staged[], unstaged[], untracked[], currentBranch, ahead/behind counts, isClean
 
-**Answer**: *Pending*
+**Answer**: A - Minimal: isClean, currentBranch, hasChanges
 
 ### Q2: Error Handling Strategy
 **Context**: Different functions may fail for various reasons (not a git repo, network issues, branch doesn't exist). A consistent strategy is needed.
@@ -21,7 +21,7 @@ Questions and answers to clarify the feature specification.
 - B: Throw errors for all failures with descriptive messages
 - C: Return Result<T, Error> discriminated union type
 
-**Answer**: *Pending*
+**Answer**: B - Throw errors for all failures with descriptive messages
 
 ### Q3: branchExists Scope
 **Context**: The function `branchExists(name)` needs to know where to check for the branch.
@@ -30,7 +30,7 @@ Questions and answers to clarify the feature specification.
 - A: Local only (refs/heads/)
 - B: Both local and remote (check local first, then origin/)
 
-**Answer**: *Pending*
+**Answer**: B - Both local and remote (check local first, then origin/)
 
 ### Q4: Target Package Location
 **Context**: There's already a git.ts in packages/agency-plugin-spec-kit. The spec says to create src/utils/git.ts but the package structure has packages/agency/.
@@ -39,5 +39,5 @@ Questions and answers to clarify the feature specification.
 - A: Create new packages/agency/src/utils/git.ts (separate from spec-kit)
 - B: Extend existing packages/agency-plugin-spec-kit/src/utils/git.ts
 
-**Answer**: *Pending*
+**Answer**: A - Create new packages/agency/src/utils/git.ts (separate from spec-kit)
 
