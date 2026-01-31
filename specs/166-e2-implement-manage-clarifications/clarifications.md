@@ -12,7 +12,7 @@ Questions and answers to clarify the feature specification.
 - B: Use direct GitHub posting like the reference implementation
 - C: Support both modes (Humancy when available, GitHub fallback)
 
-**Answer**: *Pending*
+**Answer**: A: Use Humancy plugin for human input (as spec says)
 
 ### Q2: Tool Namespace
 **Context**: The spec shows the tool name as spec_kit.manage_clarifications with namespace: 'spec_kit', but the reference implementation registers it simply as manage_clarifications.
@@ -22,7 +22,7 @@ Questions and answers to clarify the feature specification.
 - B: manage_clarifications (matches reference)
 - C: speckit.manage_clarifications (matches other speckit tools)
 
-**Answer**: *Pending*
+**Answer**: C: speckit.manage_clarifications (matches other speckit tools)
 
 ### Q3: Package Location
 **Context**: The spec says create src/tools/clarifications.ts which implies the agency core package, but this functionality seems related to the speckit plugin.
@@ -31,7 +31,7 @@ Questions and answers to clarify the feature specification.
 - A: Agency core package as stated in spec
 - B: Speckit plugin to match related functionality
 
-**Answer**: *Pending*
+**Answer**: B: Speckit plugin to match related functionality
 
 ### Q4: Question Status Model
 **Context**: The spec mentions tracking question status as (pending, answered). The reference implementation uses null for pending and actual text for answered, displayed as *Pending* in markdown.
@@ -40,5 +40,5 @@ Questions and answers to clarify the feature specification.
 - A: Follow reference: null = pending, string = answered
 - B: Explicit status field with enum values
 
-**Answer**: *Pending*
+**Answer**: B: Explicit status field with enum values
 
