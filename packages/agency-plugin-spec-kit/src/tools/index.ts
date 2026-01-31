@@ -12,6 +12,7 @@ import { createCreateTicketTool } from './create-ticket.js';
 import { createCheckPrereqsTool } from './check-prereqs.js';
 import { createManageClarificationsTool } from './manage-clarifications.js';
 import { createCopyTemplateTool } from './copy-template.js';
+import { createGitOpsTool } from './git-ops.js';
 
 // Import providers to register their factories
 import '../providers/github.js';
@@ -26,6 +27,7 @@ export { createCreateTicketTool } from './create-ticket.js';
 export { createCheckPrereqsTool } from './check-prereqs.js';
 export { createManageClarificationsTool } from './manage-clarifications.js';
 export { createCopyTemplateTool } from './copy-template.js';
+export { createGitOpsTool } from './git-ops.js';
 
 /**
  * Create all spec tools
@@ -60,7 +62,8 @@ export function createTools(
     createCreateTicketTool(resolvedConfig, () => registry.getProvider()),
     createCheckPrereqsTool(resolvedConfig, core),
     createManageClarificationsTool(resolvedConfig, core),
-    createCopyTemplateTool(resolvedConfig, core),
+createCopyTemplateTool(resolvedConfig, core),
+    createGitOpsTool(),
   ];
 }
 
