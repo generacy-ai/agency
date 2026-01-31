@@ -12,7 +12,7 @@ Questions and answers to clarify the feature specification.
 - B: {number}-{slug} (e.g., 153-create-feature)
 - C: Configurable via speckit config with a default pattern
 
-**Answer**: *Pending*
+**Answer**: C - Configurable via speckit config with a default pattern
 
 ### Q2: Auto-Numbering Strategy
 **Context**: The tool should auto-assign feature numbers when not provided explicitly. This affects how we avoid collisions.
@@ -22,7 +22,7 @@ Questions and answers to clarify the feature specification.
 - B: Scan spec directories (specs/*) and find max + 1
 - C: Both branches and directories, taking the higher max
 
-**Answer**: *Pending*
+**Answer**: C - Both branches and directories, taking the higher max
 
 ### Q3: Subdirectory Creation
 **Context**: The directory structure shows checklists/ and contracts/ subdirectories. Creating empty directories that may never be used adds clutter.
@@ -31,7 +31,7 @@ Questions and answers to clarify the feature specification.
 - A: Create all subdirectories immediately with directory structure
 - B: Only create spec.md, add subdirectories when first needed
 
-**Answer**: *Pending*
+**Answer**: B - Only create spec.md, add subdirectories when first needed
 
 ### Q4: Template Source Location
 **Context**: spec.md needs to be initialized from a template. The template location affects portability and customization.
@@ -41,7 +41,7 @@ Questions and answers to clarify the feature specification.
 - B: User's project templates/ directory if exists, else bundled default
 - C: Configurable path in speckit config with fallback to bundled
 
-**Answer**: *Pending*
+**Answer**: C - Configurable path in speckit config with fallback to bundled
 
 ### Q5: Epic Child Behavior
 **Context**: When parent_epic_branch is provided, the new feature is a child of an epic. This may affect naming and directory organization.
