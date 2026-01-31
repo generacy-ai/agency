@@ -95,13 +95,14 @@ describe('SpecKitPlugin', () => {
 
       await plugin.initialize(core);
 
-      // Three tools registered: spec_kit.get_paths, spec_kit.get_ticket, and spec_kit.check_prereqs
-      expect(core.registerTool).toHaveBeenCalledTimes(3);
-      expect(core.registeredTools).toHaveLength(3);
+      // Four tools registered: spec_kit.get_paths, spec_kit.get_ticket, spec_kit.check_prereqs, and spec_kit.manage_clarifications
+      expect(core.registerTool).toHaveBeenCalledTimes(4);
+      expect(core.registeredTools).toHaveLength(4);
       const toolNames = core.registeredTools.map((t) => t.name);
       expect(toolNames).toContain('spec_kit.get_paths');
       expect(toolNames).toContain('spec_kit.get_ticket');
       expect(toolNames).toContain('spec_kit.check_prereqs');
+      expect(toolNames).toContain('spec_kit.manage_clarifications');
     });
 
     it('should use config from core.getConfig', async () => {

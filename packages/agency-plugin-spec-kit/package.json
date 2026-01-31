@@ -40,7 +40,13 @@
     "zod": "^3.24.0"
   },
   "peerDependencies": {
-    "@generacy-ai/agency": "workspace:*"
+    "@generacy-ai/agency": "workspace:*",
+    "@generacy-ai/agency-plugin-humancy": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@generacy-ai/agency-plugin-humancy": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@generacy-ai/agency": "workspace:*",

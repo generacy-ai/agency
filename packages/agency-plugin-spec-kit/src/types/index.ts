@@ -65,6 +65,8 @@ export type {
 // Clarification Types
 // ============================================================================
 
+export { ClarificationStatus } from './clarification.js';
+
 export type {
   ClarificationOption,
   ClarificationQuestion,
@@ -72,6 +74,10 @@ export type {
   ClarificationsFile,
   ClarificationAppendResult,
   ClarificationQuestionInput,
+  HumancyRequestStatus,
+  ReadClarificationsOutput,
+  AppendClarificationsOutput,
+  UpdateAnswerOutput,
 } from './clarification.js';
 
 // ============================================================================
