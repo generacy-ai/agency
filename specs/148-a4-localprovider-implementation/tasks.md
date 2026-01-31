@@ -10,37 +10,37 @@
 
 ## Phase 1: Core Implementation
 
-- [ ] T001 Define LocalTicketStore and LocalTicket interfaces in `src/providers/local.ts`
-- [ ] T002 Implement loadStore() method with file read and empty store initialization
-- [ ] T003 Implement saveStore() method with atomic write (temp file + rename)
-- [ ] T004 Implement parseRef() with full format support (LOCAL-001, local-1, 001, 1)
-- [ ] T005 Implement generateId() helper for LOCAL-NNN format with zero-padding
-- [ ] T006 Implement toTicket() helper for LocalTicket → Ticket conversion
-- [ ] T007 Implement getTicket() method
-- [ ] T008 Implement createTicket() method
-- [ ] T009 Implement updateTicket() method
-- [ ] T010 Implement checkAuth() to always return { ok: true }
-- [ ] T011 Implement getTicketUrl() to return local://LOCAL-NNN format
-- [ ] T012 Implement setLabels() optional method
-- [ ] T013 Implement getLabels() optional method
+- [X] T001 Define LocalTicketStore and LocalTicket interfaces in `src/providers/local.ts`
+- [X] T002 Implement loadStore() method with file read and empty store initialization
+- [X] T003 Implement saveStore() method with atomic write (temp file + rename)
+- [X] T004 Implement parseRef() with full format support (LOCAL-001, local-1, 001, 1)
+- [X] T005 Implement generateId() helper for LOCAL-NNN format with zero-padding
+- [X] T006 Implement toTicket() helper for LocalTicket → Ticket conversion
+- [X] T007 Implement getTicket() method
+- [X] T008 Implement createTicket() method
+- [X] T009 Implement updateTicket() method
+- [X] T010 Implement checkAuth() to always return { ok: true }
+- [X] T011 Implement getTicketUrl() to return local://LOCAL-NNN format
+- [X] T012 Implement setLabels() optional method
+- [X] T013 Implement getLabels() optional method
 
 ## Phase 2: Testing
 
-- [ ] T014 [P] Create test file `tests/providers/local.test.ts` with test setup (temp directory)
-- [ ] T015 [P] Add tests for parseRef() with valid and invalid inputs
-- [ ] T016 Add tests for loadStore() with missing file and existing file
-- [ ] T017 Add tests for saveStore() and atomic write behavior
-- [ ] T018 Add tests for createTicket() and ID generation
-- [ ] T019 Add tests for getTicket() including NotFoundError
-- [ ] T020 Add tests for updateTicket() with partial updates
-- [ ] T021 Add tests for setLabels() and getLabels()
-- [ ] T022 Add tests for checkAuth() and getTicketUrl()
+- [X] T014 [P] Create test file `tests/providers/local.test.ts` with test setup (temp directory)
+- [X] T015 [P] Add tests for parseRef() with valid and invalid inputs
+- [X] T016 Add tests for loadStore() with missing file and existing file
+- [X] T017 Add tests for saveStore() and atomic write behavior
+- [X] T018 Add tests for createTicket() and ID generation
+- [X] T019 Add tests for getTicket() including NotFoundError
+- [X] T020 Add tests for updateTicket() with partial updates
+- [X] T021 Add tests for setLabels() and getLabels()
+- [X] T022 Add tests for checkAuth() and getTicketUrl()
 
 ## Phase 3: Integration
 
-- [ ] T023 Verify provider registration in registry.ts (already exists, confirm working)
-- [ ] T024 Run full test suite and fix any failures
-- [ ] T025 Verify TypeScript compilation with no errors
+- [X] T023 Verify provider registration in registry.ts (already exists, confirm working)
+- [X] T024 Run full test suite and fix any failures
+- [X] T025 Verify TypeScript compilation with no errors
 
 ## Dependencies & Execution Order
 
