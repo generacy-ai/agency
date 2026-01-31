@@ -38,6 +38,19 @@ export {
 export { isGitRepo, getCurrentBranch } from './git.js';
 
 // ============================================================================
+// Slug Generation Utilities
+// ============================================================================
+
+export { generateSlug, STOP_WORDS } from './slug.js';
+export type { SlugOptions } from './slug.js';
+
+// ============================================================================
+// Auto-Numbering Utilities
+// ============================================================================
+
+export { findNextFeatureNumber, padFeatureNumber } from './numbering.js';
+
+// ============================================================================
 // Ticket Reference Detection
 // ============================================================================
 

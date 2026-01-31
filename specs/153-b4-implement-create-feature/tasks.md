@@ -10,13 +10,13 @@
 
 ## Phase 1: Setup & Utilities
 
-- [ ] T001 [P] Create `src/utils/slug.ts` with slug generation utilities
+- [X] T001 [P] Create `src/utils/slug.ts` with slug generation utilities
   - Implement `generateSlug(description: string, options?: SlugOptions): string`
   - Define STOP_WORDS constant list
   - Handle edge cases: empty input, all stop words, special characters
   - Export via `src/utils/index.ts`
 
-- [ ] T002 [P] Create `src/utils/numbering.ts` with auto-numbering utilities
+- [X] T002 [P] Create `src/utils/numbering.ts` with auto-numbering utilities
   - Implement `findNextFeatureNumber(repoRoot: string, specsDir: string): Promise<number>`
   - Scan specs directory for `###-*` patterns
   - Scan git branches (local + remote) for feature patterns
@@ -24,7 +24,7 @@
 
 ## Phase 2: Core Implementation
 
-- [ ] T003 Create `src/tools/create-feature.ts` main tool implementation
+- [X] T003 Create `src/tools/create-feature.ts` main tool implementation
   - Define Zod schema for input validation
   - Implement `createCreateFeatureTool(config, core)` function
   - Handle input parameters: description, short_name, number, parent_epic_branch, cwd
@@ -34,13 +34,13 @@
   - Create git branch and checkout
   - Return CreateFeatureResult with all required fields
 
-- [ ] T004 Integrate template handling in create-feature tool
+- [X] T004 Integrate template handling in create-feature tool
   - Check for custom template at `config.paths.templates/spec.md`
   - Fall back to default bundled template
   - Populate template with: title, branch name, description, date
   - Write spec.md to feature directory
 
-- [ ] T005 Implement parent epic branch support
+- [X] T005 Implement parent epic branch support
   - When `parent_epic_branch` provided, branch from epic instead of current
   - Fetch all remotes first
   - Handle case where epic branch is remote-only
@@ -49,46 +49,46 @@
 
 ## Phase 3: Error Handling & Validation
 
-- [ ] T006 [P] Implement pre-creation validation checks
+- [X] T006 [P] Implement pre-creation validation checks
   - Check repo root exists (FEATURE_DIR_NOT_FOUND)
   - Check feature directory doesn't exist (BRANCH_EXISTS)
   - Check git branch doesn't exist (BRANCH_EXISTS_FOR_ISSUE)
   - Validate generated branch name against pattern (INVALID_BRANCH_NAME)
   - Validate number <= 999 (INVALID_FEATURE_NUMBER)
 
-- [ ] T007 [P] Implement git operation error handling
+- [X] T007 [P] Implement git operation error handling
   - Wrap git operations in try/catch
   - Return GIT_OPERATION_FAILED with context
   - Handle race conditions (re-check before create)
 
 ## Phase 4: Integration
 
-- [ ] T008 Update `src/tools/index.ts` to register create-feature tool
+- [X] T008 Update `src/tools/index.ts` to register create-feature tool
   - Import createCreateFeatureTool
   - Add to createTools() return array
   - Ensure proper ordering with dependencies
 
-- [ ] T009 Update `src/utils/index.ts` to export slug utilities
+- [X] T009 Update `src/utils/index.ts` to export slug utilities
   - Export generateSlug function
   - Export SlugOptions type
   - Export findNextFeatureNumber function
 
 ## Phase 5: Testing
 
-- [ ] T010 [P] Write unit tests for slug generation (`src/utils/slug.test.ts`)
+- [X] T010 [P] Write unit tests for slug generation (`src/utils/slug.test.ts`)
   - Test basic slug generation
   - Test stop word removal
   - Test special character handling
   - Test max words/length truncation
   - Test empty/edge case inputs
 
-- [ ] T011 [P] Write unit tests for auto-numbering (`src/utils/numbering.test.ts`)
+- [X] T011 [P] Write unit tests for auto-numbering (`src/utils/numbering.test.ts`)
   - Test scanning specs directory
   - Test scanning git branches
   - Test taking max of both sources
   - Test default to 1 when no features exist
 
-- [ ] T012 Write integration tests for create-feature tool (`src/tools/create-feature.test.ts`)
+- [X] T012 Write integration tests for create-feature tool (`src/tools/create-feature.test.ts`)
   - Test basic feature creation
   - Test creation with explicit number
   - Test creation with short_name override
