@@ -10,26 +10,26 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Add `simple-git` dependency (^3.30.0) to `packages/agency/package.json`
-- [ ] T002 [P] Create `packages/agency/src/utils/` directory and barrel export `packages/agency/src/utils/index.ts`
-- [ ] T003 [P] Create `packages/agency/src/utils/git.ts` with GitStatus interface definition
+- [X] T001 Add `simple-git` dependency (^3.30.0) to `packages/agency/package.json`
+- [X] T002 [P] Create `packages/agency/src/utils/` directory and barrel export `packages/agency/src/utils/index.ts`
+- [X] T003 [P] Create `packages/agency/src/utils/git.ts` with GitStatus interface definition
 
 ## Phase 2: Core Implementation
 
-- [ ] T004 [US1] Implement `getGit(cwd?)` - create SimpleGit instance with repository validation in `packages/agency/src/utils/git.ts`
-- [ ] T005 [US1] Implement `isGitRepo(cwd?)` - check if directory contains .git folder in `packages/agency/src/utils/git.ts`
-- [ ] T006 [US1] Implement `getCurrentBranch(cwd?)` - return current branch name using git.revparse in `packages/agency/src/utils/git.ts`
-- [ ] T007 [US1] Implement `branchExists(name, cwd?)` - check local branches first, then origin/ remote in `packages/agency/src/utils/git.ts`
-- [ ] T008 [US1] Implement `createBranch(name, from?, cwd?)` - create branch and optionally checkout in `packages/agency/src/utils/git.ts`
-- [ ] T009 [US1] Implement `checkout(branch, cwd?)` - switch to specified branch in `packages/agency/src/utils/git.ts`
-- [ ] T010 [US1] Implement `fetch(options?, cwd?)` - fetch from remote with all/prune options in `packages/agency/src/utils/git.ts`
-- [ ] T011 [US1] Implement `getStatus(cwd?)` - return minimal GitStatus (isClean, currentBranch, hasChanges) in `packages/agency/src/utils/git.ts`
+- [X] T004 [US1] Implement `getGit(cwd?)` - create SimpleGit instance with repository validation in `packages/agency/src/utils/git.ts`
+- [X] T005 [US1] Implement `isGitRepo(cwd?)` - check if directory contains .git folder in `packages/agency/src/utils/git.ts`
+- [X] T006 [US1] Implement `getCurrentBranch(cwd?)` - return current branch name using git.revparse in `packages/agency/src/utils/git.ts`
+- [X] T007 [US1] Implement `branchExists(name, cwd?)` - check local branches first, then origin/ remote in `packages/agency/src/utils/git.ts`
+- [X] T008 [US1] Implement `createBranch(name, from?, cwd?)` - create branch and optionally checkout in `packages/agency/src/utils/git.ts`
+- [X] T009 [US1] Implement `checkout(branch, cwd?)` - switch to specified branch in `packages/agency/src/utils/git.ts`
+- [X] T010 [US1] Implement `fetch(options?, cwd?)` - fetch from remote with all/prune options in `packages/agency/src/utils/git.ts`
+- [X] T011 [US1] Implement `getStatus(cwd?)` - return minimal GitStatus (isClean, currentBranch, hasChanges) in `packages/agency/src/utils/git.ts`
 
 ## Phase 3: Integration
 
-- [ ] T012 Export all git utilities from `packages/agency/src/utils/index.ts` barrel
-- [ ] T013 Export utils module from `packages/agency/src/index.ts`
-- [ ] T014 Run `pnpm build` and verify TypeScript compilation succeeds with no errors
+- [X] T012 Export all git utilities from `packages/agency/src/utils/index.ts` barrel
+- [X] T013 Export utils module from `packages/agency/src/index.ts`
+- [X] T014 Run `pnpm build` and verify TypeScript compilation succeeds with no errors
 
 ## Dependencies & Execution Order
 

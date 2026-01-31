@@ -93,3 +93,17 @@ export {
   type TerseOutputConfig,
   type SuccessMessageKey,
 } from './output/index.js';
+
+// Utils - Git utilities and other helpers
+export {
+  isGitRepo,
+  getGit,
+  getCurrentBranch,
+  branchExists,
+  createBranch,
+  checkout,
+  fetch,
+  getStatus,
+  type GitStatus,
+  type FetchOptions,
+} from './utils/index.js';
