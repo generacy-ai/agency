@@ -12,7 +12,7 @@ Questions and answers to clarify the feature specification.
 - B: Require configuration via constructor parameters
 - C: Lazy detection on first use, then cache
 
-**Answer**: *Pending*
+**Answer**: A - Auto-detect from git remote using `gh repo view --json nameWithOwner`
 
 ### Q2: Error Type Usage
 **Context**: The BacklogProvider interface specifies NotFoundError, AuthError, ProviderError but the spec doesn't indicate where these error types are defined.
@@ -22,7 +22,7 @@ Questions and answers to clarify the feature specification.
 - B: Define GitHub-specific error classes in github.ts
 - C: Use simple Error with descriptive messages for now, refine later
 
-**Answer**: *Pending*
+**Answer**: B - Define GitHub-specific error classes in github.ts
 
 ### Q3: Sync vs Async gh CLI
 **Context**: The reference implementation uses sync execFileSync wrapped in async. The BacklogProvider interface methods are async.
@@ -32,5 +32,5 @@ Questions and answers to clarify the feature specification.
 - B: Full async with child_process.spawn
 - C: Use execa or similar library for cleaner async handling
 
-**Answer**: *Pending*
+**Answer**: A - Sync execFileSync wrapped in async (matches reference implementation)
 
