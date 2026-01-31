@@ -95,17 +95,19 @@ describe('SpecKitPlugin', () => {
 
       await plugin.initialize(core);
 
-// Seven tools registered: spec_kit.get_paths, spec_kit.get_ticket, spec_kit.create_ticket, spec_kit.check_prereqs, spec_kit.manage_clarifications, spec_kit.copy_template, and spec_kit.git_ops
-      expect(core.registerTool).toHaveBeenCalledTimes(7);
-      expect(core.registeredTools).toHaveLength(7);
+// Nine tools registered: spec_kit.get_paths, spec_kit.get_ticket, spec_kit.create_ticket, spec_kit.update_ticket, spec_kit.check_prereqs, spec_kit.manage_clarifications, spec_kit.copy_template, spec_kit.git_ops, and spec_kit.create_feature
+      expect(core.registerTool).toHaveBeenCalledTimes(9);
+      expect(core.registeredTools).toHaveLength(9);
       const toolNames = core.registeredTools.map((t) => t.name);
       expect(toolNames).toContain('spec_kit.get_paths');
       expect(toolNames).toContain('spec_kit.get_ticket');
       expect(toolNames).toContain('spec_kit.create_ticket');
+      expect(toolNames).toContain('spec_kit.update_ticket');
       expect(toolNames).toContain('spec_kit.check_prereqs');
       expect(toolNames).toContain('spec_kit.manage_clarifications');
-expect(toolNames).toContain('spec_kit.copy_template');
+      expect(toolNames).toContain('spec_kit.copy_template');
       expect(toolNames).toContain('spec_kit.git_ops');
+      expect(toolNames).toContain('spec_kit.create_feature');
     });
 
     it('should use config from core.getConfig', async () => {

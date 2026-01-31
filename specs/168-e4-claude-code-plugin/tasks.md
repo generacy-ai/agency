@@ -10,31 +10,31 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 [P] Create `packages/agency-plugin-spec-kit/src/tools/create-feature.ts` with tool skeleton and parameter validation
-- [ ] T002 [P] Add create-feature tool registration to `packages/agency-plugin-spec-kit/src/tools/index.ts`
+- [x] T001 [P] Create `packages/agency-plugin-spec-kit/src/tools/create-feature.ts` with tool skeleton and parameter validation
+- [x] T002 [P] Add create-feature tool registration to `packages/agency-plugin-spec-kit/src/tools/index.ts`
 
 ## Phase 2: Core Implementation
 
-- [ ] T003 Implement feature number generation in `create-feature.ts` - scan branches and directories for next available number
-- [ ] T004 Implement short name generation in `create-feature.ts` - word extraction with stop-word removal
-- [ ] T005 Implement git branch creation in `create-feature.ts` - use simple-git following git-ops.ts patterns
-- [ ] T006 Implement directory structure creation in `create-feature.ts` - feature dir with checklists/ and contracts/
-- [ ] T007 Implement spec.md initialization in `create-feature.ts` - copy template and apply variable substitution
+- [x] T003 Implement feature number generation in `create-feature.ts` - scan branches and directories for next available number
+- [x] T004 Implement short name generation in `create-feature.ts` - word extraction with stop-word removal
+- [x] T005 Implement git branch creation in `create-feature.ts` - use simple-git following git-ops.ts patterns
+- [x] T006 Implement directory structure creation in `create-feature.ts` - feature dir with checklists/ and contracts/
+- [x] T007 Implement spec.md initialization in `create-feature.ts` - copy template and apply variable substitution
 
 ## Phase 3: Integration
 
-- [ ] T008 Add error handling for all create_feature error codes defined in data-model.md
-- [ ] T009 [P] Export CreateFeatureParams and CreateFeatureResult types from package
+- [x] T008 Add error handling for all create_feature error codes defined in data-model.md
+- [x] T009 [P] Export CreateFeatureParams and CreateFeatureResult types from package
 
 ## Phase 4: Testing
 
-- [ ] T010 [P] Create `packages/agency-plugin-spec-kit/tests/tools/create-feature.test.ts` with test setup and mocks
-- [ ] T011 Add happy path test - create feature with description only
-- [ ] T012 Add test for explicit feature number parameter
-- [ ] T013 Add test for explicit short name parameter
-- [ ] T014 Add test for number collision handling (existing feature number)
-- [ ] T015 Add test for not in git repo error case
-- [ ] T016 Add test for invalid description (empty/too long)
+- [x] T010 [P] Create `packages/agency-plugin-spec-kit/tests/tools/create-feature.test.ts` with test setup and mocks
+- [x] T011 Add happy path test - create feature with description only
+- [x] T012 Add test for explicit feature number parameter
+- [x] T013 Add test for explicit short name parameter
+- [x] T014 Add test for number collision handling (existing feature number)
+- [x] T015 Add test for not in git repo error case
+- [x] T016 Add test for invalid description (empty/too long)
 
 ## Dependencies & Execution Order
 
