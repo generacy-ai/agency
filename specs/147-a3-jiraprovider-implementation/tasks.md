@@ -12,53 +12,53 @@
 
 ## Phase 1: Configuration Setup
 
-- [ ] T001 [US1] Extend JiraConfigSchema in `packages/agency-plugin-spec-kit/src/config.ts` to add optional `email` and `apiToken` fields
+- [x] T001 [US1] Extend JiraConfigSchema in `packages/agency-plugin-spec-kit/src/config.ts` to add optional `email` and `apiToken` fields
 
 ---
 
 ## Phase 2: Core Implementation
 
-- [ ] T002 [US1] Implement JiraProvider constructor with config extraction and env var fallback in `packages/agency-plugin-spec-kit/src/providers/jira.ts`
-- [ ] T003 [P] [US1] Implement `mapJiraStatusToTicketState()` helper function with keyword-based regex matching
-- [ ] T004 [P] [US1] Implement `adfToPlainText()` helper function to extract text from Atlassian Document Format
-- [ ] T005 [US1] Implement private `request()` method for authenticated Jira API calls with error handling
-- [ ] T006 [US1] Implement `checkAuth()` method using `GET /rest/api/3/myself`
-- [ ] T007 [US1] Implement `parseRef()` method with project key validation using `detectTicketRef()`
-- [ ] T008 [US1] Implement `getTicketUrl()` method to generate Jira browse URLs
-- [ ] T009 [US1] Implement `getTicket()` method using `GET /rest/api/3/issue/{issueKey}`
-- [ ] T010 [US1] Implement `mapJiraIssueToTicket()` helper to convert Jira response to normalized Ticket
-- [ ] T011 [US1] Implement `createTicket()` method using `POST /rest/api/3/issue` with Story default type
-- [ ] T012 [US1] Implement `updateTicket()` method using `PUT /rest/api/3/issue/{issueKey}`
-- [ ] T013 [US1] Implement `setLabels()` method using `PUT /rest/api/3/issue/{issueKey}` with labels field
-- [ ] T014 [US1] Implement `getLabels()` method by delegating to `getTicket()`
+- [x] T002 [US1] Implement JiraProvider constructor with config extraction and env var fallback in `packages/agency-plugin-spec-kit/src/providers/jira.ts`
+- [x] T003 [P] [US1] Implement `mapJiraStatusToTicketState()` helper function with keyword-based regex matching
+- [x] T004 [P] [US1] Implement `adfToPlainText()` helper function to extract text from Atlassian Document Format
+- [x] T005 [US1] Implement private `request()` method for authenticated Jira API calls with error handling
+- [x] T006 [US1] Implement `checkAuth()` method using `GET /rest/api/3/myself`
+- [x] T007 [US1] Implement `parseRef()` method with project key validation using `detectTicketRef()`
+- [x] T008 [US1] Implement `getTicketUrl()` method to generate Jira browse URLs
+- [x] T009 [US1] Implement `getTicket()` method using `GET /rest/api/3/issue/{issueKey}`
+- [x] T010 [US1] Implement `mapJiraIssueToTicket()` helper to convert Jira response to normalized Ticket
+- [x] T011 [US1] Implement `createTicket()` method using `POST /rest/api/3/issue` with Story default type
+- [x] T012 [US1] Implement `updateTicket()` method using `PUT /rest/api/3/issue/{issueKey}`
+- [x] T013 [US1] Implement `setLabels()` method using `PUT /rest/api/3/issue/{issueKey}` with labels field
+- [x] T014 [US1] Implement `getLabels()` method by delegating to `getTicket()`
 
 ---
 
 ## Phase 3: Error Handling
 
-- [ ] T015 [US1] Implement `handleApiError()` method to convert HTTP errors to ProviderError/AuthError/NotFoundError
+- [x] T015 [US1] Implement `handleApiError()` method to convert HTTP errors to ProviderError/AuthError/NotFoundError
 
 ---
 
 ## Phase 4: Testing
 
-- [ ] T016 [P] [US1] Create unit tests for `mapJiraStatusToTicketState()` covering all status keywords
-- [ ] T017 [P] [US1] Create unit tests for `adfToPlainText()` with various ADF structures
-- [ ] T018 [P] [US1] Create unit tests for `parseRef()` with valid/invalid keys and URLs
-- [ ] T019 [US1] Create unit tests for `checkAuth()` with mocked fetch responses
-- [ ] T020 [US1] Create unit tests for `getTicket()` with mocked Jira API response
-- [ ] T021 [US1] Create unit tests for `createTicket()` with mocked Jira API response
-- [ ] T022 [US1] Create unit tests for `updateTicket()` with mocked Jira API response
-- [ ] T023 [US1] Create unit tests for `setLabels()` with mocked Jira API response
-- [ ] T024 [US1] Create unit tests for error handling (401, 403, 404 responses)
+- [x] T016 [P] [US1] Create unit tests for `mapJiraStatusToTicketState()` covering all status keywords
+- [x] T017 [P] [US1] Create unit tests for `adfToPlainText()` with various ADF structures
+- [x] T018 [P] [US1] Create unit tests for `parseRef()` with valid/invalid keys and URLs
+- [x] T019 [US1] Create unit tests for `checkAuth()` with mocked fetch responses
+- [x] T020 [US1] Create unit tests for `getTicket()` with mocked Jira API response
+- [x] T021 [US1] Create unit tests for `createTicket()` with mocked Jira API response
+- [x] T022 [US1] Create unit tests for `updateTicket()` with mocked Jira API response
+- [x] T023 [US1] Create unit tests for `setLabels()` with mocked Jira API response
+- [x] T024 [US1] Create unit tests for error handling (401, 403, 404 responses)
 
 ---
 
 ## Phase 5: Integration & Verification
 
-- [ ] T025 [US1] Verify provider registration works via `registerProviderFactory('jira', ...)`
-- [ ] T026 [US1] Verify TypeScript compilation passes with no errors
-- [ ] T027 [US1] Run full test suite to ensure no regressions
+- [x] T025 [US1] Verify provider registration works via `registerProviderFactory('jira', ...)`
+- [x] T026 [US1] Verify TypeScript compilation passes with no errors
+- [x] T027 [US1] Run full test suite to ensure no regressions
 
 ---
 
