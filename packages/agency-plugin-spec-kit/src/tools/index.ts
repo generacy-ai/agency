@@ -3,26 +3,67 @@
  */
 
 import type { AgencyTool, AgencyCoreAPI } from '@generacy-ai/agency';
-import type { SpecKitConfig } from '../config.js';
+import type { SpecKitPluginConfig, SpecKitConfig } from '../config.js';
 import { parseConfig } from '../config.js';
+import { ProviderRegistry } from '../providers/registry.js';
+import { createGetTicketTool } from './get-ticket.js';
 import { createGetPathsTool } from './get-paths.js';
+import { createCheckPrereqsTool } from './check-prereqs.js';
+
+// Import providers to register their factories
+import '../providers/github.js';
+import '../providers/jira.js';
+import '../providers/shortcut.js';
+import '../providers/local.js';
 
 // Re-export individual tool creators for direct access
 export { createGetPathsTool } from './get-paths.js';
+export { createGetTicketTool, createGetTicketToolWithRegistry } from './get-ticket.js';
+export { createCheckPrereqsTool } from './check-prereqs.js';
 
 /**
  * Create all spec tools
  *
- * @param config - Plugin configuration (raw or parsed)
+ * @param config - Plugin configuration (legacy or new format)
  * @param core - Agency core API
  * @returns Array of spec tools
  */
 export function createTools(
-  config: unknown,
+  config: SpecKitPluginConfig | SpecKitConfig | unknown,
   core: AgencyCoreAPI
 ): AgencyTool[] {
-  // Parse config to ensure defaults are applied
-  const parsedConfig: SpecKitConfig = parseConfig(config);
+  // Handle both legacy and new config formats
+  const resolvedConfig = isLegacyConfig(config)
+    ? parseConfig({
+        paths: {
+          specs: config.specDirectory,
+          templates: config.templateDirectory,
+        },
+      })
+    : parseConfig(config);
 
-  return [createGetPathsTool(parsedConfig, core)];
+  // Create provider registry
+  const registry = new ProviderRegistry(resolvedConfig);
+
+  // Create and return all tools
+  return [
+    createGetPathsTool(resolvedConfig, core),
+    createGetTicketTool(resolvedConfig, (name) =>
+      registry.getProvider(name as Parameters<typeof registry.getProvider>[0])
+    ),
+    createCheckPrereqsTool(resolvedConfig, core),
+  ];
+}
+
+/**
+ * Check if config is legacy format
+ */
+function isLegacyConfig(
+  config: SpecKitPluginConfig | SpecKitConfig | unknown
+): config is SpecKitPluginConfig {
+  return (
+    typeof config === 'object' &&
+    config !== null &&
+    ('specDirectory' in config || 'templateDirectory' in config)
+  );
 }
