@@ -50,7 +50,14 @@ export type ErrorCode =
 
   // General errors
   | 'OPERATION_FAILED'
-  | 'PREREQUISITE_NOT_MET';
+  | 'PREREQUISITE_NOT_MET'
+
+  // Clarification errors
+  | 'CLARIFICATION_NOT_FOUND'
+  | 'CLARIFICATION_INVALID_OPERATION'
+  | 'CLARIFICATION_APPEND_FAILED'
+  | 'CLARIFICATION_UPDATE_FAILED'
+  | 'HUMANCY_NOT_AVAILABLE';
 
 /**
  * Structured error format for MCP tools.

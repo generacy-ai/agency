@@ -188,6 +188,9 @@ importers:
 
   packages/agency-plugin-spec-kit:
     dependencies:
+      '@generacy-ai/agency-plugin-humancy':
+        specifier: workspace:*
+        version: link:../agency-plugin-humancy
       '@octokit/rest':
         specifier: ^21.0.0
         version: 21.1.1

@@ -10,38 +10,38 @@
 
 ## Phase 1: Type Definitions & Utilities
 
-- [ ] T001 Add `ClarificationStatus` enum to `packages/agency-plugin-spec-kit/src/types/clarification.ts`
-- [ ] T002 [P] Add status field to `ClarificationQuestion` interface in `packages/agency-plugin-spec-kit/src/types/clarification.ts`
-- [ ] T003 [P] Add tool output types (`ReadClarificationsOutput`, `AppendClarificationsOutput`, `UpdateAnswerOutput`) to `packages/agency-plugin-spec-kit/src/types/clarification.ts`
-- [ ] T004 Add error codes for clarification operations to `packages/agency-plugin-spec-kit/src/types/errors.ts`
-- [ ] T005 [P] Export new types from `packages/agency-plugin-spec-kit/src/types/index.ts`
-- [ ] T006 Create clarification parser utility at `packages/agency-plugin-spec-kit/src/utils/clarification-parser.ts`
-- [ ] T007 [P] Export parser from `packages/agency-plugin-spec-kit/src/utils/index.ts`
+- [X] T001 Add `ClarificationStatus` enum to `packages/agency-plugin-spec-kit/src/types/clarification.ts`
+- [X] T002 [P] Add status field to `ClarificationQuestion` interface in `packages/agency-plugin-spec-kit/src/types/clarification.ts`
+- [X] T003 [P] Add tool output types (`ReadClarificationsOutput`, `AppendClarificationsOutput`, `UpdateAnswerOutput`) to `packages/agency-plugin-spec-kit/src/types/clarification.ts`
+- [X] T004 Add error codes for clarification operations to `packages/agency-plugin-spec-kit/src/types/errors.ts`
+- [X] T005 [P] Export new types from `packages/agency-plugin-spec-kit/src/types/index.ts`
+- [X] T006 Create clarification parser utility at `packages/agency-plugin-spec-kit/src/utils/clarification-parser.ts`
+- [X] T007 [P] Export parser from `packages/agency-plugin-spec-kit/src/utils/index.ts`
 
 ## Phase 2: Core Tool Implementation
 
-- [ ] T010 [AC1] Create tool file `packages/agency-plugin-spec-kit/src/tools/manage-clarifications.ts` with basic structure
-- [ ] T011 [AC2] Implement `read` operation - parse clarifications.md and return structured data
-- [ ] T012 [AC2] Implement `append` operation - add questions to clarifications.md
-- [ ] T013 [AC2] Implement `update_answer` operation - update answer for a specific question
-- [ ] T014 [AC3] Add Humancy integration for `append` operation (invoke `humancy.ask_question` or `humancy.request_decision`)
-- [ ] T015 [AC4] Implement file path resolution using `get_paths` utility
-- [ ] T016 [AC5] Add question status tracking (pending/answered)
-- [ ] T017 [AC6] Support question batching with batch numbers and timestamps
+- [X] T010 [AC1] Create tool file `packages/agency-plugin-spec-kit/src/tools/manage-clarifications.ts` with basic structure
+- [X] T011 [AC2] Implement `read` operation - parse clarifications.md and return structured data
+- [X] T012 [AC2] Implement `append` operation - add questions to clarifications.md
+- [X] T013 [AC2] Implement `update_answer` operation - update answer for a specific question
+- [X] T014 [AC3] Add Humancy integration for `append` operation (invoke `humancy.ask_question` or `humancy.request_decision`)
+- [X] T015 [AC4] Implement file path resolution using `get_paths` utility
+- [X] T016 [AC5] Add question status tracking (pending/answered)
+- [X] T017 [AC6] Support question batching with batch numbers and timestamps
 
 ## Phase 3: Integration & Testing
 
-- [ ] T020 [AC1] Export tool from `packages/agency-plugin-spec-kit/src/tools/index.ts`
-- [ ] T021 [AC1] Add tool to plugin's `createTools` function
-- [ ] T022 Create unit tests at `packages/agency-plugin-spec-kit/tests/tools/manage-clarifications.test.ts`
-- [ ] T023 [P] Test `read` operation with various clarifications.md states
-- [ ] T024 [P] Test `append` operation with and without options
-- [ ] T025 [P] Test `update_answer` operation
-- [ ] T026 Test Humancy integration (mock Humancy tools)
+- [X] T020 [AC1] Export tool from `packages/agency-plugin-spec-kit/src/tools/index.ts`
+- [X] T021 [AC1] Add tool to plugin's `createTools` function
+- [X] T022 Create unit tests at `packages/agency-plugin-spec-kit/tests/tools/manage-clarifications.test.ts`
+- [X] T023 [P] Test `read` operation with various clarifications.md states
+- [X] T024 [P] Test `append` operation with and without options
+- [X] T025 [P] Test `update_answer` operation
+- [X] T026 Test Humancy integration (mock Humancy tools)
 
 ## Phase 4: Package Configuration
 
-- [ ] T030 Add `@generacy-ai/agency-plugin-humancy` as peer dependency in `packages/agency-plugin-spec-kit/package.json`
+- [X] T030 Add `@generacy-ai/agency-plugin-humancy` as peer dependency in `packages/agency-plugin-spec-kit/package.json`
 
 ## Dependencies & Execution Order
 

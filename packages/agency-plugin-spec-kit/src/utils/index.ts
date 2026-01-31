@@ -44,6 +44,23 @@ export { isGitRepo, getCurrentBranch } from './git.js';
 export { detectTicketRef } from './detect-ticket-ref.js';
 
 // ============================================================================
+// Clarification Parser
+// ============================================================================
+
+export {
+  parseClarificationsFile,
+  formatQuestion,
+  formatBatch,
+  generateBatchTimestamp,
+  countQuestions,
+  findQuestion,
+  updateAnswerInContent,
+  CLARIFICATIONS_FILE_HEADER,
+} from './clarification-parser.js';
+
+export type { ParsedClarificationsFile } from './clarification-parser.js';
+
+// ============================================================================
 // Task ID Utilities
 // ============================================================================
 

@@ -7,6 +7,26 @@
  */
 
 /**
+ * Status of a clarification question.
+ *
+ * Used to explicitly track whether a question has been answered.
+ *
+ * @example
+ * ```typescript
+ * const status = ClarificationStatus.PENDING;
+ * if (status === ClarificationStatus.ANSWERED) {
+ *   console.log('Question has been answered');
+ * }
+ * ```
+ */
+export enum ClarificationStatus {
+  /** Question awaiting answer */
+  PENDING = 'pending',
+  /** Question has been answered */
+  ANSWERED = 'answered',
+}
+
+/**
  * Option for a clarification question.
  *
  * Represents a labeled choice (A, B, C, etc.) for multiple-choice questions.
@@ -66,6 +86,9 @@ export interface ClarificationQuestion {
 
   /** Answer or null if pending */
   answer: string | null;
+
+  /** Explicit status of the question */
+  status: ClarificationStatus;
 }
 
 /**
@@ -190,4 +213,139 @@ export interface ClarificationQuestionInput {
 
   /** Optional A/B/C options */
   options?: ClarificationOption[];
+}
+
+// ============================================================================
+// Tool Output Types
+// ============================================================================
+
+/**
+ * Status of a Humancy request for a question.
+ *
+ * Tracks whether the Humancy request was successfully sent.
+ *
+ * @example
+ * ```typescript
+ * const status: HumancyRequestStatus = {
+ *   question_number: 1,
+ *   sent: true,
+ *   type: 'ask_question',
+ * };
+ * ```
+ */
+export interface HumancyRequestStatus {
+  /** Question number */
+  question_number: number;
+
+  /** Whether Humancy request was sent */
+  sent: boolean;
+
+  /** Humancy request type used */
+  type: 'ask_question' | 'request_decision';
+
+  /** Error message if sent is false */
+  error?: string;
+}
+
+/**
+ * Output for the read operation.
+ *
+ * Returns the parsed clarifications file with batch and question details.
+ *
+ * @example
+ * ```typescript
+ * const result: ReadClarificationsOutput = {
+ *   success: true,
+ *   exists: true,
+ *   batches: [...],
+ *   pending_count: 2,
+ *   total_count: 5,
+ * };
+ * ```
+ */
+export interface ReadClarificationsOutput {
+  /** Whether the operation succeeded */
+  success: boolean;
+
+  /** Whether clarifications.md exists */
+  exists: boolean;
+
+  /** All question batches */
+  batches: ClarificationBatch[];
+
+  /** Number of pending questions */
+  pending_count: number;
+
+  /** Total number of questions */
+  total_count: number;
+
+  /** Error message if success is false */
+  error?: string;
+}
+
+/**
+ * Output for the append operation.
+ *
+ * Returns information about the newly created batch.
+ *
+ * @example
+ * ```typescript
+ * const result: AppendClarificationsOutput = {
+ *   success: true,
+ *   batch_number: 2,
+ *   questions_added: 3,
+ *   first_question_number: 4,
+ * };
+ * ```
+ */
+export interface AppendClarificationsOutput {
+  /** Whether the operation succeeded */
+  success: boolean;
+
+  /** Batch number assigned */
+  batch_number: number;
+
+  /** Number of questions added */
+  questions_added: number;
+
+  /** First question number in batch */
+  first_question_number: number;
+
+  /** Humancy request status per question */
+  humancy_requests?: HumancyRequestStatus[];
+
+  /** Error message if success is false */
+  error?: string;
+}
+
+/**
+ * Output for the update_answer operation.
+ *
+ * Returns information about the updated question.
+ *
+ * @example
+ * ```typescript
+ * const result: UpdateAnswerOutput = {
+ *   success: true,
+ *   question_number: 1,
+ *   previous_answer: null,
+ *   status: ClarificationStatus.ANSWERED,
+ * };
+ * ```
+ */
+export interface UpdateAnswerOutput {
+  /** Whether the operation succeeded */
+  success: boolean;
+
+  /** Question number updated */
+  question_number: number;
+
+  /** Previous answer (null if was pending) */
+  previous_answer: string | null;
+
+  /** New status */
+  status: ClarificationStatus;
+
+  /** Error message if success is false */
+  error?: string;
 }
