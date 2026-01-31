@@ -8,6 +8,7 @@ import { parseConfig } from '../config.js';
 import { ProviderRegistry } from '../providers/registry.js';
 import { createGetTicketTool } from './get-ticket.js';
 import { createGetPathsTool } from './get-paths.js';
+import { createCreateTicketTool } from './create-ticket.js';
 import { createCheckPrereqsTool } from './check-prereqs.js';
 import { createManageClarificationsTool } from './manage-clarifications.js';
 
@@ -20,6 +21,7 @@ import '../providers/local.js';
 // Re-export individual tool creators for direct access
 export { createGetPathsTool } from './get-paths.js';
 export { createGetTicketTool, createGetTicketToolWithRegistry } from './get-ticket.js';
+export { createCreateTicketTool } from './create-ticket.js';
 export { createCheckPrereqsTool } from './check-prereqs.js';
 export { createManageClarificationsTool } from './manage-clarifications.js';
 
@@ -53,6 +55,7 @@ export function createTools(
     createGetTicketTool(resolvedConfig, (name) =>
       registry.getProvider(name as Parameters<typeof registry.getProvider>[0])
     ),
+    createCreateTicketTool(resolvedConfig, () => registry.getProvider()),
     createCheckPrereqsTool(resolvedConfig, core),
     createManageClarificationsTool(resolvedConfig, core),
   ];
