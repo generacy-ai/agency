@@ -10,28 +10,28 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Create `src/tools/git-ops.ts` with tool skeleton and Zod input schema
-- [ ] T002 [P] Add import and export for git-ops tool in `src/tools/index.ts`
+- [X] T001 Create `src/tools/git-ops.ts` with tool skeleton and Zod input schema
+- [X] T002 [P] Add import and export for git-ops tool in `src/tools/index.ts`
 
 ## Phase 2: Core Implementation
 
-- [ ] T010 Implement `current_branch` operation using `simple-git`
-- [ ] T011 Implement `status` operation returning `{ clean, staged, unstaged, untracked }`
-- [ ] T012 Implement `checkout` operation with branch_name validation
-- [ ] T013 Implement `create_branch` operation with branch_name validation
-- [ ] T014 Implement `fetch` operation with `fetch_all` and `prune` options
+- [X] T010 Implement `current_branch` operation using `simple-git`
+- [X] T011 Implement `status` operation returning `{ clean, staged, unstaged, untracked }`
+- [X] T012 Implement `checkout` operation with branch_name validation
+- [X] T013 Implement `create_branch` operation with branch_name validation
+- [X] T014 Implement `fetch` operation with `fetch_all` and `prune` options
 
 ## Phase 3: Error Handling & Validation
 
-- [ ] T020 Add Zod validation for operation-specific required params (branch_name for create_branch/checkout)
-- [ ] T021 [P] Add error handling with `createError()` using `GIT_OPERATION_FAILED` code
-- [ ] T022 [P] Add cwd parameter handling with fallback to `process.cwd()`
+- [X] T020 Add Zod validation for operation-specific required params (branch_name for create_branch/checkout)
+- [X] T021 [P] Add error handling with `createError()` using `GIT_OPERATION_FAILED` code
+- [X] T022 [P] Add cwd parameter handling with fallback to `process.cwd()`
 
 ## Phase 4: Testing & Polish
 
-- [ ] T030 Add unit tests for all git operations (mock simple-git)
-- [ ] T031 [P] Test error scenarios (invalid branch names, git failures)
-- [ ] T032 Verify tool registration and build passes
+- [X] T030 Add unit tests for all git operations (mock simple-git)
+- [X] T031 [P] Test error scenarios (invalid branch names, git failures)
+- [X] T032 Verify tool registration and build passes
 
 ## Dependencies & Execution Order
 
