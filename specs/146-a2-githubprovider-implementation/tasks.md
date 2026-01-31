@@ -10,50 +10,50 @@
 
 ## Phase 1: Setup & Error Types
 
-- [ ] T001 [AC7] Create `packages/agency-plugin-spec-kit/src/providers/github-cli.ts` with file structure and imports
-- [ ] T002 [P] [AC7] Define `GitHubCliError`, `GitHubCliAuthError`, `GitHubCliNotFoundError` error classes in github-cli.ts
-- [ ] T003 [P] [AC7] Define internal interfaces `RepoContext`, `GhExecOptions`, `GitHubIssueJson`, `GitHubRepoJson`
+- [X] T001 [AC7] Create `packages/agency-plugin-spec-kit/src/providers/github-cli.ts` with file structure and imports
+- [X] T002 [P] [AC7] Define `GitHubCliError`, `GitHubCliAuthError`, `GitHubCliNotFoundError` error classes in github-cli.ts
+- [X] T003 [P] [AC7] Define internal interfaces `RepoContext`, `GhExecOptions`, `GitHubIssueJson`, `GitHubRepoJson`
 
 ## Phase 2: Core Infrastructure
 
-- [ ] T004 [AC3] Implement `ghExec()` helper function for safe CLI execution with `execFileSync`
-- [ ] T005 [AC6] Implement `withRetry<T>()` helper for exponential backoff (transient errors)
-- [ ] T006 [AC1] Create `GitHubCliProvider` class skeleton implementing `BacklogProvider` interface
-- [ ] T007 [AC3] Implement `ensureRepoContext()` method for auto-detecting repository via `gh repo view`
+- [X] T004 [AC3] Implement `ghExec()` helper function for safe CLI execution with `execFileSync`
+- [X] T005 [AC6] Implement `withRetry<T>()` helper for exponential backoff (transient errors)
+- [X] T006 [AC1] Create `GitHubCliProvider` class skeleton implementing `BacklogProvider` interface
+- [X] T007 [AC3] Implement `ensureRepoContext()` method for auto-detecting repository via `gh repo view`
 
 ## Phase 3: Core CRUD Operations
 
-- [ ] T008 [AC2][AC5] Implement `parseRef()` method - parse #123, 123, owner/repo#123, and full URL formats
-- [ ] T009 [AC2] Implement `getTicketUrl()` method - generate full GitHub URL from ref
-- [ ] T010 [AC4] Implement `checkAuth()` method using `gh auth status`
-- [ ] T011 [AC2] Implement `getTicket()` method using `gh issue view --json`
-- [ ] T012 [AC2] Implement `createTicket()` method using `gh issue create`
-- [ ] T013 [AC2] Implement `updateTicket()` method using `gh issue edit`
+- [X] T008 [AC2][AC5] Implement `parseRef()` method - parse #123, 123, owner/repo#123, and full URL formats
+- [X] T009 [AC2] Implement `getTicketUrl()` method - generate full GitHub URL from ref
+- [X] T010 [AC4] Implement `checkAuth()` method using `gh auth status`
+- [X] T011 [AC2] Implement `getTicket()` method using `gh issue view --json`
+- [X] T012 [AC2] Implement `createTicket()` method using `gh issue create`
+- [X] T013 [AC2] Implement `updateTicket()` method using `gh issue edit`
 
 ## Phase 4: Label Operations
 
-- [ ] T014 [AC7] Implement `getLabels()` method using `gh issue view --json labels`
-- [ ] T015 [AC7] Implement `setLabels()` method using `gh issue edit --add-label/--remove-label`
+- [X] T014 [AC7] Implement `getLabels()` method using `gh issue view --json labels`
+- [X] T015 [AC7] Implement `setLabels()` method using `gh issue edit --add-label/--remove-label`
 
 ## Phase 5: Search (Optional)
 
-- [ ] T016 [P] [AC2] Implement `searchTickets()` method using `gh search issues`
+- [X] T016 [P] [AC2] Implement `searchTickets()` method using `gh search issues`
 
 ## Phase 6: Registration & Export
 
-- [ ] T017 [AC1] Register `GitHubCliProvider` in `registry.ts` with factory function
-- [ ] T018 [P] [AC1] Export `GitHubCliProvider` from `packages/agency-plugin-spec-kit/src/providers/index.ts`
+- [X] T017 [AC1] Register `GitHubCliProvider` in `registry.ts` with factory function
+- [X] T018 [P] [AC1] Export `GitHubCliProvider` from `packages/agency-plugin-spec-kit/src/providers/index.ts`
 
 ## Phase 7: Testing
 
-- [ ] T019 [AC2] Create `tests/providers/github-cli.test.ts` with test setup and mocks
-- [ ] T020 [P] [AC5] Add tests for `parseRef()` - all supported formats
-- [ ] T021 [P] [AC4] Add tests for `checkAuth()` - success and failure cases
-- [ ] T022 [AC2] Add tests for `getTicket()` - success, not found, auth error
-- [ ] T023 [AC2] Add tests for `createTicket()` - success and error handling
-- [ ] T024 [AC2] Add tests for `updateTicket()` - partial updates and errors
-- [ ] T025 [AC7] Add tests for `setLabels()` and `getLabels()` - add/remove label scenarios
-- [ ] T026 [AC6] Add tests for retry logic - transient error recovery
+- [X] T019 [AC2] Create `tests/providers/github-cli.test.ts` with test setup and mocks
+- [X] T020 [P] [AC5] Add tests for `parseRef()` - all supported formats
+- [X] T021 [P] [AC4] Add tests for `checkAuth()` - success and failure cases
+- [X] T022 [AC2] Add tests for `getTicket()` - success, not found, auth error
+- [X] T023 [AC2] Add tests for `createTicket()` - success and error handling
+- [X] T024 [AC2] Add tests for `updateTicket()` - partial updates and errors
+- [X] T025 [AC7] Add tests for `setLabels()` and `getLabels()` - add/remove label scenarios
+- [X] T026 [AC6] Add tests for retry logic - transient error recovery
 
 ## Dependencies & Execution Order
 
