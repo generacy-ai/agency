@@ -11,7 +11,7 @@ Questions and answers to clarify the feature specification.
 - A: Jira Cloud only (API token + email)
 - B: Both Cloud and Server (auto-detect based on URL)
 
-**Answer**: *Pending*
+**Answer**: A - Jira Cloud only (API token + email)
 
 ### Q2: Status to TicketState Mapping
 **Context**: Jira has complex workflows with many statuses (To Do, In Progress, In Review, Done, etc.) but BacklogProvider's TicketState only has 'open', 'closed', 'in_progress'. Need clear mapping rules.
@@ -20,7 +20,7 @@ Questions and answers to clarify the feature specification.
 - A: Map by status category (To Do→open, In Progress→in_progress, Done→closed)
 - B: Map by status name patterns (flexible keyword matching)
 
-**Answer**: *Pending*
+**Answer**: B - Map by status name patterns (flexible keyword matching)
 
 ### Q3: Default Issue Type
 **Context**: When creating tickets via createTicket(), Jira requires an issue type. The spec doesn't specify which type to use by default (Task, Story, Bug, etc.).
@@ -30,7 +30,7 @@ Questions and answers to clarify the feature specification.
 - B: Story (agile-friendly)
 - C: Make it configurable via JiraConfig
 
-**Answer**: *Pending*
+**Answer**: B - Story (agile-friendly)
 
 ### Q4: Cross-Project Support
 **Context**: JiraConfig requires a projectKey, but parseRef might encounter URLs/keys from different projects. This affects whether the provider can operate across projects.
@@ -39,5 +39,5 @@ Questions and answers to clarify the feature specification.
 - A: Single project only (projectKey is required context)
 - B: Any project (projectKey is default, URLs with different projects work)
 
-**Answer**: *Pending*
+**Answer**: A - Single project only (projectKey is required context)
 
