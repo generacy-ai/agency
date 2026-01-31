@@ -9,6 +9,7 @@ import { ProviderRegistry } from '../providers/registry.js';
 import { createGetTicketTool } from './get-ticket.js';
 import { createGetPathsTool } from './get-paths.js';
 import { createCreateTicketTool } from './create-ticket.js';
+import { createUpdateTicketTool } from './update-ticket.js';
 import { createCheckPrereqsTool } from './check-prereqs.js';
 import { createManageClarificationsTool } from './manage-clarifications.js';
 
@@ -22,6 +23,7 @@ import '../providers/local.js';
 export { createGetPathsTool } from './get-paths.js';
 export { createGetTicketTool, createGetTicketToolWithRegistry } from './get-ticket.js';
 export { createCreateTicketTool } from './create-ticket.js';
+export { createUpdateTicketTool } from './update-ticket.js';
 export { createCheckPrereqsTool } from './check-prereqs.js';
 export { createManageClarificationsTool } from './manage-clarifications.js';
 
@@ -56,6 +58,9 @@ export function createTools(
       registry.getProvider(name as Parameters<typeof registry.getProvider>[0])
     ),
     createCreateTicketTool(resolvedConfig, () => registry.getProvider()),
+    createUpdateTicketTool(resolvedConfig, (name) =>
+      registry.getProvider(name as Parameters<typeof registry.getProvider>[0])
+    ),
     createCheckPrereqsTool(resolvedConfig, core),
     createManageClarificationsTool(resolvedConfig, core),
   ];
