@@ -10,40 +10,40 @@
 
 ## Phase 1: Setup & Types
 
-- [ ] T001 Create `src/templates/` directory structure
-- [ ] T002 Create `src/templates/types.ts` with `TemplateType`, `TemplateDefinition`, and `TemplateVariables` interfaces
+- [x] T001 Create `src/templates/` directory structure
+- [x] T002 Create `src/templates/types.ts` with `TemplateType`, `TemplateDefinition`, and `TemplateVariables` interfaces
 
 ## Phase 2: Default Content Files
 
-- [ ] T003 [P] Create `src/templates/defaults/spec.ts` with embedded spec template content
-- [ ] T004 [P] Create `src/templates/defaults/plan.ts` with embedded plan template content
-- [ ] T005 [P] Create `src/templates/defaults/tasks.ts` with embedded tasks template content
-- [ ] T006 [P] Create `src/templates/defaults/checklist.ts` with embedded checklist template content
-- [ ] T007 [P] Create `src/templates/defaults/agent-file.ts` with embedded agent-file template content
+- [x] T003 [P] Create `src/templates/defaults/spec.ts` with embedded spec template content
+- [x] T004 [P] Create `src/templates/defaults/plan.ts` with embedded plan template content
+- [x] T005 [P] Create `src/templates/defaults/tasks.ts` with embedded tasks template content
+- [x] T006 [P] Create `src/templates/defaults/checklist.ts` with embedded checklist template content
+- [x] T007 [P] Create `src/templates/defaults/agent-file.ts` with embedded agent-file template content
 
 ## Phase 3: Core Implementation
 
-- [ ] T008 Create `src/templates/variables.ts` with `substituteVariables()` function
-- [ ] T009 Create `src/templates/index.ts` with `TEMPLATE_TYPES`, `TEMPLATES` registry, and `resolveTemplate()` function
+- [x] T008 Create `src/templates/variables.ts` with `substituteVariables()` function
+- [x] T009 Create `src/templates/index.ts` with `TEMPLATE_TYPES`, `TEMPLATES` registry, and `resolveTemplate()` function
 
 ## Phase 4: Integration
 
-- [ ] T010 Refactor `src/tools/copy-template.ts` to use `templates/index.ts` instead of local `TEMPLATE_MAPPINGS`
-- [ ] T011 Add variable substitution call in `copy-template.ts` during template copy operation
+- [x] T010 Refactor `src/tools/copy-template.ts` to use `templates/index.ts` instead of local `TEMPLATE_MAPPINGS`
+- [x] T011 Add variable substitution call in `copy-template.ts` during template copy operation
 
 ## Phase 5: Tests
 
-- [ ] T012 [P] Create `tests/templates/types.test.ts` - validate type definitions
-- [ ] T013 [P] Create `tests/templates/defaults.test.ts` - verify default content exports
-- [ ] T014 [P] Create `tests/templates/variables.test.ts` - test variable substitution including edge cases
-- [ ] T015 [P] Create `tests/templates/index.test.ts` - test `resolveTemplate()` with custom and default paths
-- [ ] T016 Update or create tests for `copy-template.ts` to verify refactored behavior
+- [x] T012 [P] Create `tests/templates/types.test.ts` - validate type definitions
+- [x] T013 [P] Create `tests/templates/defaults.test.ts` - verify default content exports
+- [x] T014 [P] Create `tests/templates/variables.test.ts` - test variable substitution including edge cases
+- [x] T015 [P] Create `tests/templates/index.test.ts` - test `resolveTemplate()` with custom and default paths
+- [x] T016 Update or create tests for `copy-template.ts` to verify refactored behavior
 
 ## Phase 6: Polish
 
-- [ ] T017 Run `pnpm build` to verify TypeScript compilation
-- [ ] T018 Run `pnpm test` to verify all tests pass
-- [ ] T019 Verify `copy_template` tool works end-to-end with variable substitution
+- [x] T017 Run `pnpm build` to verify TypeScript compilation
+- [x] T018 Run `pnpm test` to verify all tests pass
+- [x] T019 Verify `copy_template` tool works end-to-end with variable substitution
 
 ## Dependencies & Execution Order
 
