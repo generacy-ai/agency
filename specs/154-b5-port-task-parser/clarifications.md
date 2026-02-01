@@ -11,7 +11,7 @@ Questions and answers to clarify the feature specification.
 - A: Full port - include all functionality from reference (parseTaskGroups, detectTaskFormat, filterEligibleTasks, issue link updates, etc.)
 - B: Minimal port - only the 4 functions specified: parseTasks, buildDependencyGraph, topologicalSort, validateDependencies
 
-**Answer**: *Pending*
+**Answer**: A - Full port with all functionality from reference implementation (parseTaskGroups, detectTaskFormat, filterEligibleTasks, issue link updates, etc.)
 
 ### Q2: Missing Type Definitions
 **Context**: The spec references ParseError and ValidationResult types in return values but doesn't define their structure. These are needed for the parseTasks and validateDependencies functions.
@@ -20,7 +20,7 @@ Questions and answers to clarify the feature specification.
 - A: Infer from reference implementation's patterns (warnings array, error details with line numbers)
 - B: Define minimal structures (just message string and optional line number)
 
-**Answer**: *Pending*
+**Answer**: A - Infer from reference implementation's patterns (warnings array, error details with line numbers)
 
 ### Q3: Type Location
 **Context**: The reference imports types from a separate types/tasks.ts file. The issue shows types inline in task-parser.ts. This affects code organization and reusability for other tools.
@@ -29,5 +29,5 @@ Questions and answers to clarify the feature specification.
 - A: Separate file (src/types/tasks.ts) - matches reference, better for type sharing
 - B: Co-located in task-parser.ts - simpler, self-contained module
 
-**Answer**: *Pending*
+**Answer**: A - Separate file (src/types/tasks.ts) for better type sharing
 
