@@ -83,6 +83,15 @@ const SHORTCUT_URL_PATTERN =
   /^https?:\/\/app\.shortcut\.com\/[^/]+\/story\/(\d+)/i;
 
 /**
+ * Local ticket pattern.
+ *
+ * Matches:
+ * - LOCAL-001
+ * - local-123
+ */
+const LOCAL_PATTERN = /^LOCAL-(\d+)$/i;
+
+/**
  * Detect a ticket reference from user input.
  *
  * Parses various ticket reference formats and returns a normalized TicketRef.
@@ -134,6 +143,12 @@ export function detectTicketRef(
   const shortcutRef = detectShortcut(trimmed);
   if (shortcutRef) {
     return shortcutRef;
+  }
+
+  // Check LOCAL before Jira since "LOCAL-xxx" matches both patterns
+  const localRef = detectLocal(trimmed);
+  if (localRef) {
+    return localRef;
   }
 
   const jiraRef = detectJira(trimmed);
@@ -228,6 +243,24 @@ function detectShortcut(input: string): TicketRef | null {
   if (match && match[1]) {
     return {
       provider: 'shortcut',
+      id: match[1],
+      raw: input,
+    };
+  }
+  return null;
+}
+
+/**
+ * Detect Local ticket format.
+ *
+ * @param input - Input string (e.g., "LOCAL-001" or "local-123")
+ * @returns TicketRef if matches Local format, null otherwise
+ */
+function detectLocal(input: string): TicketRef | null {
+  const match = input.match(LOCAL_PATTERN);
+  if (match && match[1]) {
+    return {
+      provider: 'local',
       id: match[1],
       raw: input,
     };
