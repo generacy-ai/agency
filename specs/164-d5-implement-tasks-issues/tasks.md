@@ -10,61 +10,61 @@
 
 ## Phase 1: Setup & Core Utilities
 
-- [ ] T001 Create `src/utils/task-parser.ts` with `ParsedTask` and `TaskGroup` interfaces
-- [ ] T002 [P] Implement `parseTasksContent()` function to parse individual tasks (T### format)
-- [ ] T003 [P] Implement `parseTaskGroups()` function to parse task group format (TG-XXX)
-- [ ] T004 Implement `detectTaskFormat()` to auto-detect T### vs TG-XXX format
-- [ ] T005 Implement `filterEligibleTasks()` to filter incomplete tasks without existing issue links
-- [ ] T006 Implement `updateTasksWithIssueLinks()` to update tasks.md with created issue URLs
+- [x] T001 Create `src/utils/task-parser.ts` with `ParsedTask` and `TaskGroup` interfaces
+- [x] T002 [P] Implement `parseTasksContent()` function to parse individual tasks (T### format)
+- [x] T003 [P] Implement `parseTaskGroups()` function to parse task group format (TG-XXX)
+- [x] T004 Implement `detectTaskFormat()` to auto-detect T### vs TG-XXX format
+- [x] T005 Implement `filterEligibleTasks()` to filter incomplete tasks without existing issue links
+- [x] T006 Implement `updateTasksWithIssueLinks()` to update tasks.md with created issue URLs
 
 ## Phase 2: Dependency & Grouping Logic
 
-- [ ] T007 Create `src/utils/dependency.ts` with dependency graph types
-- [ ] T008 [P] Implement `detectCircularDependencies()` using depth-first search
-- [ ] T009 [P] Implement `validateDependencies()` as main validation entry point
-- [ ] T010 Create `src/utils/grouping.ts` with `TaskGroup` and `GroupingStrategy` types
-- [ ] T011 [P] Implement `groupByTask()` strategy - one issue per task
-- [ ] T012 [P] Implement `groupByStory()` strategy - group by US# marker
-- [ ] T013 [P] Implement `groupByPhase()` strategy - group by phase header
-- [ ] T014 Implement `groupTasks()` as main entry point selecting strategy
-- [ ] T015 Implement `topologicalSort()` using Kahn's algorithm for dependency ordering
-- [ ] T016 Implement `buildIssueBody()` to generate GitHub issue markdown body
+- [x] T007 Create `src/utils/dependency.ts` with dependency graph types
+- [x] T008 [P] Implement `detectCircularDependencies()` using depth-first search
+- [x] T009 [P] Implement `validateDependencies()` as main validation entry point
+- [x] T010 Create `src/utils/grouping.ts` with `TaskGroup` and `GroupingStrategy` types
+- [x] T011 [P] Implement `groupByTask()` strategy - one issue per task
+- [x] T012 [P] Implement `groupByStory()` strategy - group by US# marker
+- [x] T013 [P] Implement `groupByPhase()` strategy - group by phase header
+- [x] T014 Implement `groupTasks()` as main entry point selecting strategy
+- [x] T015 Implement `topologicalSort()` using Kahn's algorithm for dependency ordering
+- [x] T016 Implement `buildIssueBody()` to generate GitHub issue markdown body
 
 ## Phase 3: GitHub CLI Integration
 
-- [ ] T017 Create `src/utils/github-cli.ts` with CLI wrapper types
-- [ ] T018 Implement `checkGhCli()` to verify gh is installed and authenticated
-- [ ] T019 Implement `createIssue()` to create GitHub issue via gh CLI
-- [ ] T020 Implement `searchIssues()` for duplicate detection via gh CLI
-- [ ] T021 Implement `getIssueLabels()` to fetch labels for grouping strategy detection
+- [x] T017 Create `src/utils/github-cli.ts` with CLI wrapper types
+- [x] T018 Implement `checkGhCli()` to verify gh is installed and authenticated
+- [x] T019 Implement `createIssue()` to create GitHub issue via gh CLI
+- [x] T020 Implement `searchIssues()` for duplicate detection via gh CLI
+- [x] T021 Implement `getIssueLabels()` to fetch labels for grouping strategy detection
 
 ## Phase 4: Main Tool Implementation
 
-- [ ] T022 Create `src/tools/tasks-to-issues.ts` with tool factory structure
-- [ ] T023 Implement parameter validation and defaults handling
-- [ ] T024 Implement tasks.md reading and parsing workflow
-- [ ] T025 Implement grouping strategy detection from labels or parameter
-- [ ] T026 Implement duplicate checking using GitHub search
-- [ ] T027 Implement dry-run mode returning planned issues
-- [ ] T028 Implement issue creation loop with dependency ordering
-- [ ] T029 Implement tasks.md update after successful issue creation
-- [ ] T030 Implement error handling with structured error responses
+- [x] T022 Create `src/tools/tasks-to-issues.ts` with tool factory structure
+- [x] T023 Implement parameter validation and defaults handling
+- [x] T024 Implement tasks.md reading and parsing workflow
+- [x] T025 Implement grouping strategy detection from labels or parameter
+- [x] T026 Implement duplicate checking using GitHub search
+- [x] T027 Implement dry-run mode returning planned issues
+- [x] T028 Implement issue creation loop with dependency ordering
+- [x] T029 Implement tasks.md update after successful issue creation
+- [x] T030 Implement error handling with structured error responses
 
 ## Phase 5: Integration & Export
 
-- [ ] T031 Update `src/tools/index.ts` to export `createTasksToIssuesTool`
-- [ ] T032 Register tool in the tool factory/registry
+- [x] T031 Update `src/tools/index.ts` to export `createTasksToIssuesTool`
+- [x] T032 Register tool in the tool factory/registry
 
 ## Phase 6: Testing
 
-- [ ] T033 Create `tests/tools/tasks-to-issues.test.ts` with test scaffolding
-- [ ] T034 [P] Add unit tests for task-parser (T### format parsing)
-- [ ] T035 [P] Add unit tests for task-parser (TG-XXX format parsing)
-- [ ] T036 [P] Add unit tests for dependency validation and circular detection
-- [ ] T037 [P] Add unit tests for grouping strategies (per-task, per-story, per-phase)
-- [ ] T038 [P] Add unit tests for topological sorting
-- [ ] T039 Add integration test for dry-run workflow
-- [ ] T040 Add integration test for error scenarios (gh not installed, circular deps)
+- [x] T033 Create `tests/tools/tasks-to-issues.test.ts` with test scaffolding
+- [x] T034 [P] Add unit tests for task-parser (T### format parsing)
+- [x] T035 [P] Add unit tests for task-parser (TG-XXX format parsing)
+- [x] T036 [P] Add unit tests for dependency validation and circular detection
+- [x] T037 [P] Add unit tests for grouping strategies (per-task, per-story, per-phase)
+- [x] T038 [P] Add unit tests for topological sorting
+- [x] T039 Add integration test for dry-run workflow
+- [x] T040 Add integration test for error scenarios (gh not installed, circular deps)
 
 ## Dependencies & Execution Order
 

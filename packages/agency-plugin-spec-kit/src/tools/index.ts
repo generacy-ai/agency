@@ -16,6 +16,7 @@ import { createCopyTemplateTool } from './copy-template.js';
 import { createGitOpsTool } from './git-ops.js';
 import { createUpdateAgentTool } from './update-agent.js';
 import { createCreateFeatureTool } from './create-feature.js';
+import { createTasksToIssuesTool } from './tasks-to-issues.js';
 
 // Import providers to register their factories
 import '../providers/github.js';
@@ -34,6 +35,7 @@ export { createCopyTemplateTool } from './copy-template.js';
 export { createGitOpsTool } from './git-ops.js';
 export { createUpdateAgentTool } from './update-agent.js';
 export { createCreateFeatureTool } from './create-feature.js';
+export { createTasksToIssuesTool } from './tasks-to-issues.js';
 
 /**
  * Create all spec tools
@@ -75,6 +77,7 @@ export function createTools(
     createGitOpsTool(),
     createUpdateAgentTool(resolvedConfig, core),
     createCreateFeatureTool(resolvedConfig, core),
+    createTasksToIssuesTool(resolvedConfig, core),
   ];
 }
 
