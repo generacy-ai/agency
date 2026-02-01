@@ -16,35 +16,35 @@ The implementation is already complete. These tasks verify that all tools are pr
 
 ## Phase 1: Build Verification
 
-- [ ] T001 Run `pnpm build` in `packages/agency-plugin-spec-kit/` to verify TypeScript compiles without errors
-- [ ] T002 [P] Run `pnpm test` in `packages/agency-plugin-spec-kit/` to verify unit tests pass
+- [X] T001 Run `pnpm build` in `packages/agency-plugin-spec-kit/` to verify TypeScript compiles without errors
+- [X] T002 [P] Run `pnpm test` in `packages/agency-plugin-spec-kit/` to verify unit tests pass
 
 ## Phase 2: Tool Registration Verification
 
-- [ ] T003 Verify `src/tools/index.ts` imports all 11 tool factory functions
-- [ ] T004 [P] Verify `createTools()` returns array containing all tools
-- [ ] T005 [P] Verify `src/plugin.ts` `initialize()` method registers all tools with CoreAPI
-- [ ] T006 [P] Verify `src/manifest.ts` declares all 11 tools in the manifest
+- [X] T003 Verify `src/tools/index.ts` imports all 11 tool factory functions
+- [X] T004 [P] Verify `createTools()` returns array containing all tools
+- [X] T005 [P] Verify `src/plugin.ts` `initialize()` method registers all tools with CoreAPI
+- [X] T006 [P] Verify `src/manifest.ts` declares all 11 tools in the manifest
 
 ## Phase 3: Integration Verification
 
-- [ ] T007 Verify plugin can be instantiated with `createSpecKitPlugin()`
-- [ ] T008 [P] Verify `src/index.ts` exports plugin, manifest, and types
-- [ ] T009 [P] Verify ProviderRegistry initializes backlog providers lazily
+- [X] T007 Verify plugin can be instantiated with `createSpecKitPlugin()`
+- [X] T008 [P] Verify `src/index.ts` exports plugin, manifest, and types
+- [X] T009 [P] Verify ProviderRegistry initializes backlog providers lazily
 
 ## Phase 4: Tool Availability Testing
 
-- [ ] T010 Verify `spec_kit.git_ops` tool is registered with correct input schema
-- [ ] T011 [P] Verify `spec_kit.create_feature` tool is registered with correct input schema
-- [ ] T012 [P] Verify `spec_kit.get_paths` tool is registered with correct input schema
-- [ ] T013 [P] Verify `spec_kit.check_prereqs` tool is registered with correct input schema
-- [ ] T014 [P] Verify `spec_kit.copy_template` tool is registered with correct input schema
-- [ ] T015 [P] Verify `spec_kit.update_agent` tool is registered with correct input schema
-- [ ] T016 [P] Verify `spec_kit.get_ticket` tool is registered with correct input schema
-- [ ] T017 [P] Verify `spec_kit.create_ticket` tool is registered with correct input schema
-- [ ] T018 [P] Verify `spec_kit.update_ticket` tool is registered with correct input schema
-- [ ] T019 [P] Verify `spec_kit.tasks_to_issues` tool is registered with correct input schema
-- [ ] T020 [P] Verify `spec_kit.manage_clarifications` tool is registered with correct input schema
+- [X] T010 Verify `spec_kit.git_ops` tool is registered with correct input schema
+- [X] T011 [P] Verify `spec_kit.create_feature` tool is registered with correct input schema
+- [X] T012 [P] Verify `spec_kit.get_paths` tool is registered with correct input schema
+- [X] T013 [P] Verify `spec_kit.check_prereqs` tool is registered with correct input schema
+- [X] T014 [P] Verify `spec_kit.copy_template` tool is registered with correct input schema
+- [X] T015 [P] Verify `spec_kit.update_agent` tool is registered with correct input schema
+- [X] T016 [P] Verify `spec_kit.get_ticket` tool is registered with correct input schema
+- [X] T017 [P] Verify `spec_kit.create_ticket` tool is registered with correct input schema
+- [X] T018 [P] Verify `spec_kit.update_ticket` tool is registered with correct input schema
+- [X] T019 [P] Verify `spec_kit.tasks_to_issues` tool is registered with correct input schema
+- [X] T020 [P] Verify `spec_kit.manage_clarifications` tool is registered with correct input schema
 
 ---
 
