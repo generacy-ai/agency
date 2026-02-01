@@ -74,6 +74,87 @@ export {
 export type { ParsedClarificationsFile } from './clarification-parser.js';
 
 // ============================================================================
+// Task Parser Utilities
+// ============================================================================
+
+export {
+  parseTasksContent,
+  parseTaskGroups,
+  parseTasksFile,
+  detectTaskFormat,
+  filterEligibleTasks,
+  filterEligibleGroups,
+  updateTasksWithIssueLinks,
+  countTasks,
+  countGroups,
+} from './task-parser.js';
+
+export type {
+  TaskFormat,
+  ParseTasksResult,
+  IssueLinksMap,
+} from './task-parser.js';
+
+// ============================================================================
+// Dependency Utilities
+// ============================================================================
+
+export {
+  validateDependencies,
+  validateTaskDependencies,
+  detectCircularDependencies,
+  isValidDAG,
+  isValidTaskDAG,
+  getDependencies,
+  getDependents,
+  getAllDependencies,
+  findRootItems,
+  findLeafItems,
+} from './dependency.js';
+
+export type { DependencyItem } from './dependency.js';
+
+// ============================================================================
+// Grouping Utilities
+// ============================================================================
+
+export {
+  groupTasks,
+  groupByTask,
+  groupByStory,
+  groupByPhase,
+  topologicalSort,
+  buildIssueBody,
+  buildIssueBodyForGroup,
+  convertGroupEntriesToTaskGroups,
+} from './grouping.js';
+
+export type { SortableTaskGroup } from './grouping.js';
+
+// ============================================================================
+// GitHub CLI Utilities
+// ============================================================================
+
+export {
+  checkGhCli,
+  createIssue,
+  searchIssues,
+  getIssueLabels,
+  getRepoInfo,
+  findExistingIssue,
+  GhCliError,
+} from './github-cli.js';
+
+export type {
+  GhCliCheckResult,
+  CreateIssueOptions,
+  CreatedIssueResult,
+  SearchIssuesOptions,
+  SearchResultItem,
+  GhCliErrorCode,
+} from './github-cli.js';
+
+// ============================================================================
 // Task ID Utilities
 // ============================================================================
 

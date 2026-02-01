@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "spec_kit.tasks_to_issues",
+  "description": "Convert tasks from tasks.md into GitHub issues with configurable grouping strategies",
+  "type": "object",
+  "properties": {
+    "grouping": {
+      "type": "string",
+      "enum": ["per-task", "per-story", "per-phase"],
+      "description": "Grouping strategy override (optional - detected from labels)"
+    },
+    "dry_run": {
+      "type": "boolean",
+      "default": false,
+      "description": "Preview only, don't create issues"
+    },
+    "epic_number": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Epic issue number (optional - detected from branch)"
+    },
+    "feature_dir": {
+      "type": "string",
+      "description": "Feature directory path (optional - auto-detected from branch)"
+    },
+    "cwd": {
+      "type": "string",
+      "description": "Working directory (defaults to process.cwd())"
+    }
+  },
+  "additionalProperties": false
+}
