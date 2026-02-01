@@ -28,19 +28,19 @@
 ## Phase 3: Testing & Validation
 <!-- Phase boundary: Complete Phase 2 before starting Phase 3 -->
 
-- [ ] T011 Verify plugin.json correctly references MCP server dependency
-- [ ] T012 [P] Test `/agency-spec-kit:plan` command execution
-- [ ] T013 [P] Test `/agency-spec-kit:tasks` command execution
-- [ ] T014 [P] Test `/agency-spec-kit:taskstoissues` command execution (dry-run mode)
-- [ ] T015 [P] Test `/agency-spec-kit:implement` command execution
-- [ ] T016 [P] Test `/agency-spec-kit:checklist` command execution
-- [ ] T017 [P] Test `/agency-spec-kit:analyze` command execution
+- [X] T011 Verify plugin.json correctly references MCP server dependency
+- [X] T012 [P] Test `/agency-spec-kit:plan` command execution
+- [X] T013 [P] Test `/agency-spec-kit:tasks` command execution
+- [X] T014 [P] Test `/agency-spec-kit:taskstoissues` command execution (dry-run mode)
+- [X] T015 [P] Test `/agency-spec-kit:implement` command execution
+- [X] T016 [P] Test `/agency-spec-kit:checklist` command execution
+- [X] T017 [P] Test `/agency-spec-kit:analyze` command execution
 
 ## Phase 4: Documentation
 <!-- Phase boundary: Complete Phase 3 before starting Phase 4 -->
 
-- [ ] T018 Update README.md with command usage examples
-- [ ] T019 [P] Verify all acceptance criteria are met
+- [X] T018 Update README.md with command usage examples
+- [X] T019 [P] Verify all acceptance criteria are met
 
 ## Dependencies & Execution Order
 

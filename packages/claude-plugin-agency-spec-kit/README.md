@@ -42,24 +42,54 @@ Ensure the MCP server is properly configured in your Claude Code settings before
 
 1. Install the plugin in your Claude Code environment
 2. Ensure the `@generacy-ai/agency-plugin-spec-kit` MCP server is configured
-3. Use the slash commands to drive your specification workflow:
+3. Use the slash commands to drive your specification workflow
 
-```
+### Command Examples
+
+```bash
 # Start with a new feature
-/specify
+/agency-spec-kit:specify
 
-# Clarify any ambiguities
-/clarify
+# Clarify any ambiguities in the spec
+/agency-spec-kit:clarify
 
-# Generate implementation plan
-/plan
+# Generate implementation plan and design artifacts
+/agency-spec-kit:plan
 
-# Create task list
-/tasks
+# Create task list from plan (standard mode)
+/agency-spec-kit:tasks
 
-# Execute implementation
-/implement
+# Create task list in epic mode (coarse-grained task groups)
+/agency-spec-kit:tasks --epic
+
+# Execute implementation with progress tracking
+/agency-spec-kit:implement
+
+# Generate a security checklist
+/agency-spec-kit:checklist security
+
+# Run consistency analysis across all artifacts
+/agency-spec-kit:analyze
+
+# Convert tasks to GitHub issues (preview)
+/agency-spec-kit:taskstoissues --dry-run
+
+# Convert tasks to GitHub issues (create)
+/agency-spec-kit:taskstoissues
 ```
+
+### MCP Tools Used
+
+Each command orchestrates one or more MCP tools from the `@generacy-ai/agency-plugin-spec-kit` server:
+
+| Command | MCP Tools |
+|---------|-----------|
+| `/plan` | `get_paths`, `check_prereqs`, `update_agent` |
+| `/tasks` | `check_prereqs`, `preflight_check` (autodev) |
+| `/taskstoissues` | `check_prereqs`, `tasks_to_issues` |
+| `/implement` | `check_prereqs`, `merge_from_base`, `update_phase_labels` (autodev) |
+| `/checklist` | `get_paths`, `check_prereqs` |
+| `/analyze` | `check_prereqs` |
 
 ## Workflow
 
