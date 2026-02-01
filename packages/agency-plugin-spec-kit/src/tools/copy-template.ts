@@ -4,100 +4,53 @@
  * Copies template files from the templates directory to feature directories.
  * Supports multiple templates, custom filenames, and special handling for
  * checklists (subdirectory) and agent files (repo root).
+ *
+ * Uses the templates module for:
+ * - Template definitions (TEMPLATES registry)
+ * - Template resolution (custom path first, embedded default fallback)
+ * - Variable substitution ({{variable}} placeholders)
+ * - Destination path calculation
  */
 
-import { join } from 'node:path';
 import type { AgencyTool, ToolResult, AgencyCoreAPI } from '@generacy-ai/agency';
 import type { SpecKitConfig } from '../config.js';
 import {
   exists,
-  readFile,
   writeFile,
   findRepoRoot,
   RepoNotFoundError,
 } from '../utils/index.js';
-
-/**
- * Valid template names
- */
-type TemplateName = 'spec' | 'plan' | 'tasks' | 'checklist' | 'agent-file';
-
-/**
- * List of valid template names
- */
-const VALID_TEMPLATES: TemplateName[] = ['spec', 'plan', 'tasks', 'checklist', 'agent-file'];
-
-/**
- * Template mapping configuration
- */
-interface TemplateMapping {
-  /** Template name (used in API) */
-  name: TemplateName;
-  /** Source filename (without path) */
-  sourceFile: string;
-  /** Destination resolver */
-  getDestination: (
-    featureDir: string,
-    repoRoot: string,
-    destFilename?: string
-  ) => string;
-}
-
-/**
- * Template mappings defining source files and destination logic
- */
-const TEMPLATE_MAPPINGS: TemplateMapping[] = [
-  {
-    name: 'spec',
-    sourceFile: 'spec-template.md',
-    getDestination: (featureDir, _repoRoot, destFilename) =>
-      join(featureDir, destFilename || 'spec.md'),
-  },
-  {
-    name: 'plan',
-    sourceFile: 'plan-template.md',
-    getDestination: (featureDir, _repoRoot, destFilename) =>
-      join(featureDir, destFilename || 'plan.md'),
-  },
-  {
-    name: 'tasks',
-    sourceFile: 'tasks-template.md',
-    getDestination: (featureDir, _repoRoot, destFilename) =>
-      join(featureDir, destFilename || 'tasks.md'),
-  },
-  {
-    name: 'checklist',
-    sourceFile: 'checklist-template.md',
-    getDestination: (featureDir, _repoRoot, destFilename) =>
-      join(featureDir, 'checklists', destFilename || 'checklist.md'),
-  },
-  {
-    name: 'agent-file',
-    sourceFile: 'agent-file-template.md',
-    getDestination: (_featureDir, repoRoot, destFilename) =>
-      join(repoRoot, destFilename || 'CLAUDE.md'),
-  },
-];
+import {
+  TEMPLATE_TYPES,
+  isTemplateType,
+  resolveTemplate,
+  getDestinationPath,
+  substituteVariables,
+  createTemplateVariables,
+} from '../templates/index.js';
+import type { TemplateType, TemplateVariables } from '../templates/index.js';
 
 /**
  * Parameters for the copy_template tool
  */
 interface CopyTemplateParams {
   /** List of template names to copy */
-  templates: TemplateName[];
+  templates: TemplateType[];
   /** Optional custom destination filename (single template only) */
   dest_filename?: string;
   /** Target feature directory */
   feature_dir?: string;
   /** Working directory (defaults to process.cwd()) */
   cwd?: string;
+  /** Optional variables for substitution */
+  variables?: Partial<TemplateVariables>;
 }
 
 /**
  * Result for a copied template
  */
 interface CopiedTemplate {
-  template: TemplateName;
+  template: TemplateType;
   destination: string;
 }
 
@@ -105,7 +58,7 @@ interface CopiedTemplate {
  * Result for a skipped template
  */
 interface SkippedTemplate {
-  template: TemplateName;
+  template: TemplateType;
   destination: string;
   reason: 'exists' | 'source_not_found';
 }
@@ -121,58 +74,6 @@ interface CopyTemplateResult {
 }
 
 /**
- * Resolve the source path for a template
- *
- * @param templateName - Name of the template
- * @param templatesDir - Path to templates directory
- * @returns Full path to template source file, or null if not found
- */
-function resolveTemplatePath(templateName: TemplateName, templatesDir: string): string | null {
-  const mapping = TEMPLATE_MAPPINGS.find((m) => m.name === templateName);
-  if (!mapping) {
-    return null;
-  }
-  return join(templatesDir, mapping.sourceFile);
-}
-
-/**
- * Resolve the destination path for a template
- *
- * @param templateName - Name of the template
- * @param featureDir - Feature directory path
- * @param repoRoot - Repository root path
- * @param destFilename - Optional custom destination filename
- * @returns Full path to destination file
- */
-function resolveDestinationPath(
-  templateName: TemplateName,
-  featureDir: string,
-  repoRoot: string,
-  destFilename?: string
-): string {
-  const mapping = TEMPLATE_MAPPINGS.find((m) => m.name === templateName);
-  if (!mapping) {
-    // Should not happen if validation is done first
-    return join(featureDir, `${templateName}.md`);
-  }
-
-  // Normalize destFilename - ensure it ends with .md
-  let normalizedFilename = destFilename;
-  if (normalizedFilename && !normalizedFilename.endsWith('.md')) {
-    normalizedFilename = `${normalizedFilename}.md`;
-  }
-
-  return mapping.getDestination(featureDir, repoRoot, normalizedFilename);
-}
-
-/**
- * Validate template name
- */
-function isValidTemplate(name: string): name is TemplateName {
-  return VALID_TEMPLATES.includes(name as TemplateName);
-}
-
-/**
  * Create the spec_kit.copy_template tool.
  *
  * This tool copies template files from the templates directory to feature
@@ -180,6 +81,12 @@ function isValidTemplate(name: string): name is TemplateName {
  * custom destination filenames for single-template copies, and special
  * handling for checklists (placed in checklists/ subdirectory) and agent
  * files (placed at repo root).
+ *
+ * Template content is resolved from:
+ * 1. Custom template in config.paths.templates (if exists)
+ * 2. Built-in embedded default content
+ *
+ * Variable substitution is applied using {{variable}} placeholders.
  *
  * @param config - Plugin configuration
  * @param _core - Agency core API (unused)
@@ -202,7 +109,7 @@ export function createCopyTemplateTool(
           type: 'array',
           items: {
             type: 'string',
-            enum: ['spec', 'plan', 'tasks', 'checklist', 'agent-file'],
+            enum: [...TEMPLATE_TYPES],
           },
           description: 'List of template names to copy',
         },
@@ -218,6 +125,16 @@ export function createCopyTemplateTool(
           type: 'string',
           description: 'Working directory (defaults to process.cwd())',
         },
+        variables: {
+          type: 'object',
+          description: 'Optional variables for template substitution',
+          properties: {
+            feature_name: { type: 'string', description: 'Feature name' },
+            description: { type: 'string', description: 'Feature description' },
+            date: { type: 'string', description: 'Date in ISO format' },
+            branch: { type: 'string', description: 'Branch name' },
+          },
+        },
       },
       required: ['templates'],
     },
@@ -227,6 +144,7 @@ export function createCopyTemplateTool(
         dest_filename,
         feature_dir,
         cwd,
+        variables,
       } = (params || {}) as CopyTemplateParams;
       const workDir = cwd || process.cwd();
 
@@ -244,13 +162,13 @@ export function createCopyTemplateTool(
       }
 
       // Validate all template names
-      const invalidTemplates = templates.filter((t) => !isValidTemplate(t));
+      const invalidTemplates = templates.filter((t) => !isTemplateType(t));
       if (invalidTemplates.length > 0) {
         const result: CopyTemplateResult = {
           success: false,
           copied: [],
           skipped: [],
-          error: `Invalid template name(s): ${invalidTemplates.join(', ')}. Valid templates: ${VALID_TEMPLATES.join(', ')}`,
+          error: `Invalid template name(s): ${invalidTemplates.join(', ')}. Valid templates: ${TEMPLATE_TYPES.join(', ')}`,
         };
         return {
           content: [{ type: 'text', text: JSON.stringify(result) }],
@@ -292,44 +210,25 @@ export function createCopyTemplateTool(
       // Validate feature_dir or determine from cwd
       const featureDir = feature_dir || workDir;
 
-      // Determine templates directory path
-      const templatesDir = join(repoRoot, config.paths.templates);
-
       // Deduplicate templates
-      const uniqueTemplates = [...new Set(templates)] as TemplateName[];
+      const uniqueTemplates = [...new Set(templates)] as TemplateType[];
+
+      // Create default variables if not provided
+      const templateVariables = variables || createTemplateVariables({
+        date: new Date().toISOString().split('T')[0],
+      });
 
       const copied: CopiedTemplate[] = [];
       const skipped: SkippedTemplate[] = [];
 
       // Process each template
       for (const templateName of uniqueTemplates) {
-        const sourcePath = resolveTemplatePath(templateName, templatesDir);
-        if (!sourcePath) {
-          // Should not happen due to validation, but handle gracefully
-          skipped.push({
-            template: templateName,
-            destination: '',
-            reason: 'source_not_found',
-          });
-          continue;
-        }
-
-        const destPath = resolveDestinationPath(
+        const destPath = getDestinationPath(
           templateName,
           featureDir,
           repoRoot,
           dest_filename
         );
-
-        // Check if source exists
-        if (!(await exists(sourcePath))) {
-          skipped.push({
-            template: templateName,
-            destination: destPath,
-            reason: 'source_not_found',
-          });
-          continue;
-        }
 
         // Check if destination already exists
         if (await exists(destPath)) {
@@ -341,9 +240,15 @@ export function createCopyTemplateTool(
           continue;
         }
 
-        // Copy the template
+        // Resolve and copy the template
         try {
-          const content = await readFile(sourcePath);
+          // Get template content (custom or default)
+          let content = await resolveTemplate(templateName, config, repoRoot);
+
+          // Apply variable substitution
+          content = substituteVariables(content, templateVariables);
+
+          // Write to destination
           await writeFile(destPath, content);
           copied.push({
             template: templateName,

@@ -366,11 +366,11 @@ describe('copy_template tool', () => {
       expect(response.error).toContain('dest_filename');
     });
 
-    it('should handle missing template source file', async () => {
+    it('should use embedded default when custom template is missing', async () => {
       const repoDir = await setupTestRepo();
       const featureDir = join(repoDir, 'specs', '001-my-feature');
 
-      // Remove spec template
+      // Remove spec template - should fall back to embedded default
       await fs.unlink(join(repoDir, '.specify', 'templates', 'spec-template.md'));
 
       const config = parseConfig();
@@ -384,8 +384,13 @@ describe('copy_template tool', () => {
 
       const response = JSON.parse(result.content[0].text);
       expect(response.success).toBe(true);
-      expect(response.skipped).toHaveLength(1);
-      expect(response.skipped[0].reason).toBe('source_not_found');
+      // Now uses embedded default instead of skipping
+      expect(response.copied).toHaveLength(1);
+      expect(response.copied[0].template).toBe('spec');
+
+      // Verify embedded default was used
+      const content = await fs.readFile(join(featureDir, 'spec.md'), 'utf-8');
+      expect(content).toContain('# Feature Specification');
     });
 
     it('should use process.cwd() as default when no feature_dir or cwd provided', async () => {
@@ -514,6 +519,159 @@ describe('copy_template tool', () => {
       expect(response.success).toBe(true);
       // Should only copy spec once
       expect(response.copied).toHaveLength(2);
+    });
+  });
+
+  describe('variable substitution', () => {
+    it('should substitute variables when provided', async () => {
+      const repoDir = await setupTestRepo();
+      const featureDir = join(repoDir, 'specs', '001-my-feature');
+
+      // Create a template with variables
+      await fs.writeFile(
+        join(repoDir, '.specify', 'templates', 'spec-template.md'),
+        '# Feature: {{feature_name}}\n\n**Branch**: {{branch}}\n**Date**: {{date}}\n\n{{description}}'
+      );
+
+      const config = parseConfig();
+      const tool = createCopyTemplateTool(config, mockCoreAPI);
+
+      const result = await tool.execute({
+        templates: ['spec'],
+        feature_dir: featureDir,
+        cwd: repoDir,
+        variables: {
+          feature_name: 'my-awesome-feature',
+          branch: '001-my-feature',
+          date: '2026-02-01',
+          description: 'This is my feature description.',
+        },
+      });
+
+      const response = JSON.parse(result.content[0].text);
+      expect(response.success).toBe(true);
+
+      const content = await fs.readFile(join(featureDir, 'spec.md'), 'utf-8');
+      expect(content).toContain('# Feature: my-awesome-feature');
+      expect(content).toContain('**Branch**: 001-my-feature');
+      expect(content).toContain('**Date**: 2026-02-01');
+      expect(content).toContain('This is my feature description.');
+    });
+
+    it('should leave unknown variables unchanged', async () => {
+      const repoDir = await setupTestRepo();
+      const featureDir = join(repoDir, 'specs', '001-my-feature');
+
+      // Create a template with unknown variable
+      await fs.writeFile(
+        join(repoDir, '.specify', 'templates', 'spec-template.md'),
+        '# Feature: {{feature_name}}\n\nUnknown: {{unknown_var}}'
+      );
+
+      const config = parseConfig();
+      const tool = createCopyTemplateTool(config, mockCoreAPI);
+
+      const result = await tool.execute({
+        templates: ['spec'],
+        feature_dir: featureDir,
+        cwd: repoDir,
+        variables: {
+          feature_name: 'test-feature',
+        },
+      });
+
+      const response = JSON.parse(result.content[0].text);
+      expect(response.success).toBe(true);
+
+      const content = await fs.readFile(join(featureDir, 'spec.md'), 'utf-8');
+      expect(content).toContain('# Feature: test-feature');
+      expect(content).toContain('Unknown: {{unknown_var}}');
+    });
+
+    it('should apply default date when no variables provided', async () => {
+      const repoDir = await setupTestRepo();
+      const featureDir = join(repoDir, 'specs', '001-my-feature');
+
+      // Remove custom template to use embedded default
+      await fs.unlink(join(repoDir, '.specify', 'templates', 'spec-template.md'));
+
+      const config = parseConfig();
+      const tool = createCopyTemplateTool(config, mockCoreAPI);
+
+      const result = await tool.execute({
+        templates: ['spec'],
+        feature_dir: featureDir,
+        cwd: repoDir,
+        // No variables provided - should use createTemplateVariables defaults
+      });
+
+      const response = JSON.parse(result.content[0].text);
+      expect(response.success).toBe(true);
+
+      // File should be created successfully
+      const content = await fs.readFile(join(featureDir, 'spec.md'), 'utf-8');
+      expect(content).toBeDefined();
+    });
+  });
+
+  describe('embedded defaults fallback', () => {
+    it('should use embedded default for all templates when no custom templates exist', async () => {
+      const repoDir = await setupTestRepo();
+      const featureDir = join(repoDir, 'specs', '001-my-feature');
+
+      // Remove all custom templates
+      const templatesDir = join(repoDir, '.specify', 'templates');
+      await fs.rm(templatesDir, { recursive: true });
+
+      const config = parseConfig();
+      const tool = createCopyTemplateTool(config, mockCoreAPI);
+
+      const result = await tool.execute({
+        templates: ['spec', 'plan', 'tasks'],
+        feature_dir: featureDir,
+        cwd: repoDir,
+      });
+
+      const response = JSON.parse(result.content[0].text);
+      expect(response.success).toBe(true);
+      expect(response.copied).toHaveLength(3);
+
+      // Verify embedded defaults were used
+      const specContent = await fs.readFile(join(featureDir, 'spec.md'), 'utf-8');
+      expect(specContent).toContain('# Feature Specification');
+
+      const planContent = await fs.readFile(join(featureDir, 'plan.md'), 'utf-8');
+      expect(planContent).toContain('# Implementation Plan');
+
+      const tasksContent = await fs.readFile(join(featureDir, 'tasks.md'), 'utf-8');
+      expect(tasksContent).toContain('# Tasks:');
+    });
+
+    it('should prefer custom template over embedded default', async () => {
+      const repoDir = await setupTestRepo();
+      const featureDir = join(repoDir, 'specs', '001-my-feature');
+
+      // Custom template has unique content
+      await fs.writeFile(
+        join(repoDir, '.specify', 'templates', 'spec-template.md'),
+        '# Custom Spec Template\n\nThis is a custom template.'
+      );
+
+      const config = parseConfig();
+      const tool = createCopyTemplateTool(config, mockCoreAPI);
+
+      const result = await tool.execute({
+        templates: ['spec'],
+        feature_dir: featureDir,
+        cwd: repoDir,
+      });
+
+      const response = JSON.parse(result.content[0].text);
+      expect(response.success).toBe(true);
+
+      const content = await fs.readFile(join(featureDir, 'spec.md'), 'utf-8');
+      expect(content).toContain('# Custom Spec Template');
+      expect(content).not.toContain('# Feature Specification');
     });
   });
 });
