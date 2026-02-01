@@ -79,11 +79,15 @@ This command respects the tasks-review gate for epic issues:
    - story:[US#]
    ```
 
-6. **Create issues using `gh` CLI**:
-   - Preview issues before creating
-   - Ask for confirmation
-   - Create issues with labels
-   - Link dependent issues
+6. **Create issues using `tasks_to_issues` MCP tool**:
+   - Call the `tasks_to_issues` MCP tool with:
+     - `grouping`: The user's chosen strategy (`per-task`, `per-story`, or `per-phase`)
+     - `dry_run`: Set to `true` first to preview issues
+     - `epic_number`: The epic issue number (if applicable)
+     - `feature_dir`: Path to the feature directory (from step 1)
+   - Review the dry-run output with user
+   - If user confirms, call `tasks_to_issues` again with `dry_run: false` to create issues
+   - The MCP tool handles label creation and dependency linking automatically
 
 7. **Update tasks.md** (optional):
    - Add issue links to tasks
@@ -98,7 +102,7 @@ This command respects the tasks-review gate for epic issues:
 
 ## Constraints
 
-- Requires `gh` CLI to be installed and authenticated
+- Requires `tasks_to_issues` MCP tool from agency-plugin-spec-kit
 - Only creates issues for uncompleted tasks
 - Does not duplicate existing issues (checks by title)
 - Maximum 3 MCP tool calls for setup
