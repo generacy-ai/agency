@@ -168,6 +168,53 @@ describe('detectTicketRef', () => {
     });
   });
 
+  describe('Local format parsing', () => {
+    it('should parse LOCAL-001 format (uppercase)', () => {
+      const result = detectTicketRef('LOCAL-001', 'github');
+      expect(result).toEqual({
+        provider: 'local',
+        id: '001',
+        raw: 'LOCAL-001',
+      });
+    });
+
+    it('should parse local-123 format (lowercase)', () => {
+      const result = detectTicketRef('local-123', 'github');
+      expect(result).toEqual({
+        provider: 'local',
+        id: '123',
+        raw: 'local-123',
+      });
+    });
+
+    it('should handle edge cases (LOCAL-0, LOCAL-999999)', () => {
+      // LOCAL-0 edge case
+      const result0 = detectTicketRef('LOCAL-0', 'github');
+      expect(result0).toEqual({
+        provider: 'local',
+        id: '0',
+        raw: 'LOCAL-0',
+      });
+
+      // Large number edge case
+      const resultLarge = detectTicketRef('LOCAL-999999', 'github');
+      expect(resultLarge).toEqual({
+        provider: 'local',
+        id: '999999',
+        raw: 'LOCAL-999999',
+      });
+    });
+
+    it('should parse mixed case (Local-456)', () => {
+      const result = detectTicketRef('Local-456', 'github');
+      expect(result).toEqual({
+        provider: 'local',
+        id: '456',
+        raw: 'Local-456',
+      });
+    });
+  });
+
   describe('bare number parsing', () => {
     it('should parse bare number with default provider', () => {
       const result = detectTicketRef('123', 'github');

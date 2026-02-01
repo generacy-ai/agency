@@ -11,20 +11,20 @@
 ## Phase 1: Implementation
 
 ### Core Detection Logic
-- [ ] T001 [AC3] Add LOCAL pattern constant to `packages/agency-plugin-spec-kit/src/utils/detect-ticket-ref.ts`
-- [ ] T002 [AC3] Add `detectLocal()` function to detect `LOCAL-xxx` format
-- [ ] T003 [AC3] Integrate LOCAL detection into `detectTicketRef()` (after Jira, before GitHub shorthand)
+- [x] T001 [AC3] Add LOCAL pattern constant to `packages/agency-plugin-spec-kit/src/utils/detect-ticket-ref.ts`
+- [x] T002 [AC3] Add `detectLocal()` function to detect `LOCAL-xxx` format
+- [x] T003 [AC3] Integrate LOCAL detection into `detectTicketRef()` (after Jira, before GitHub shorthand)
 
 ## Phase 2: Testing
 
 ### Unit Tests
-- [ ] T004 [P] [AC3] Add test case for `LOCAL-001` format (uppercase) in `tests/detect-ticket-ref.test.ts`
-- [ ] T005 [P] [AC3] Add test case for `local-123` format (lowercase)
-- [ ] T006 [P] [AC3] Add test case for edge cases (LOCAL-0, LOCAL-999999)
+- [x] T004 [P] [AC3] Add test case for `LOCAL-001` format (uppercase) in `tests/detect-ticket-ref.test.ts`
+- [x] T005 [P] [AC3] Add test case for `local-123` format (lowercase)
+- [x] T006 [P] [AC3] Add test case for edge cases (LOCAL-0, LOCAL-999999)
 
 ### Verification
-- [ ] T007 Run existing tests to verify no regressions
-- [ ] T008 [AC1-AC6] Verify all acceptance criteria pass via full test suite
+- [x] T007 Run existing tests to verify no regressions
+- [x] T008 [AC1-AC6] Verify all acceptance criteria pass via full test suite
 
 ## Dependencies & Execution Order
 
