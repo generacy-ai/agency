@@ -8,16 +8,16 @@
 Part of #139
 
 ## Agent Assignment
-**Agent E** - Clarifications & Humancy Integration (`src/tools/clarifications.ts`, Claude Code plugin)
+**Agent E** - Clarifications (`src/tools/clarifications.ts`, Claude Code plugin)
 
 ## Description
 Implement the `/agency-spec-kit:clarify` slash command for the Claude Code plugin.
 
 ## Acceptance Criteria
-- [ ] Create `commands/clarify.md` with command instructions
+- [ ] Create `commands/clarify.md` with command instructions (create directory if missing)
 - [ ] Analyze spec.md for underspecified areas
 - [ ] Generate clarification questions
-- [ ] Use Humancy for human input
+- [ ] Use AskUserQuestion tool or direct prompts for human input (not Humancy)
 - [ ] Update clarifications.md with answers
 - [ ] Integrate answers back into spec.md
 
@@ -39,7 +39,7 @@ Analyze the current feature specification and gather clarifications for underspe
 ## Workflow
 
 1. **Check prerequisites**
-   - Call `spec_kit.check_prereqs` requiring spec.md
+   - Call `agency_spec_kit.check_prereqs` requiring spec.md
    - Fail if spec.md doesn't exist
 
 2. **Read and analyze spec.md**
@@ -56,13 +56,13 @@ Analyze the current feature specification and gather clarifications for underspe
      - Question (specific query)
      - Options (if applicable)
 
-4. **Submit questions via Humancy**
-   - Call `spec_kit.manage_clarifications(operation: 'append')`
-   - Questions appear in Humancy decision queue
+4. **Submit questions to user**
+   - Call `agency_spec_kit.manage_clarifications(operation: 'append')`
+   - Questions are persisted to clarifications.md
 
-5. **Wait for answers**
-   - Human answers questions in VS Code Humancy panel
-   - Answers are returned and stored
+5. **Collect answers from user**
+   - Use AskUserQuestion tool or direct prompts to collect answers
+   - Answers are returned and stored in clarifications.md
 
 6. **Update specification**
    - Integrate answers into spec.md
@@ -81,8 +81,8 @@ Found 3 areas needing clarification:
 2. **Rate Limiting**: What are the rate limits for API endpoints?
 3. **Data Retention**: How long should we keep user activity logs?
 
-Submitting questions to Humancy...
-Questions submitted! Check your Humancy panel to provide answers.
+Submitting questions...
+Questions persisted to clarifications.md. Please answer to proceed.
 \`\`\`
 ```
 
@@ -100,35 +100,47 @@ Questions submitted! Check your Humancy panel to provide answers.
 
 ## User Stories
 
-### US1: [Primary User Story]
+### US1: Clarify Spec Ambiguities
 
-**As a** [user type],
-**I want** [capability],
-**So that** [benefit].
+**As a** developer using Claude Code,
+**I want** to identify and resolve ambiguous areas in my feature specification,
+**So that** I can proceed with implementation without uncertainties.
 
 **Acceptance Criteria**:
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
+- [ ] Command analyzes spec.md and identifies underspecified areas
+- [ ] Questions are persisted to clarifications.md
+- [ ] User can provide answers via direct prompts
+- [ ] Answers are integrated back into spec.md
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | [Description] | P1 | |
+| FR-001 | Check prerequisites (spec.md exists) | P1 | Use agency_spec_kit.check_prereqs |
+| FR-002 | Analyze spec.md for ambiguities | P1 | Focus on blocking implementation issues |
+| FR-003 | Generate structured clarification questions | P1 | Max 5 questions per session |
+| FR-004 | Persist questions to clarifications.md | P1 | Use agency_spec_kit.manage_clarifications |
+| FR-005 | Collect answers from user | P1 | Use AskUserQuestion or direct prompts |
+| FR-006 | Update spec.md with clarified information | P2 | Remove [NEEDS CLARIFICATION] markers |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | [Metric] | [Target] | [How to measure] |
+| SC-001 | Command creates clarify.md | Pass/Fail | File exists and is valid |
+| SC-002 | Questions persisted correctly | Pass/Fail | clarifications.md contains questions |
 
 ## Assumptions
 
-- [Assumption 1]
+- The plugin scaffold (packages/claude-plugin-agency-spec-kit) will be created if missing
+- MCP tools use agency_spec_kit.* namespace
+- AskUserQuestion tool is available in Claude Code environment
 
 ## Out of Scope
 
-- [Exclusion 1]
+- Humancy VS Code panel integration (use direct prompts instead)
+- Automatic question generation from external sources
+- Multi-user collaborative clarification
 
 ---
 
