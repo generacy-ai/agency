@@ -10,3 +10,6 @@ export * from './grouping.js';
 
 // Dependency validation utilities
 export * from './dependency.js';
+
+// Task parser utilities
+export * from './task-parser.js';
