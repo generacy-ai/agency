@@ -10,20 +10,20 @@
 
 ## Phase 1: Audit & Verification
 
-- [ ] T001 Audit `plan.md` command - verify MCP tool references (`packages/claude-plugin-agency-spec-kit/commands/plan.md`)
-- [ ] T002 [P] Audit `tasks.md` command - verify MCP tool references (`packages/claude-plugin-agency-spec-kit/commands/tasks.md`)
-- [ ] T003 [P] Audit `taskstoissues.md` command - verify MCP tool references (`packages/claude-plugin-agency-spec-kit/commands/taskstoissues.md`)
-- [ ] T004 [P] Audit `implement.md` command - verify MCP tool references (`packages/claude-plugin-agency-spec-kit/commands/implement.md`)
-- [ ] T005 [P] Audit `checklist.md` command - verify MCP tool references (`packages/claude-plugin-agency-spec-kit/commands/checklist.md`)
-- [ ] T006 [P] Audit `analyze.md` command - verify MCP tool references (`packages/claude-plugin-agency-spec-kit/commands/analyze.md`)
+- [X] T001 Audit `plan.md` command - verify MCP tool references (`packages/claude-plugin-agency-spec-kit/commands/plan.md`)
+- [X] T002 [P] Audit `tasks.md` command - verify MCP tool references (`packages/claude-plugin-agency-spec-kit/commands/tasks.md`)
+- [X] T003 [P] Audit `taskstoissues.md` command - verify MCP tool references (`packages/claude-plugin-agency-spec-kit/commands/taskstoissues.md`)
+- [X] T004 [P] Audit `implement.md` command - verify MCP tool references (`packages/claude-plugin-agency-spec-kit/commands/implement.md`)
+- [X] T005 [P] Audit `checklist.md` command - verify MCP tool references (`packages/claude-plugin-agency-spec-kit/commands/checklist.md`)
+- [X] T006 [P] Audit `analyze.md` command - verify MCP tool references (`packages/claude-plugin-agency-spec-kit/commands/analyze.md`)
 
 ## Phase 2: Updates & Enhancements
 <!-- Phase boundary: Complete Phase 1 before starting Phase 2 -->
 
-- [ ] T007 Update `taskstoissues.md` to use `tasks_to_issues` MCP tool instead of direct `gh` CLI
-- [ ] T008 [P] Verify `implement.md` references `merge_from_base` MCP tool for phase boundaries
-- [ ] T009 [P] Ensure all commands have consistent YAML frontmatter with description field
-- [ ] T010 [P] Verify all commands include Post-Command Check section
+- [X] T007 Update `taskstoissues.md` to use `tasks_to_issues` MCP tool instead of direct `gh` CLI
+- [X] T008 [P] Verify `implement.md` references `merge_from_base` MCP tool for phase boundaries
+- [X] T009 [P] Ensure all commands have consistent YAML frontmatter with description field
+- [X] T010 [P] Verify all commands include Post-Command Check section
 
 ## Phase 3: Testing & Validation
 <!-- Phase boundary: Complete Phase 2 before starting Phase 3 -->
