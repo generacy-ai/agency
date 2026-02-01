@@ -11,7 +11,7 @@ Questions and answers to clarify the feature specification.
 - A: Use BacklogProvider abstraction - allows future support for Jira, Linear, etc.
 - B: Use direct GitHub integration - simpler, matches reference implementation
 
-**Answer**: *Pending*
+**Answer**: B - Use direct GitHub integration via gh CLI. This is simpler and matches the reference implementation.
 
 ### Q2: Task Parser Dependency
 **Context**: The spec lists B5 (task-parser) as a dependency, but there's no parseTasksFile utility in the agency package yet. Implementation could embed parsing logic or wait for B5.
@@ -20,7 +20,7 @@ Questions and answers to clarify the feature specification.
 - A: Embed parsing logic - self-contained, can be refactored later
 - B: Wait for B5 - cleaner separation of concerns but creates dependency
 
-**Answer**: *Pending*
+**Answer**: A - Embed parsing logic directly in this tool. It will be self-contained and can be refactored later if B5 becomes available.
 
 ### Q3: Task Format Support
 **Context**: The reference implementation supports two task formats: individual tasks (T### pattern) and task groups (TG-XXX pattern used by epics). Supporting both increases complexity.
@@ -29,5 +29,5 @@ Questions and answers to clarify the feature specification.
 - A: Both formats (T### and TG-XXX) - full feature parity with reference
 - B: Individual tasks (T###) only - simpler initial implementation
 
-**Answer**: *Pending*
+**Answer**: A - Support both formats (T### and TG-XXX) for full feature parity with the reference implementation.
 
