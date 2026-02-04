@@ -30,6 +30,10 @@ function createMockCoreAPI(config?: Record<string, unknown>): AgencyCoreAPI {
     }),
     recordEvent: vi.fn(),
     getPluginId: vi.fn().mockReturnValue('@generacy-ai/agency-plugin-firebase'),
+    // Facet methods
+    provide: vi.fn(),
+    require: vi.fn(),
+    optional: vi.fn(),
   };
 }
 

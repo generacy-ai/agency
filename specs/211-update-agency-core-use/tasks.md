@@ -10,58 +10,58 @@
 
 ## Phase 1: Setup & Infrastructure
 
-- [ ] T001 Add `@generacy-ai/latency` as workspace dependency to `packages/agency/package.json`
-- [ ] T002 [P] Create `packages/agency/src/facets/index.ts` - Export module for facet types
-- [ ] T003 [P] Create `packages/agency/src/facets/registry.ts` - FacetRegistry adapter wrapping Latency's registry
-- [ ] T004 Create `packages/agency/src/facets/binder.ts` - Startup facet resolution logic
+- [X] T001 Add `@generacy-ai/latency` as workspace dependency to `packages/agency/package.json`
+- [X] T002 [P] Create `packages/agency/src/facets/index.ts` - Export module for facet types
+- [X] T003 [P] Create `packages/agency/src/facets/registry.ts` - FacetRegistry adapter wrapping Latency's registry
+- [X] T004 Create `packages/agency/src/facets/binder.ts` - Startup facet resolution logic
 
 ## Phase 2: Core Type Extensions
 
-- [ ] T005 Extend `PluginManifest` in `packages/agency/src/plugins/types.ts` with `provides`, `requires`, `uses` arrays
-- [ ] T006 Extend `AgencyCoreAPI` interface in `packages/agency/src/plugins/types.ts` with `provide()`, `require()`, `optional()` methods
-- [ ] T007 Add facet error types (`FacetNotFoundError`, `AmbiguousFacetError`) to `packages/agency/src/facets/errors.ts`
+- [X] T005 Extend `PluginManifest` in `packages/agency/src/plugins/types.ts` with `provides`, `requires`, `uses` arrays
+- [X] T006 Extend `AgencyCoreAPI` interface in `packages/agency/src/plugins/types.ts` with `provide()`, `require()`, `optional()` methods
+- [X] T007 Add facet error types (`FacetNotFoundError`, `AmbiguousFacetError`) to `packages/agency/src/facets/errors.ts`
 
 ## Phase 3: Core Implementation
 
-- [ ] T008 Implement `provide()` method in `packages/agency/src/core-api/plugin-core-api.ts`
-- [ ] T009 [P] Implement `require()` method in `packages/agency/src/core-api/plugin-core-api.ts`
-- [ ] T010 [P] Implement `optional()` method in `packages/agency/src/core-api/plugin-core-api.ts`
-- [ ] T011 Track per-plugin facet registrations for scoped cleanup in `plugin-core-api.ts`
+- [X] T008 Implement `provide()` method in `packages/agency/src/core-api/plugin-core-api.ts`
+- [X] T009 [P] Implement `require()` method in `packages/agency/src/core-api/plugin-core-api.ts`
+- [X] T010 [P] Implement `optional()` method in `packages/agency/src/core-api/plugin-core-api.ts`
+- [X] T011 Track per-plugin facet registrations for scoped cleanup in `plugin-core-api.ts`
 
 ## Phase 4: Server Integration
 
-- [ ] T012 Integrate FacetRegistry into `packages/agency/src/server/agency-server.ts` initialization
-- [ ] T013 Add facet binding after plugin loading in `agency-server.ts` - validate all `requires` satisfied
-- [ ] T014 [P] Add startup logging for facet resolution results in `agency-server.ts`
-- [ ] T015 Implement fail-fast behavior when required facets are missing
+- [X] T012 Integrate FacetRegistry into `packages/agency/src/server/agency-server.ts` initialization
+- [X] T013 Add facet binding after plugin loading in `agency-server.ts` - validate all `requires` satisfied
+- [X] T014 [P] Add startup logging for facet resolution results in `agency-server.ts`
+- [X] T015 Implement fail-fast behavior when required facets are missing
 
 ## Phase 5: Plugin Updates
 
-- [ ] T016 Update `packages/agency-plugin-git/src/index.ts` - Add `provides: [{ facet: 'SourceControl', qualifier: 'git' }]`
-- [ ] T017 [P] Update `packages/agency-plugin-docker/src/index.ts` - Add `provides: [{ facet: 'ContainerRuntime', qualifier: 'docker' }]`
-- [ ] T018 [P] Update `packages/agency-plugin-humancy/src/index.ts` - Add `requires: [{ facet: 'DecisionHandler' }]`
-- [ ] T019 [P] Update `packages/agency-plugin-firebase/src/index.ts` - Add `provides: [{ facet: 'SecretStore' }, { facet: 'StateStore' }]`
-- [ ] T020 [P] Update `packages/agency-plugin-spec-kit/src/index.ts` - Add `requires: [{ facet: 'IssueTracker' }, { facet: 'SourceControl' }]`
-- [ ] T021 [P] Update `packages/agency-plugin-npm/src/index.ts` - No facets (confirm self-contained, add empty arrays if needed)
+- [X] T016 Update `packages/agency-plugin-git/src/index.ts` - Add `provides: [{ facet: 'SourceControl', qualifier: 'git' }]`
+- [X] T017 [P] Update `packages/agency-plugin-docker/src/index.ts` - Add `provides: [{ facet: 'ContainerRuntime', qualifier: 'docker' }]`
+- [X] T018 [P] Update `packages/agency-plugin-humancy/src/index.ts` - Add `requires: [{ facet: 'DecisionHandler' }]`
+- [X] T019 [P] Update `packages/agency-plugin-firebase/src/index.ts` - Add `provides: [{ facet: 'SecretStore' }, { facet: 'StateStore' }]`
+- [X] T020 [P] Update `packages/agency-plugin-spec-kit/src/index.ts` - Add `requires: [{ facet: 'IssueTracker' }, { facet: 'SourceControl' }]`
+- [X] T021 [P] Update `packages/agency-plugin-npm/src/index.ts` - No facets (confirm self-contained, add empty arrays if needed)
 
 ## Phase 6: Exports & Public API
 
-- [ ] T022 Update `packages/agency/src/index.ts` - Re-export facet types from Latency
-- [ ] T023 Verify type exports work correctly from consumer perspective
+- [X] T022 Update `packages/agency/src/index.ts` - Re-export facet types from Latency
+- [X] T023 Verify type exports work correctly from consumer perspective
 
 ## Phase 7: Testing
 
-- [ ] T024 Add FacetRegistry unit tests in `packages/agency/tests/facets/registry.test.ts`
-- [ ] T025 [P] Add facet resolution tests in `packages/agency/tests/facets/binder.test.ts`
-- [ ] T026 [P] Add missing facet error handling tests
-- [ ] T027 Update existing plugin tests to work with new API
-- [ ] T028 Add integration test for full plugin loading with facets
+- [X] T024 Add FacetRegistry unit tests in `packages/agency/src/__tests__/facets/registry.test.ts`
+- [X] T025 [P] Add facet resolution tests in `packages/agency/src/__tests__/facets/binder.test.ts`
+- [X] T026 [P] Add missing facet error handling tests
+- [X] T027 Update existing plugin tests to work with new API
+- [X] T028 Add integration test for full plugin loading with facets
 
 ## Phase 8: Validation
 
-- [ ] T029 Run `pnpm build` - verify all packages build successfully
-- [ ] T030 Run `pnpm test` - verify all tests pass (no regressions)
-- [ ] T031 Manual verification: Load server, confirm plugins initialize with facets
+- [X] T029 Run `pnpm build` - verify all packages build successfully
+- [X] T030 Run `pnpm test` - verify all tests pass (no regressions)
+- [X] T031 Manual verification: Load server, confirm plugins initialize with facets
 
 ## Dependencies & Execution Order
 
