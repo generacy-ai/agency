@@ -12,6 +12,7 @@ import type {
   MessageEnvelope,
   TelemetryEvent,
 } from '../plugins/types.js';
+import type { AgencyFacetRegistry } from '../facets/registry.js';
 
 // Re-export the core types from plugins/types.ts for convenience
 export type {
@@ -82,4 +83,7 @@ export interface CoreAPIDependencies {
 
   /** Telemetry recording function */
   recordEvent(event: TelemetryEvent): void;
+
+  /** Facet registry for facet operations */
+  facetRegistry: AgencyFacetRegistry;
 }

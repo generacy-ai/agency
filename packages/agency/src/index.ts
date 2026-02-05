@@ -70,6 +70,22 @@ export {
   type CoreAPIDependencies,
 } from './core-api/index.js';
 
+// Facets - Latency integration for capability-based dependency resolution
+export {
+  AgencyFacetRegistry,
+  FacetBinder,
+  FacetNotFoundError,
+  AmbiguousFacetError,
+  type FacetProvider,
+  type FacetRequirement,
+  type FacetDeclaration,
+  type FacetRegistry,
+  type FacetRegistration,
+  type RegistrationOptions,
+  type BindingError,
+  type FacetBindingResult,
+} from './facets/index.js';
+
 // Modes
 export { ModeManager } from './modes/index.js';
 

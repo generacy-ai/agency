@@ -22,4 +22,8 @@ export const manifest: PluginManifest = {
   ],
   channels: ['agency.humancy'],
   critical: false,
+  // Facet declarations
+  provides: [],
+  requires: [{ facet: 'DecisionHandler' }],
+  uses: [],
 };

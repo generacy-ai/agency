@@ -30,7 +30,8 @@ import { PluginLoader, type AgencyPlugin, type LegacyAgencyPlugin, type PluginLo
 import { ToolRegistry, type AgencyTool } from '../tools/index.js';
 import { ChannelManager } from '../channels/index.js';
 import { CoreAPIFactory } from '../core-api/index.js';
-import type { TelemetryEvent } from '../plugins/types.js';
+import { AgencyFacetRegistry, FacetBinder, type FacetBindingResult } from '../facets/index.js';
+import type { TelemetryEvent, PluginManifest } from '../plugins/types.js';
 
 /**
  * Server state
@@ -69,6 +70,7 @@ export class AgencyServer {
   private readonly pluginLoader: PluginLoader;
   private readonly channelManager: ChannelManager;
   private readonly coreAPIFactory: CoreAPIFactory;
+  private readonly facetRegistry: AgencyFacetRegistry;
   private readonly autoLoadPlugins: boolean;
 
   private server: Server | null = null;
@@ -87,6 +89,7 @@ export class AgencyServer {
 
     this.modeManager = new ModeManager(config.modes, config.defaultMode);
     this.channelManager = new ChannelManager();
+    this.facetRegistry = new AgencyFacetRegistry();
 
     // Create CoreAPI factory with dependencies
     this.coreAPIFactory = new CoreAPIFactory({
@@ -99,6 +102,7 @@ export class AgencyServer {
       channelManager: this.channelManager,
       config: config as unknown as Record<string, unknown>,
       recordEvent: (event: TelemetryEvent) => this.recordTelemetryEvent(event),
+      facetRegistry: this.facetRegistry,
     });
 
     // Create plugin loader with enhanced dependencies
@@ -223,17 +227,37 @@ export class AgencyServer {
   /**
    * Discover and load plugins from configured sources
    *
+   * After plugins are loaded, validates all facet requirements are satisfied.
+   * Fails fast if required facets are missing.
+   *
    * @param options Optional load options to override config
    * @returns Array of loaded plugin IDs
    */
   async discoverAndLoadPlugins(options?: Partial<PluginLoadOptions>): Promise<string[]> {
-    return this.pluginLoader.discoverAndLoad({
+    const loadedPluginIds = await this.pluginLoader.discoverAndLoad({
       projectRoot: this.projectRoot,
       pluginPaths: this.config.pluginPaths,
       plugins: this.config.plugins,
       pluginOptions: this.config.pluginOptions,
       ...options,
     });
+
+    // Run facet binding validation after all plugins are loaded
+    const bindingResult = this.bindFacets();
+    this.logFacetBindingResult(bindingResult);
+
+    if (!bindingResult.success) {
+      // Fail fast if required facets are missing
+      const errorMessages = bindingResult.errors.map(
+        (e) => `Plugin ${e.plugin} requires facet '${e.facet}'${e.qualifier ? ` (${e.qualifier})` : ''}: ${e.error.message}`
+      );
+      throw new AgencyError(
+        ErrorCodes.FACET_BINDING_FAILED,
+        `Facet binding failed:\n${errorMessages.join('\n')}`
+      );
+    }
+
+    return loadedPluginIds;
   }
 
   /**
@@ -316,6 +340,13 @@ export class AgencyServer {
   }
 
   /**
+   * Get the facet registry for testing or advanced usage
+   */
+  getFacetRegistry(): AgencyFacetRegistry {
+    return this.facetRegistry;
+  }
+
+  /**
    * Record a telemetry event
    *
    * This is called by plugins via CoreAPI. Override or extend
@@ -324,6 +355,41 @@ export class AgencyServer {
   private recordTelemetryEvent(event: TelemetryEvent): void {
     // Base implementation does nothing
     // Can be extended to integrate with TelemetryManager
+  }
+
+  /**
+   * Run facet binding validation after plugins are loaded.
+   *
+   * Validates that all required facets declared by plugins are satisfied.
+   */
+  private bindFacets(): FacetBindingResult {
+    const binder = new FacetBinder(this.facetRegistry);
+    const pluginManifests = this.pluginLoader.getLoadedPlugins().map((p) => p.manifest);
+    return binder.bindAll(pluginManifests as PluginManifest[]);
+  }
+
+  /**
+   * Log facet binding results for debugging.
+   */
+  private logFacetBindingResult(result: FacetBindingResult): void {
+    // Log bound facets (debug level - omitted in production)
+    if (result.bound.length > 0) {
+      // In production, this could be logged at debug level
+      // For now we just collect the info silently
+    }
+
+    // Log warnings to stderr so they're visible
+    for (const warning of result.warnings) {
+      console.error(`[agency] Facet warning: ${warning}`);
+    }
+
+    // Log errors (these will also throw, but log for debugging)
+    for (const error of result.errors) {
+      const qual = error.qualifier ? ` (${error.qualifier})` : '';
+      console.error(
+        `[agency] Facet error: Plugin ${error.plugin} requires ${error.facet}${qual} - ${error.error.message}`
+      );
+    }
   }
 
   /**
