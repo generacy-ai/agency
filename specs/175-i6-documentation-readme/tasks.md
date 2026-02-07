@@ -10,22 +10,22 @@
 
 ## Phase 1: Setup
 
-- [ ] T001 Create `packages/agency-plugin-spec-kit/docs/` directory
+- [X] T001 Create `packages/agency-plugin-spec-kit/docs/` directory
 
 ## Phase 2: Core Documentation
 
-- [ ] T010 [P] Create `packages/agency-plugin-spec-kit/README.md` with installation, overview, and tool list
-- [ ] T011 [P] Create `packages/agency-plugin-spec-kit/docs/configuration.md` with all config options from data-model.md
-- [ ] T012 [P] Create `packages/agency-plugin-spec-kit/docs/providers.md` with GitHub, Jira, Shortcut, and Local provider guides
+- [X] T010 [P] Create `packages/agency-plugin-spec-kit/README.md` with installation, overview, and tool list
+- [X] T011 [P] Create `packages/agency-plugin-spec-kit/docs/configuration.md` with all config options from data-model.md
+- [X] T012 [P] Create `packages/agency-plugin-spec-kit/docs/providers.md` with GitHub, Jira, Shortcut, and Local provider guides
 
 ## Phase 3: Claude Plugin Documentation
 
-- [ ] T020 Update `packages/claude-plugin-agency-spec-kit/README.md` with detailed command reference, workflow examples, and troubleshooting
+- [X] T020 Update `packages/claude-plugin-agency-spec-kit/README.md` with detailed command reference, workflow examples, and troubleshooting
 
 ## Phase 4: Review and Polish
 
-- [ ] T030 Verify all file paths and code examples are accurate
-- [ ] T031 [P] Ensure consistent formatting and style across all documentation files
+- [X] T030 Verify all file paths and code examples are accurate
+- [X] T031 [P] Ensure consistent formatting and style across all documentation files
 
 ## Dependencies & Execution Order
 
