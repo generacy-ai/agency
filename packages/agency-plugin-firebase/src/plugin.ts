@@ -43,6 +43,12 @@ export const manifest: PluginManifest = {
   ],
   modes: ['debug', 'coding'],
   critical: false,
+  provides: [
+    { facet: 'SecretStore', qualifier: 'firebase', priority: 10 },
+    { facet: 'StateStore', qualifier: 'firebase', priority: 10 },
+  ],
+  requires: [],
+  uses: [],
 };
 
 /**

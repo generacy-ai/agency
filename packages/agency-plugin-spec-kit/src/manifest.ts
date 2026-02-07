@@ -32,6 +32,13 @@ export const manifest: PluginManifest = {
   ],
   modes: ['coding', 'research'],
   critical: false,
+  // Facet declarations
+  provides: [],
+  requires: [
+    { facet: 'IssueTracker' },
+    { facet: 'SourceControl' },
+  ],
+  uses: [],
 };
 
 /**

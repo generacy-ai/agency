@@ -29,6 +29,9 @@ export const manifest: PluginManifest = {
   modes: ['coding', 'review'],
   channels: [],
   critical: false,
+  provides: [],
+  requires: [],
+  uses: [],
 };
 
 /** Mode affiliations for tools */

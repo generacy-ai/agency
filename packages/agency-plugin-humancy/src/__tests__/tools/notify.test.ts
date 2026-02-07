@@ -24,6 +24,9 @@ describe('humancy.notify', () => {
       onMessage: vi.fn().mockReturnValue(() => {}),
       recordEvent: vi.fn(),
       getPluginId: vi.fn().mockReturnValue('@generacy-ai/agency-plugin-humancy'),
+      provide: vi.fn(),
+      require: vi.fn(),
+      optional: vi.fn(),
     };
 
     detector = new ConnectionModeDetector();

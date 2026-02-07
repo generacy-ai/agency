@@ -44,4 +44,7 @@ export const dockerPluginManifest: PluginManifest = {
   tools: [...DOCKER_TOOLS],
   modes: ['debug', 'coding'],
   critical: false,
+  provides: [{ facet: 'ContainerRuntime', qualifier: 'docker', priority: 10 }],
+  requires: [],
+  uses: [],
 };

@@ -53,6 +53,8 @@ export const ErrorCodes = {
   CHANNEL_TIMEOUT: 'CHANNEL_TIMEOUT',
   /** One or more message handlers failed during delivery */
   CHANNEL_DELIVERY_FAILED: 'CHANNEL_DELIVERY_FAILED',
+  /** Facet binding validation failed (required facets not satisfied) */
+  FACET_BINDING_FAILED: 'FACET_BINDING_FAILED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];
