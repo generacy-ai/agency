@@ -1,0 +1,190 @@
+# Research: GitHub Provider E2E Testing
+
+## Technology Decisions
+
+### 1. Test Runner: Vitest
+
+**Decision**: Use Vitest (already configured in project)
+**Rationale**:
+- Consistent with existing test infrastructure
+- Fast execution with native ESM support
+- Good TypeScript integration
+- `vitest.config.ts` already includes `tests/**/*.test.ts`
+
+### 2. GitHub API Integration: gh CLI
+
+**Decision**: Test via tools (which use gh CLI) rather than mocking Octokit
+**Rationale**:
+- Tools use `src/utils/github-cli.ts` for actual API calls
+- More realistic end-to-end coverage
+- Avoids mocking complexity
+- Tests actual authentication flow
+
+**Key gh CLI Commands Used**:
+```bash
+gh issue view <number> --json ...      # get_ticket
+gh issue create --title ... --body ... # create_ticket
+gh issue list --search ...             # duplicate detection
+gh api repos/:owner/:repo/issues       # low-level operations
+```
+
+### 3. Test Data Management
+
+**Decision**: Dynamic fixtures with timestamp-based isolation
+**Pattern from `local-flow.test.ts`**:
+```typescript
+beforeEach(async () => {
+  tempDir = await mkdtemp(join(tmpdir(), 'local-flow-'));
+  // Initialize test state
+});
+
+afterEach(async () => {
+  await rm(tempDir, { recursive: true, force: true });
+});
+```
+
+**GitHub Adaptation**:
+- Create unique test issues with `[E2E Test ${timestamp}]` prefix
+- Track created resources for cleanup
+- Support `PRESERVE_TEST_RESOURCES=true` for debugging
+
+### 4. Tool Testing Pattern
+
+**From `local-flow.test.ts`**:
+```typescript
+async function executeTool<T = unknown>(
+  tool: AgencyTool,
+  args: Record<string, unknown>
+): Promise<T> {
+  const result: ToolResult = await tool.execute(args);
+  if (result.isError) {
+    throw new Error(`Tool error: ${(result.content[0] as { text: string }).text}`);
+  }
+  return JSON.parse((result.content[0] as { text: string }).text) as T;
+}
+```
+
+## Alternatives Considered
+
+### 1. Dedicated Test Repository
+
+**Option**: Create `generacy-ai/speckit-test-fixtures` for E2E tests
+**Pros**:
+- Complete isolation from production
+- Can have pre-created fixtures
+**Cons**:
+- Additional CI/CD setup
+- Cross-repo authentication complexity
+- More maintenance
+
+**Decision**: Use current repo with dynamic fixtures (simpler)
+
+### 2. Mock GitHub API
+
+**Option**: Mock Octokit or gh CLI responses
+**Pros**:
+- Fast execution
+- No network dependency
+- No rate limiting
+**Cons**:
+- Already covered by existing unit tests
+- Doesn't test real integration
+- May miss actual API behavior
+
+**Decision**: Keep E2E as real integration (unit tests handle mocking)
+
+### 3. Fixture-Based Testing
+
+**Option**: Pre-create test issues and reference by number
+**Pros**:
+- Consistent test data
+- No setup overhead
+**Cons**:
+- Fixtures can become stale
+- Hard to test creation flows
+- Coupling to specific issue numbers
+
+**Decision**: Dynamic fixtures (more flexible)
+
+## Implementation Patterns
+
+### Tool Factory Pattern
+
+The spec-kit tools use factory functions:
+```typescript
+// From create-ticket.ts
+export function createCreateTicketTool(
+  config: SpecKitConfig,
+  getProvider: () => BacklogProvider
+): AgencyTool
+
+// From get-ticket.ts
+export function createGetTicketTool(
+  config: SpecKitConfig,
+  getProvider: () => BacklogProvider
+): AgencyTool
+```
+
+For E2E tests, we need to:
+1. Create SpecKitConfig with `backlog.provider: 'github'`
+2. Register GitHubProvider via factory
+3. Set repo context: `provider.setRepoContext(owner, repo)`
+
+### Error Handling Pattern
+
+From `local-flow.test.ts`:
+```typescript
+async function executeToolRaw(tool, args): Promise<{ result: ToolResult; parsed?: unknown }> {
+  const result = await tool.execute(args);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.content[0].text);
+  } catch {}
+  return { result, parsed };
+}
+```
+
+### Validation Assertions
+
+```typescript
+// Issue exists and has expected fields
+expect(ticket.ref.provider).toBe('github');
+expect(ticket.title).toBeDefined();
+expect(ticket.url).toMatch(/github\.com/);
+
+// Error responses
+expect(result.isError).toBe(true);
+expect(parsed).toMatchObject({ error: 'Not found' });
+```
+
+## Key Sources
+
+| Source | Location | Purpose |
+|--------|----------|---------|
+| local-flow.test.ts | tests/integration/ | Reference pattern |
+| github.ts | src/providers/ | GitHubProvider implementation |
+| github-cli.ts | src/utils/ | gh CLI wrapper |
+| create-ticket.ts | src/tools/ | Tool implementation |
+| manifest.ts | src/ | Tool name definitions |
+
+## Rate Limiting Considerations
+
+GitHub API limits:
+- **Authenticated**: 5,000 requests/hour
+- **Per-test overhead**: ~5-10 API calls
+
+Mitigation:
+- Add small delays between tests (100-500ms)
+- Use `describe.skip` for expensive tests in local dev
+- CI runs all tests but with adequate timeouts
+
+## Security Notes
+
+- Tests should NOT commit sensitive data
+- Use `gh auth status` to verify authentication
+- Test issues are visible in the repository (use clear naming)
+- Cleanup prevents accumulation of test artifacts
+
+---
+
+*Generated by speckit*
