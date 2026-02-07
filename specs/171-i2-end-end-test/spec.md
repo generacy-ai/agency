@@ -54,8 +54,9 @@ test('tasks_to_issues creates GitHub issues', async () => {
 
 ## Test Setup Requirements
 - GitHub CLI (`gh`) authenticated
-- Test repository with issues enabled
-- Test issues to reference
+- **Dedicated test repository**: `generacy-ai/speckit-test-fixtures` (or similar) to isolate E2E tests from production issue tracker
+- **Dynamic fixtures**: Tests create their own test issues/branches before each run (following `local-flow.test.ts` pattern)
+- **Cleanup with preservation flag**: Resources cleaned up by default; set `PRESERVE_TEST_RESOURCES=true` to keep for debugging
 
 ## Dependencies
 - I1 (plugin wired up)
@@ -90,11 +91,16 @@ test('tasks_to_issues creates GitHub issues', async () => {
 
 ## Assumptions
 
-- [Assumption 1]
+- GitHub CLI (`gh`) is authenticated with appropriate permissions for the test repository
+- A dedicated test repository exists with issues enabled
+- Test runs in CI have network access to GitHub API
+- Tool names are stable: `spec_kit.get_ticket`, `spec_kit.create_feature`, `spec_kit.tasks_to_issues` (verified in `packages/agency-plugin-spec-kit/src/manifest.ts`)
 
 ## Out of Scope
 
-- [Exclusion 1]
+- Mock-based testing (covered by existing unit tests in `github-provider.test.ts` and `github-cli.test.ts`)
+- Testing against production repositories
+- Performance/load testing of GitHub API
 
 ---
 
