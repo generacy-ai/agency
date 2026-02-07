@@ -10,45 +10,45 @@
 
 ## Phase 1: Setup & Test Infrastructure
 
-- [ ] T001 Create integration test directory structure at `packages/agency-plugin-spec-kit/tests/integration/`
-- [ ] T002 [P] Create test utilities file `packages/agency-plugin-spec-kit/tests/integration/test-utils.ts` with mock response factories and skip conditions
-- [ ] T003 [P] Create base test file `packages/agency-plugin-spec-kit/tests/integration/jira-flow.test.ts` with imports and describe blocks
+- [X] T001 Create integration test directory structure at `packages/agency-plugin-spec-kit/tests/integration/`
+- [X] T002 [P] Create test utilities file `packages/agency-plugin-spec-kit/tests/integration/test-utils.ts` with mock response factories and skip conditions
+- [X] T003 [P] Create base test file `packages/agency-plugin-spec-kit/tests/integration/jira-flow.test.ts` with imports and describe blocks
 
 ## Phase 2: Core Ticket Operations
 
-- [ ] T010 [AC1] Implement `get_ticket fetches Jira issue by key` test - validates PROJ-N reference parsing
-- [ ] T011 [P] [AC1] Implement `get_ticket parses Jira URLs` test - validates full URL parsing with provider detection
-- [ ] T012 [P] [AC5] Implement `get_ticket extracts Jira metadata correctly` test - validates issueType, priority, assignee, jiraStatus
-- [ ] T013 [P] [AC5] Implement `get_ticket maps Jira status to normalized state` test - validates status normalization (Done→closed, In Progress→in_progress, Open→open)
+- [X] T010 [AC1] Implement `get_ticket fetches Jira issue by key` test - validates PROJ-N reference parsing
+- [X] T011 [P] [AC1] Implement `get_ticket parses Jira URLs` test - validates full URL parsing with provider detection
+- [X] T012 [P] [AC5] Implement `get_ticket extracts Jira metadata correctly` test - validates issueType, priority, assignee, jiraStatus
+- [X] T013 [P] [AC5] Implement `get_ticket maps Jira status to normalized state` test - validates status normalization (Done→closed, In Progress→in_progress, Open→open)
 
 ## Phase 3: Ticket Creation
 
-- [ ] T020 [AC3] Implement `create_ticket creates Jira issue` test - validates POST to /rest/api/3/issue
-- [ ] T021 [P] [AC5] Implement `create_ticket uses Story issue type by default` test - validates default issue type handling
-- [ ] T022 [P] [AC5] Implement `create_ticket converts body to ADF format` test - validates markdown to ADF conversion
+- [X] T020 [AC3] Implement `create_ticket creates Jira issue` test - validates POST to /rest/api/3/issue
+- [X] T021 [P] [AC5] Implement `create_ticket uses Story issue type by default` test - validates default issue type handling
+- [X] T022 [P] [AC5] Implement `create_ticket converts body to ADF format` test - validates markdown to ADF conversion
 
 ## Phase 4: Feature Creation from Ticket
 
-- [ ] T030 [AC2] Implement `create_feature initializes from Jira ticket` test - validates spec directory creation from Jira issue
+- [X] T030 [AC2] Implement `create_feature initializes from Jira ticket` test - validates spec directory creation from Jira issue
 
 ## Phase 5: Error Handling
 
-- [ ] T040 [AC5] Implement `handles invalid Jira key format` test - validates key format validation
-- [ ] T041 [P] [AC5] Implement `handles authentication failure (401)` test - validates auth error handling
-- [ ] T042 [P] [AC5] Implement `handles not found (404)` test - validates missing issue handling
-- [ ] T043 [P] [AC5] Implement `handles permission denied (403)` test - validates permission error handling
-- [ ] T044 [P] [AC5] Implement `handles rate limiting (429)` test - validates rate limit handling
+- [X] T040 [AC5] Implement `handles invalid Jira key format` test - validates key format validation
+- [X] T041 [P] [AC5] Implement `handles authentication failure (401)` test - validates auth error handling
+- [X] T042 [P] [AC5] Implement `handles not found (404)` test - validates missing issue handling
+- [X] T043 [P] [AC5] Implement `handles permission denied (403)` test - validates permission error handling
+- [X] T044 [P] [AC5] Implement `handles rate limiting (429)` test - validates rate limit handling
 
 ## Phase 6: tasks_to_issues Integration
 
-- [ ] T050 [AC4] Implement `tasks_to_issues creates Jira issues` test - validates task conversion to Jira issues
-- [ ] T051 [P] [AC4] Implement `tasks_to_issues links to parent epic` test - validates epic linking behavior
+- [X] T050 [AC4] Implement `tasks_to_issues creates Jira issues` test - validates task conversion to Jira issues
+- [X] T051 [P] [AC4] Implement `tasks_to_issues links to parent epic` test - validates epic linking behavior
 
 ## Phase 7: Documentation & Polish
 
-- [ ] T060 [AC6] Document Jira-specific behaviors in test file comments
-- [ ] T061 [P] Add real Jira API test mode with skip conditions when `TEST_REAL_JIRA=true`
-- [ ] T062 [P] Verify all tests pass with `pnpm test`
+- [X] T060 [AC6] Document Jira-specific behaviors in test file comments
+- [X] T061 [P] Add real Jira API test mode with skip conditions when `TEST_REAL_JIRA=true`
+- [X] T062 [P] Verify all tests pass with `pnpm test`
 
 ## Dependencies & Execution Order
 
