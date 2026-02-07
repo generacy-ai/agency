@@ -52,6 +52,7 @@ class PluginCoreAPI implements AgencyCoreAPI {
   private readonly registeredTools: Set<string> = new Set();
   private readonly registeredChannels: Set<string> = new Set();
   private readonly subscriptions: Set<Unsubscribe> = new Set();
+  private readonly registeredFacets: Array<{ facet: string; qualifier?: string }> = [];
 
   constructor(pluginId: string, dependencies: CoreAPIDependencies) {
     this.pluginId = pluginId;
@@ -216,10 +217,69 @@ class PluginCoreAPI implements AgencyCoreAPI {
   }
 
   /**
+   * Get all facets registered by this plugin
+   */
+  getRegisteredFacets(): Array<{ facet: string; qualifier?: string }> {
+    return [...this.registeredFacets];
+  }
+
+  // === Facet Methods ===
+
+  /**
+   * Register a facet implementation.
+   *
+   * The registration is tracked for cleanup when the plugin is unloaded.
+   *
+   * @typeParam T - The facet implementation type.
+   * @param facet - The facet identifier (e.g., "SourceControl").
+   * @param implementation - The facet implementation instance.
+   * @param qualifier - Optional qualifier for this implementation (e.g., "git").
+   */
+  provide<T>(facet: string, implementation: T, qualifier?: string): void {
+    this.dependencies.facetRegistry.register(facet, implementation, {
+      qualifier,
+      pluginId: this.pluginId,
+    });
+    this.registeredFacets.push({ facet, qualifier });
+  }
+
+  /**
+   * Request a required facet.
+   *
+   * Use this to obtain a facet that your plugin requires. If the facet
+   * is not available, an error is thrown.
+   *
+   * @typeParam T - The expected facet type.
+   * @param facet - The facet identifier.
+   * @param qualifier - Optional qualifier to request a specific implementation.
+   * @returns The facet implementation.
+   * @throws FacetNotFoundError if the facet is not available.
+   * @throws AmbiguousFacetError if multiple providers exist without qualifier.
+   */
+  require<T>(facet: string, qualifier?: string): T {
+    return this.dependencies.facetRegistry.resolveOrThrow<T>(facet, qualifier);
+  }
+
+  /**
+   * Request an optional facet.
+   *
+   * Use this to obtain a facet that your plugin can use if available.
+   * Returns undefined if the facet is not available.
+   *
+   * @typeParam T - The expected facet type.
+   * @param facet - The facet identifier.
+   * @param qualifier - Optional qualifier to request a specific implementation.
+   * @returns The facet implementation, or undefined if not available.
+   */
+  optional<T>(facet: string, qualifier?: string): T | undefined {
+    return this.dependencies.facetRegistry.resolve<T>(facet, qualifier);
+  }
+
+  /**
    * Cleanup all resources registered by this plugin
    *
    * Called during plugin unload to clean up tools, channels,
-   * and subscriptions.
+   * subscriptions, and facets.
    */
   cleanup(): void {
     // Unsubscribe from all subscriptions
@@ -244,6 +304,10 @@ class PluginCoreAPI implements AgencyCoreAPI {
 
     // Note: Channels are cleaned up by ChannelManager.unregisterChannelsByOwner
     this.registeredChannels.clear();
+
+    // Unregister all facets registered by this plugin
+    this.dependencies.facetRegistry.unregisterByPlugin(this.pluginId);
+    this.registeredFacets.length = 0;
   }
 }
 

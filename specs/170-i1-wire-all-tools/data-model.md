@@ -1,0 +1,184 @@
+# Data Model: I1: Wire all tools into plugin.ts
+
+**Feature**: `170-i1-wire-all-tools`
+**Date**: 2026-02-01
+
+## Core Entities
+
+### SpecKitPlugin
+
+The main plugin class that implements `AgencyPlugin` interface.
+
+```typescript
+interface AgencyPlugin {
+  readonly manifest: PluginManifest;
+  initialize(core: AgencyCoreAPI): Promise<void>;
+  shutdown(): Promise<void>;
+  onModeChange?(mode: string): void;
+}
+
+class SpecKitPlugin implements AgencyPlugin {
+  readonly manifest: PluginManifest;
+  private coreAPI?: AgencyCoreAPI;
+  private config?: SpecKitConfig;
+  private cleanups: Array<() => void>;
+}
+```
+
+### PluginManifest
+
+Static metadata describing the plugin and its capabilities.
+
+```typescript
+interface PluginManifest {
+  id: string;              // '@generacy-ai/agency-plugin-spec-kit'
+  name: string;            // 'Spec Kit'
+  version: string;         // '0.0.1'
+  description: string;
+  main: string;            // Entry point
+  types: string;           // TypeScript declarations
+  dependencies: string[];  // Other plugins required
+  tools: string[];         // List of tool names
+  modes: string[];         // 'coding', 'research'
+  critical: boolean;       // Plugin criticality flag
+}
+```
+
+### SpecKitConfig
+
+Plugin configuration with Zod validation.
+
+```typescript
+interface SpecKitConfig {
+  paths: {
+    specs: string;      // Default: 'specs'
+    templates: string;  // Default: '.specify/templates'
+  };
+  branches: {
+    pattern: string;      // Default: '{paddedNumber}-{slug}'
+    numberPadding: number; // Default: 3
+    maxSlugWords: number;  // Default: 4
+  };
+  backlog: {
+    provider: 'github' | 'jira' | 'shortcut' | 'local';
+    github?: {};
+    jira?: JiraConfig;
+    shortcut?: ShortcutConfig;
+  };
+}
+```
+
+### AgencyTool
+
+Tool definition registered with the core API.
+
+```typescript
+interface AgencyTool {
+  name: string;           // 'spec_kit.xyz'
+  description: string;
+  namespace: string;      // 'spec_kit'
+  outputPattern?: string; // 'terse' | 'verbose'
+  modes?: string[];       // Which modes the tool is available in
+  inputSchema: {
+    type: 'object';
+    properties: Record<string, JSONSchema>;
+    required?: string[];
+  };
+  execute(params: unknown): Promise<ToolResult>;
+}
+
+interface ToolResult {
+  content: Array<{
+    type: 'text' | 'image' | 'resource';
+    text?: string;
+    data?: string;
+    mimeType?: string;
+  }>;
+}
+```
+
+## Provider Types
+
+### BacklogProvider
+
+Interface for backlog system integration.
+
+```typescript
+interface BacklogProvider {
+  name: BacklogProviderName;
+
+  // Core operations
+  getTicket(ref: TicketRef): Promise<BacklogTicket>;
+  createTicket(params: TicketCreateParams): Promise<BacklogTicket>;
+  updateTicket(ref: TicketRef, updates: TicketUpdates): Promise<BacklogTicket>;
+
+  // Capabilities
+  checkAuth(): Promise<AuthCheckResult>;
+}
+
+type BacklogProviderName = 'github' | 'jira' | 'shortcut' | 'local';
+```
+
+### ProviderRegistry
+
+Manages provider instances with lazy initialization.
+
+```typescript
+class ProviderRegistry {
+  private readonly config: SpecKitConfig;
+  private readonly providers: Map<BacklogProviderName, BacklogProvider>;
+
+  getProvider(name?: BacklogProviderName): BacklogProvider;
+  detectProvider(ref: string): BacklogProviderName | null;
+  getDefaultProvider(): BacklogProviderName;
+  hasProvider(name: BacklogProviderName): boolean;
+  getRegisteredProviders(): BacklogProviderName[];
+}
+```
+
+## Relationships
+
+```
+SpecKitPlugin
+    │
+    ├── has one → PluginManifest (readonly)
+    │
+    ├── has one → SpecKitConfig
+    │
+    ├── creates many → AgencyTool[]
+    │       │
+    │       └── each tool may use → ProviderRegistry
+    │                                   │
+    │                                   └── manages many → BacklogProvider[]
+    │
+    └── registers with → AgencyCoreAPI
+            │
+            ├── registerTool(tool)
+            ├── unregisterTool(name)
+            ├── getConfig(key)
+            ├── onModeChange(callback)
+            └── getTool?(name) [optional extension]
+```
+
+## Validation Rules
+
+### Configuration Validation
+
+1. `paths.specs` - Non-empty string, valid directory path
+2. `paths.templates` - Non-empty string, valid directory path
+3. `branches.numberPadding` - Integer between 1 and 10
+4. `branches.maxSlugWords` - Integer between 1 and 10
+5. `backlog.provider` - Must be one of: 'github', 'jira', 'shortcut', 'local'
+6. If `backlog.provider === 'jira'`, then `backlog.jira` must be defined with `baseUrl` and `projectKey`
+7. If `backlog.provider === 'shortcut'`, then `backlog.shortcut` must be defined with `workspaceSlug`
+
+### Tool Registration Validation
+
+1. Tool `name` must be unique across all plugins
+2. Tool `namespace` must match plugin namespace ('spec_kit')
+3. Tool `inputSchema` must be valid JSON Schema
+4. Tool `execute` must return valid `ToolResult`
+
+---
+
+*Generated by speckit*

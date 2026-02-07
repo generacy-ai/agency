@@ -16,6 +16,9 @@ const createMockCoreAPI = () => ({
   registerTool: vi.fn(),
   unregisterTool: vi.fn(),
   onModeChange: vi.fn().mockReturnValue(() => {}),
+  provide: vi.fn(),
+  require: vi.fn(),
+  optional: vi.fn(),
 });
 
 describe('Offline Mode Integration', () => {

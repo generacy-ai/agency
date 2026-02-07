@@ -38,6 +38,9 @@ importers:
 
   packages/agency:
     dependencies:
+      '@generacy-ai/latency':
+        specifier: link:/workspaces/latency/packages/latency
+        version: link:../../../latency/packages/latency
       '@modelcontextprotocol/sdk':
         specifier: ^1.5.0
         version: 1.25.2(hono@4.11.4)(zod@3.25.76)

@@ -7,6 +7,7 @@
  */
 
 import type { AgencyTool } from '../tools/types.js';
+import type { FacetProvider, FacetRequirement } from '@generacy-ai/latency';
 
 /**
  * Plugin manifest metadata describing a plugin
@@ -49,6 +50,17 @@ export interface PluginManifest {
 
   /** If true, plugin failure stops the system */
   critical: boolean;
+
+  // === Facet Declarations (Latency integration) ===
+
+  /** Facets this plugin provides (implements) */
+  provides?: FacetProvider[];
+
+  /** Facets this plugin requires (must be available at startup) */
+  requires?: FacetRequirement[];
+
+  /** Optional facets this plugin can use if available */
+  uses?: FacetRequirement[];
 }
 
 /**
@@ -90,6 +102,49 @@ export interface AgencyCoreAPI {
 
   /** Get the plugin ID for this API instance */
   getPluginId(): string;
+
+  // === Facet Methods (Latency integration) ===
+
+  /**
+   * Register a facet implementation.
+   *
+   * Called during plugin initialization to provide a facet implementation.
+   * The registration is tracked for cleanup when the plugin is unloaded.
+   *
+   * @typeParam T - The facet implementation type.
+   * @param facet - The facet identifier (e.g., "SourceControl").
+   * @param implementation - The facet implementation instance.
+   * @param qualifier - Optional qualifier for this implementation (e.g., "git").
+   */
+  provide<T>(facet: string, implementation: T, qualifier?: string): void;
+
+  /**
+   * Request a required facet.
+   *
+   * Use this to obtain a facet that your plugin requires. If the facet
+   * is not available, an error is thrown.
+   *
+   * @typeParam T - The expected facet type.
+   * @param facet - The facet identifier.
+   * @param qualifier - Optional qualifier to request a specific implementation.
+   * @returns The facet implementation.
+   * @throws FacetNotFoundError if the facet is not available.
+   * @throws AmbiguousFacetError if multiple providers exist without qualifier.
+   */
+  require<T>(facet: string, qualifier?: string): T;
+
+  /**
+   * Request an optional facet.
+   *
+   * Use this to obtain a facet that your plugin can use if available.
+   * Returns undefined if the facet is not available.
+   *
+   * @typeParam T - The expected facet type.
+   * @param facet - The facet identifier.
+   * @param qualifier - Optional qualifier to request a specific implementation.
+   * @returns The facet implementation, or undefined if not available.
+   */
+  optional<T>(facet: string, qualifier?: string): T | undefined;
 }
 
 /**

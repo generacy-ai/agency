@@ -46,6 +46,9 @@ export class GitPlugin implements AgencyPlugin {
     ],
     modes: ['research', 'coding', 'review'],
     critical: false,
+    provides: [{ facet: 'SourceControl', qualifier: 'git', priority: 10 }],
+    requires: [],
+    uses: [],
   };
 
   private config: GitPluginConfig = DEFAULT_CONFIG;
