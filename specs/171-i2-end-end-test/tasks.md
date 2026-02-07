@@ -10,42 +10,42 @@
 
 ## Phase 1: Setup & Test Infrastructure
 
-- [ ] T001 Create test file `packages/agency-plugin-spec-kit/tests/integration/github-flow.test.ts` with basic structure (imports, describe blocks, beforeAll/afterAll hooks)
-- [ ] T002 Implement test utilities: `createTestIssue(title, body?)`, `closeTestIssue(number)`, `deleteTestBranch(name)` for fixture management
-- [ ] T003 Add environment detection: check `gh auth status` in beforeAll, skip tests if not authenticated
-- [ ] T004 Implement cleanup tracking: array to store created issue numbers and branch names for afterAll cleanup
-- [ ] T005 Add `PRESERVE_TEST_RESOURCES` environment variable support to skip cleanup when debugging
+- [X] T001 Create test file `packages/agency-plugin-spec-kit/tests/integration/github-flow.test.ts` with basic structure (imports, describe blocks, beforeAll/afterAll hooks)
+- [X] T002 Implement test utilities: `createTestIssue(title, body?)`, `closeTestIssue(number)`, `deleteTestBranch(name)` for fixture management
+- [X] T003 Add environment detection: check `gh auth status` in beforeAll, skip tests if not authenticated
+- [X] T004 Implement cleanup tracking: array to store created issue numbers and branch names for afterAll cleanup
+- [X] T005 Add `PRESERVE_TEST_RESOURCES` environment variable support to skip cleanup when debugging
 
 ## Phase 2: Basic Operations Tests (get_ticket, create_ticket)
 
-- [ ] T010 Test get_ticket with `#N` reference format - create test issue, fetch by number, verify title and URL match
-- [ ] T011 [P] Test get_ticket with full GitHub URL format - use same test issue, verify identical response
-- [ ] T012 [P] Test get_ticket error handling - fetch non-existent issue number (e.g., #999999999), verify error response
-- [ ] T013 Test create_ticket with title only - create issue, verify returns issue number and URL
-- [ ] T014 [P] Test create_ticket with title, body, and labels - verify all fields persisted correctly
+- [X] T010 Test get_ticket with `#N` reference format - create test issue, fetch by number, verify title and URL match
+- [X] T011 [P] Test get_ticket with full GitHub URL format - use same test issue, verify identical response
+- [X] T012 [P] Test get_ticket error handling - fetch non-existent issue number (e.g., #999999999), verify error response
+- [X] T013 Test create_ticket with title only - create issue, verify returns issue number and URL
+- [X] T014 [P] Test create_ticket with title, body, and labels - verify all fields persisted correctly
 
 ## Phase 3: Feature Creation Tests (create_feature)
 
-- [ ] T020 Test create_feature from issue - create feature from test issue, verify branch pattern matches `\d{3}-` format
-- [ ] T021 [P] Test create_feature spec directory - verify `specs/` directory created with expected files (spec.md)
-- [ ] T022 Add branch cleanup to afterAll for created feature branches
+- [X] T020 Test create_feature from issue - create feature from test issue, verify branch pattern matches `\d{3}-` format
+- [X] T021 [P] Test create_feature spec directory - verify `specs/` directory created with expected files (spec.md)
+- [X] T022 Add branch cleanup to afterAll for created feature branches
 
 ## Phase 4: Tasks to Issues Tests (tasks_to_issues)
 
-- [ ] T030 Setup: Create temporary tasks.md file with 2-3 simple tasks for testing
-- [ ] T031 Test tasks_to_issues dry run - verify preview without creating actual issues
-- [ ] T032 Test tasks_to_issues actual creation (per-task grouping) - verify issues created with correct titles
-- [ ] T033 [P] Test tasks_to_issues issue linkage - verify tasks.md updated with issue references
+- [X] T030 Setup: Create temporary tasks.md file with 2-3 simple tasks for testing
+- [X] T031 Test tasks_to_issues dry run - verify preview without creating actual issues
+- [X] T032 Test tasks_to_issues actual creation (per-task grouping) - verify issues created with correct titles
+- [X] T033 [P] Test tasks_to_issues issue linkage - verify tasks.md updated with issue references
 
 ## Phase 5: Full Workflow Integration Test
 
-- [ ] T040 Test complete workflow: create issue -> create_feature -> simulate tasks.md -> tasks_to_issues -> verify child issues linked to parent
-- [ ] T041 Add rate limiting delays (100-500ms) between API-intensive tests to avoid GitHub throttling
+- [X] T040 Test complete workflow: create issue -> create_feature -> simulate tasks.md -> tasks_to_issues -> verify child issues linked to parent
+- [X] T041 Add rate limiting delays (100-500ms) between API-intensive tests to avoid GitHub throttling
 
 ## Phase 6: Documentation & CI Integration
 
-- [ ] T050 Add test group configuration to vitest.config.ts to allow running GitHub E2E tests separately (e.g., `vitest run --group github-e2e`)
-- [ ] T051 [P] Document required `gh` auth scopes and environment setup in test file header comment
+- [X] T050 Add test group configuration to vitest.config.ts to allow running GitHub E2E tests separately (e.g., `vitest run --group github-e2e`)
+- [X] T051 [P] Document required `gh` auth scopes and environment setup in test file header comment
 
 ## Dependencies & Execution Order
 
