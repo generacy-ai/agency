@@ -10,7 +10,7 @@ import { ConnectionModeDetector, ConnectionMode } from '../../connection/index.j
 // Mock AgencyCoreAPI
 const createMockCoreAPI = () => ({
   getPluginId: () => 'humancy',
-  getConfig: vi.fn().mockReturnValue({}),
+  getConfig: vi.fn().mockReturnValue(undefined),
   onMessage: vi.fn().mockReturnValue(() => {}),
   sendMessage: vi.fn(),
   registerTool: vi.fn(),

@@ -24,6 +24,6 @@ export const manifest: PluginManifest = {
   critical: false,
   // Facet declarations
   provides: [],
-  requires: [{ facet: 'DecisionHandler' }],
-  uses: [],
+  requires: [],
+  uses: [{ facet: 'DecisionHandler' }],
 };

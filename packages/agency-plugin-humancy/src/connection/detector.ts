@@ -11,13 +11,15 @@ import { ConnectionMode, type ConnectionState, type HttpClientInfo } from './typ
 
 /**
  * Configuration key for explicit mode preference
+ * (un-namespaced — getConfig already scopes by plugin ID)
  */
-const CONFIG_KEY = 'humancy.mode';
+const CONFIG_KEY = 'mode';
 
 /**
  * Configuration key for API URL
+ * (un-namespaced — getConfig already scopes by plugin ID)
  */
-const API_URL_KEY = 'humancy.apiUrl';
+const API_URL_KEY = 'apiUrl';
 
 /**
  * Environment variable for API URL
@@ -106,7 +108,7 @@ export class ConnectionModeDetector {
     }
 
     const mode = this.coreAPI.getConfig<string>(CONFIG_KEY);
-    if (!mode) {
+    if (!mode || typeof mode !== 'string') {
       return undefined;
     }
 
@@ -208,7 +210,7 @@ export class ConnectionModeDetector {
     }
 
     if (this.coreAPI) {
-      return this.coreAPI.getConfig<string>('humancy.apiKey');
+      return this.coreAPI.getConfig<string>('apiKey');
     }
 
     return undefined;
@@ -227,7 +229,7 @@ export class ConnectionModeDetector {
    */
   getTimeout(): number {
     if (this.coreAPI) {
-      const timeout = this.coreAPI.getConfig<number>('humancy.timeout');
+      const timeout = this.coreAPI.getConfig<number>('timeout');
       if (timeout && timeout > 0) {
         return timeout;
       }

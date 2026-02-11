@@ -55,7 +55,7 @@ describe('ConnectionModeDetector', () => {
   describe('detect', () => {
     it('should use configured mode when set to direct', async () => {
       vi.mocked(mockCoreAPI.getConfig).mockImplementation((key: string) => {
-        if (key === 'humancy.mode') return 'direct';
+        if (key === 'mode') return 'direct';
         return undefined;
       });
 
@@ -68,7 +68,7 @@ describe('ConnectionModeDetector', () => {
 
     it('should use configured mode when set to cloud', async () => {
       vi.mocked(mockCoreAPI.getConfig).mockImplementation((key: string) => {
-        if (key === 'humancy.mode') return 'cloud';
+        if (key === 'mode') return 'cloud';
         return undefined;
       });
 
@@ -81,7 +81,7 @@ describe('ConnectionModeDetector', () => {
 
     it('should use configured mode when set to offline', async () => {
       vi.mocked(mockCoreAPI.getConfig).mockImplementation((key: string) => {
-        if (key === 'humancy.mode') return 'offline';
+        if (key === 'mode') return 'offline';
         return undefined;
       });
 
@@ -102,9 +102,9 @@ describe('ConnectionModeDetector', () => {
       expect(detector.getApiUrl()).toBe('https://custom.api/humancy');
     });
 
-    it('should detect CLOUD when humancy.apiUrl config is set', async () => {
+    it('should detect CLOUD when apiUrl config is set', async () => {
       vi.mocked(mockCoreAPI.getConfig).mockImplementation((key: string) => {
-        if (key === 'humancy.apiUrl') return 'https://config.api/humancy';
+        if (key === 'apiUrl') return 'https://config.api/humancy';
         return undefined;
       });
 
@@ -126,7 +126,7 @@ describe('ConnectionModeDetector', () => {
     it('should prioritize explicit config over env vars', async () => {
       process.env['HUMANCY_API_URL'] = 'https://env.api/humancy';
       vi.mocked(mockCoreAPI.getConfig).mockImplementation((key: string) => {
-        if (key === 'humancy.mode') return 'offline';
+        if (key === 'mode') return 'offline';
         return undefined;
       });
 
@@ -148,9 +148,9 @@ describe('ConnectionModeDetector', () => {
       expect(mode).toBe(ConnectionMode.CLOUD);
     });
 
-    it('should return true when humancy.apiUrl config is set', async () => {
+    it('should return true when apiUrl config is set', async () => {
       vi.mocked(mockCoreAPI.getConfig).mockImplementation((key: string) => {
-        if (key === 'humancy.apiUrl') return 'https://test.api/humancy';
+        if (key === 'apiUrl') return 'https://test.api/humancy';
         return undefined;
       });
 
@@ -165,7 +165,7 @@ describe('ConnectionModeDetector', () => {
     it('should return env var when set', () => {
       process.env['HUMANCY_API_URL'] = 'https://env.api/humancy';
       vi.mocked(mockCoreAPI.getConfig).mockImplementation((key: string) => {
-        if (key === 'humancy.apiUrl') return 'https://config.api/humancy';
+        if (key === 'apiUrl') return 'https://config.api/humancy';
         return undefined;
       });
 
@@ -176,7 +176,7 @@ describe('ConnectionModeDetector', () => {
 
     it('should return config when env var not set', () => {
       vi.mocked(mockCoreAPI.getConfig).mockImplementation((key: string) => {
-        if (key === 'humancy.apiUrl') return 'https://config.api/humancy';
+        if (key === 'apiUrl') return 'https://config.api/humancy';
         return undefined;
       });
 
@@ -198,7 +198,7 @@ describe('ConnectionModeDetector', () => {
     it('should return env var when set', () => {
       process.env['GENERACY_API_KEY'] = 'env-key';
       vi.mocked(mockCoreAPI.getConfig).mockImplementation((key: string) => {
-        if (key === 'humancy.apiKey') return 'config-key';
+        if (key === 'apiKey') return 'config-key';
         return undefined;
       });
 
@@ -209,7 +209,7 @@ describe('ConnectionModeDetector', () => {
 
     it('should return config when env var not set', () => {
       vi.mocked(mockCoreAPI.getConfig).mockImplementation((key: string) => {
-        if (key === 'humancy.apiKey') return 'config-key';
+        if (key === 'apiKey') return 'config-key';
         return undefined;
       });
 
@@ -253,7 +253,7 @@ describe('ConnectionModeDetector', () => {
   describe('getTimeout', () => {
     it('should return config timeout when set', () => {
       vi.mocked(mockCoreAPI.getConfig).mockImplementation((key: string) => {
-        if (key === 'humancy.timeout') return 30000;
+        if (key === 'timeout') return 30000;
         return undefined;
       });
 

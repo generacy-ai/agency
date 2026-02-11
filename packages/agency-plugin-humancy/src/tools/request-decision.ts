@@ -56,40 +56,10 @@ export function createRequestDecisionTool(
         },
         options: {
           type: 'array',
-          description: 'Available choices (2-10 options)',
+          description: 'Available choices (2-10 options). Each item can be a simple string (e.g. "Option A") or an object with {id, label, description?, tradeoffs?}.',
           items: {
-            type: 'object',
-            properties: {
-              id: {
-                type: 'string',
-                description: 'Unique identifier for the option',
-              },
-              label: {
-                type: 'string',
-                description: 'Display text for the option',
-              },
-              description: {
-                type: 'string',
-                description: 'Optional explanation of the option',
-              },
-              tradeoffs: {
-                type: 'object',
-                description: 'Optional tradeoff analysis',
-                properties: {
-                  pros: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    description: 'Advantages of this option',
-                  },
-                  cons: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    description: 'Disadvantages of this option',
-                  },
-                },
-              },
-            },
-            required: ['id', 'label'],
+            type: 'string',
+            description: 'Option text, or a JSON object with {id, label, description?, tradeoffs?}',
           },
         },
         context: {
@@ -213,18 +183,11 @@ async function executeCloudMode(
 
     // At this point, result.type must be 'decision:resolved'
 
-    // Validate that selected option exists
+    // Check if selected option matches a predefined option or is a custom response
     const selectedOption = validParams.options.find(
       (opt) => opt.id === result.selectedOption
     );
-
-    if (!selectedOption) {
-      return terseToMcpToolResult(
-        TerseOutput.failure(
-          `Invalid selection: ${result.selectedOption} is not a valid option ID`
-        )
-      );
-    }
+    const isCustomResponse = !selectedOption;
 
     // Store decision record if store is available
     if (store) {
@@ -271,6 +234,7 @@ async function executeCloudMode(
     const outputData: Record<string, unknown> = {
       selectedOption: result.selectedOption,
       decisionId: created.id,
+      isCustomResponse,
     };
 
     // Include three-layer breakdown if requested and present
@@ -287,7 +251,8 @@ async function executeCloudMode(
     }
 
     // Format message
-    const message = `Selected: ${result.selectedOption} (decisionId: ${created.id})`;
+    const prefix = isCustomResponse ? 'Custom response' : 'Selected';
+    const message = `${prefix}: ${result.selectedOption} (decisionId: ${created.id})`;
 
     // For terse output, include JSON data for machine parsing when three-layer data exists
     const hasThreeLayerData = validParams.includeRecommendations;

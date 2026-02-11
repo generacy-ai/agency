@@ -252,14 +252,48 @@ export class SSEHandler {
 
   /**
    * Parse event data into typed SSE event
+   *
+   * Transforms server event format to client schema format:
+   * - SSE `event` field is the authoritative type (e.g., "decision:resolved")
+   * - Server data.type is a generic category (e.g., "decision"), not the event type
+   * - Server nests response data under `response: { selectedOptionId, respondedAt }`
+   * - Client schema expects flat fields: `selectedOption`, `respondedAt`
    */
   private parseEventData(message: ParsedSSEMessage): SSEEvent | null {
     try {
       const data = JSON.parse(message.data);
 
-      // Use event type from SSE if present, otherwise from data
-      if (message.event && !data.type) {
+      // Always use SSE event field as authoritative type
+      // Server sends event type in envelope (e.g., "decision:resolved")
+      // while data.type is a generic category (e.g., "decision")
+      if (message.event) {
         data.type = message.event;
+      }
+
+      // Transform server decision:resolved format to client schema
+      // Server: { response: { selectedOptionId, respondedAt, ... } }
+      // Client: { selectedOption, respondedAt, ... }
+      if (data.type === 'decision:resolved' && data.response) {
+        if (data.response.selectedOptionId && !data.selectedOption) {
+          data.selectedOption = data.response.selectedOptionId;
+        }
+        if (data.response.customResponse && !data.selectedOption) {
+          data.selectedOption = data.response.customResponse;
+        }
+        if (data.response.respondedAt && !data.respondedAt) {
+          data.respondedAt = data.response.respondedAt;
+        }
+      }
+
+      // Transform decision:created format
+      // Server: { id: "..." }, Client: { decisionId: "..." }
+      if (data.type === 'decision:created' && data.id && !data.decisionId) {
+        data.decisionId = data.id;
+      }
+
+      // Transform decision:expired — ensure reason field exists
+      if (data.type === 'decision:expired' && !data.reason) {
+        data.reason = 'Decision expired';
       }
 
       // Add timestamp if not present

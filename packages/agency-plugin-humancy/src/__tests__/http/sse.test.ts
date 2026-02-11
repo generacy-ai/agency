@@ -174,6 +174,81 @@ describe('SSEHandler', () => {
       expect(events[1]).toMatchObject({ type: 'decision:resolved' });
     });
 
+    it('should transform server format (nested response) to client format', async () => {
+      // Server sends: event: decision:resolved, data.type: "decision", data.response: { selectedOptionId, respondedAt }
+      // Client expects: data.type: "decision:resolved", data.selectedOption, data.respondedAt
+      const sseData =
+        'event: decision:resolved\ndata: {"type":"decision","id":"dec-1","urgency":"blocking_now","preview":"Test?","projectId":"proj-1","status":"responded","response":{"selectedOptionId":"opt-a","respondedAt":"2024-01-01T00:00:00Z"}}\n\n';
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockSSEStream([sseData]),
+      });
+
+      const events: unknown[] = [];
+      for await (const event of handler.subscribeToDecision(
+        'https://test.api/decisions/123/events'
+      )) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'decision:resolved',
+        selectedOption: 'opt-a',
+        respondedAt: '2024-01-01T00:00:00Z',
+      });
+    });
+
+    it('should transform server format with customResponse', async () => {
+      const sseData =
+        'event: decision:resolved\ndata: {"type":"decision","id":"dec-1","urgency":"blocking_now","preview":"Test?","projectId":"proj-1","status":"responded","response":{"customResponse":"My custom answer","respondedAt":"2024-01-01T00:00:00Z"}}\n\n';
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockSSEStream([sseData]),
+      });
+
+      const events: unknown[] = [];
+      for await (const event of handler.subscribeToDecision(
+        'https://test.api/decisions/123/events'
+      )) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'decision:resolved',
+        selectedOption: 'My custom answer',
+        respondedAt: '2024-01-01T00:00:00Z',
+      });
+    });
+
+    it('should transform server decision:created format', async () => {
+      const sseData = [
+        'event: decision:created\ndata: {"type":"decision","id":"dec-1","urgency":"blocking_now","preview":"Test?","projectId":"proj-1"}\n\n',
+        'event: decision:resolved\ndata: {"type":"decision","id":"dec-1","urgency":"blocking_now","preview":"Test?","projectId":"proj-1","status":"responded","response":{"selectedOptionId":"opt-a","respondedAt":"2024-01-01T00:00:00Z"}}\n\n',
+      ];
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        body: createMockSSEStream(sseData),
+      });
+
+      const events: unknown[] = [];
+      for await (const event of handler.subscribeToDecision(
+        'https://test.api/decisions/123/events'
+      )) {
+        events.push(event);
+      }
+
+      expect(events).toHaveLength(2);
+      expect(events[0]).toMatchObject({
+        type: 'decision:created',
+        decisionId: 'dec-1',
+      });
+    });
+
     it('should include three-layer data when present', async () => {
       const sseData = `event: decision:resolved
 data: {"type":"decision:resolved","selectedOption":"a","respondedAt":"2024-01-01T00:00:00Z","timestamp":"2024-01-01T00:00:00Z","baseline":{"optionId":"a","confidence":0.8},"protege":{"optionId":"a","reasoning":"Best choice"},"human":{"optionId":"a","note":"Agreed"}}

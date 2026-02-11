@@ -140,12 +140,21 @@ export const urgencySchema = z.enum([
   'when_available',
 ]);
 
-export const decisionOptionSchema = z.object({
+export const decisionOptionObjectSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   description: z.string().optional(),
   tradeoffs: tradeoffsSchema.optional(),
 });
+
+/** Accepts both string shorthand ("Option A") and full object ({ id, label }) */
+export const decisionOptionSchema = z.union([
+  z.string().min(1).transform((s, ctx): z.infer<typeof decisionOptionObjectSchema> => {
+    const id = s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    return { id: id || `option-${ctx.path[ctx.path.length - 1]}`, label: s };
+  }),
+  decisionOptionObjectSchema,
+]);
 
 export const askQuestionParamsSchema = z.object({
   question: z.string().min(1).max(10000),

@@ -83,9 +83,14 @@ export class HumancyHttpClient {
 
   /**
    * Get the SSE events URL for a decision
+   * Includes token as query parameter since SSE endpoints use query-based auth
    */
   getEventsUrl(decisionId: string): string {
-    return `${this.config.baseUrl}/decisions/${encodeURIComponent(decisionId)}/events`;
+    const base = `${this.config.baseUrl}/decisions/${encodeURIComponent(decisionId)}/events`;
+    if (this.config.apiKey) {
+      return `${base}?token=${encodeURIComponent(this.config.apiKey)}`;
+    }
+    return base;
   }
 
   /**
