@@ -34,11 +34,11 @@ export const manifest: PluginManifest = {
   critical: false,
   // Facet declarations
   provides: [],
-  requires: [
+  requires: [],
+  uses: [
     { facet: 'IssueTracker' },
     { facet: 'SourceControl' },
   ],
-  uses: [],
 };
 
 /**

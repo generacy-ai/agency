@@ -1,0 +1,10 @@
+{
+  "name": "agency",
+  "pluginPaths": ["/workspaces/agency/packages"],
+  "defaultMode": "coding",
+  "modes": {
+    "coding": ["*"],
+    "research": ["*"],
+    "default": ["*"]
+  }
+}
