@@ -16,7 +16,7 @@ export const manifest: PluginManifest = {
   description: 'Specification-driven development toolkit with backlog provider abstraction',
   main: './dist/index.js',
   types: './dist/index.d.ts',
-  dependencies: ['@generacy-ai/agency-plugin-humancy'],
+  dependencies: [],
   tools: [
     'spec_kit.git_ops',
     'spec_kit.create_feature',

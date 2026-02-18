@@ -281,6 +281,12 @@ export interface ReadClarificationsOutput {
 
   /** Error message if success is false */
   error?: string;
+
+  /** Answers discovered from GitHub issue comments */
+  github_answers?: ParsedAnswer[];
+
+  /** IDs of GitHub comments containing clarification batches */
+  github_comment_ids?: string[];
 }
 
 /**
@@ -316,6 +322,9 @@ export interface AppendClarificationsOutput {
 
   /** Error message if success is false */
   error?: string;
+
+  /** Result of posting the clarification comment to GitHub */
+  github_comment?: GitHubCommentResult;
 }
 
 /**
@@ -348,4 +357,42 @@ export interface UpdateAnswerOutput {
 
   /** Error message if success is false */
   error?: string;
+}
+
+// ============================================================================
+// GitHub Comment Integration Types
+// ============================================================================
+
+/**
+ * Result of posting a clarification comment to GitHub.
+ */
+export interface GitHubCommentResult {
+  /** GitHub comment ID */
+  comment_id: string;
+
+  /** Issue number the comment was posted to */
+  issue_number: number;
+
+  /** Batch number of the clarification */
+  batch_number: number;
+
+  /** HTML marker string (e.g., 'generacy-clarification:batch-1') */
+  marker: string;
+}
+
+/**
+ * A parsed answer from a GitHub issue comment.
+ */
+export interface ParsedAnswer {
+  /** Question number this answer corresponds to */
+  question_number: number;
+
+  /** The answer text */
+  answer: string;
+
+  /** Where the answer was found */
+  source: 'file' | 'github';
+
+  /** GitHub comment ID where answer was found (if source is 'github') */
+  comment_id?: string;
 }
