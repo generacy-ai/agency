@@ -59,9 +59,9 @@ describe('SpecKitPlugin', () => {
       expect(plugin.manifest.tools).toHaveLength(11);
     });
 
-    it('should depend on humancy plugin', () => {
+    it('should not have hard dependencies (humancy is optional)', () => {
       const plugin = new SpecKitPlugin();
-      expect(plugin.manifest.dependencies).toContain('@generacy-ai/agency-plugin-humancy');
+      expect(plugin.manifest.dependencies).toEqual([]);
     });
 
     it('should declare correct modes', () => {

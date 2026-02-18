@@ -815,4 +815,336 @@ Questions and answers to clarify the feature specification.
       expect(response.exists).toBe(false);
     });
   });
+
+  describe('GitHub comment integration - append', () => {
+    it('should post GitHub comment when issue_number provided and IssueTracker available', async () => {
+      const mockIssueTracker = {
+        addComment: vi.fn().mockResolvedValue({
+          id: '456',
+          body: 'comment body',
+          author: 'bot',
+          createdAt: new Date(),
+        }),
+        listComments: vi.fn().mockResolvedValue([]),
+      };
+
+      const mockCoreAPIWithFacet = {
+        ...createMockCoreAPI(),
+        getFacet: vi.fn((name: string) => {
+          if (name === 'IssueTracker') return mockIssueTracker;
+          return undefined;
+        }),
+      };
+
+      const repoDir = join(testDir, 'repo');
+      await fs.mkdir(repoDir);
+      await fs.mkdir(join(repoDir, '.git'));
+      await fs.mkdir(join(repoDir, 'specs'));
+      await fs.mkdir(join(repoDir, 'specs', '001-my-feature'));
+
+      const config = parseConfig();
+      const tool = createManageClarificationsTool(config, mockCoreAPIWithFacet);
+
+      const result = await tool.execute({
+        operation: 'append',
+        feature_dir: join(repoDir, 'specs', '001-my-feature'),
+        cwd: repoDir,
+        issue_number: 42,
+        questions: [
+          {
+            topic: 'Authentication',
+            context: 'Need to decide on auth method',
+            question: 'Which auth method?',
+          },
+        ],
+      });
+
+      const response = JSON.parse(result.content[0].text);
+      expect(response.github_comment).toBeDefined();
+      expect(response.github_comment.comment_id).toBe('456');
+      expect(response.github_comment.issue_number).toBe(42);
+      expect(response.github_comment.batch_number).toBe(1);
+
+      // Verify addComment was called with the correct issue ID and a body containing the marker
+      expect(mockIssueTracker.addComment).toHaveBeenCalledWith(
+        '42',
+        expect.stringContaining('generacy-clarification:batch-1')
+      );
+    });
+
+    it('should still succeed when IssueTracker not available (file-only mode)', async () => {
+      const mockCoreAPIWithoutFacet = {
+        ...createMockCoreAPI(),
+      };
+
+      const repoDir = join(testDir, 'repo');
+      await fs.mkdir(repoDir);
+      await fs.mkdir(join(repoDir, '.git'));
+      await fs.mkdir(join(repoDir, 'specs'));
+      await fs.mkdir(join(repoDir, 'specs', '001-my-feature'));
+
+      const config = parseConfig();
+      const tool = createManageClarificationsTool(config, mockCoreAPIWithoutFacet);
+
+      const result = await tool.execute({
+        operation: 'append',
+        feature_dir: join(repoDir, 'specs', '001-my-feature'),
+        cwd: repoDir,
+        issue_number: 42,
+        questions: [
+          {
+            topic: 'Authentication',
+            context: 'Need to decide on auth method',
+            question: 'Which auth method?',
+          },
+        ],
+      });
+
+      const response = JSON.parse(result.content[0].text);
+      expect(response.success).toBe(true);
+      expect(response.github_comment).toBeUndefined();
+    });
+  });
+
+  describe('GitHub comment integration - read', () => {
+    it('should fetch and parse GitHub answers when issue_number provided', async () => {
+      const mockIssueTracker = {
+        addComment: vi.fn().mockResolvedValue({
+          id: '456',
+          body: '',
+          author: 'bot',
+          createdAt: new Date(),
+        }),
+        listComments: vi.fn().mockResolvedValue([
+          {
+            id: '789',
+            body: 'Q1: Use OAuth 2.0',
+            author: 'reviewer',
+            createdAt: new Date(),
+          },
+        ]),
+      };
+
+      const mockCoreAPIWithFacet = {
+        ...createMockCoreAPI(),
+        getFacet: vi.fn((name: string) => {
+          if (name === 'IssueTracker') return mockIssueTracker;
+          return undefined;
+        }),
+      };
+
+      const repoDir = join(testDir, 'repo');
+      await fs.mkdir(repoDir);
+      await fs.mkdir(join(repoDir, '.git'));
+      await fs.mkdir(join(repoDir, 'specs'));
+      await fs.mkdir(join(repoDir, 'specs', '001-my-feature'));
+
+      const clarificationsContent = `# Clarifications
+
+Questions and answers to clarify the feature specification.
+
+## Batch 1 - 2024-01-15 10:30
+
+### Q1: Authentication
+**Context**: Need to decide on authentication method
+**Question**: Which authentication method should we use?
+
+**Answer**: *Pending*
+`;
+      await fs.writeFile(
+        join(repoDir, 'specs', '001-my-feature', 'clarifications.md'),
+        clarificationsContent
+      );
+
+      const config = parseConfig();
+      const tool = createManageClarificationsTool(config, mockCoreAPIWithFacet);
+
+      const result = await tool.execute({
+        operation: 'read',
+        feature_dir: join(repoDir, 'specs', '001-my-feature'),
+        cwd: repoDir,
+        issue_number: 42,
+      });
+
+      const response = JSON.parse(result.content[0].text);
+      expect(response.github_answers).toHaveLength(1);
+      expect(response.github_answers[0].answer).toBe('Use OAuth 2.0');
+      expect(response.batches[0].questions[0].answer).toBe('Use OAuth 2.0');
+      expect(response.pending_count).toBe(0);
+    });
+
+    it('should preserve file answers over GitHub answers', async () => {
+      const mockIssueTracker = {
+        addComment: vi.fn().mockResolvedValue({
+          id: '456',
+          body: '',
+          author: 'bot',
+          createdAt: new Date(),
+        }),
+        listComments: vi.fn().mockResolvedValue([
+          {
+            id: '789',
+            body: 'Q1: Use OAuth',
+            author: 'reviewer',
+            createdAt: new Date(),
+          },
+        ]),
+      };
+
+      const mockCoreAPIWithFacet = {
+        ...createMockCoreAPI(),
+        getFacet: vi.fn((name: string) => {
+          if (name === 'IssueTracker') return mockIssueTracker;
+          return undefined;
+        }),
+      };
+
+      const repoDir = join(testDir, 'repo');
+      await fs.mkdir(repoDir);
+      await fs.mkdir(join(repoDir, '.git'));
+      await fs.mkdir(join(repoDir, 'specs'));
+      await fs.mkdir(join(repoDir, 'specs', '001-my-feature'));
+
+      const clarificationsContent = `# Clarifications
+
+Questions and answers to clarify the feature specification.
+
+## Batch 1 - 2024-01-15 10:30
+
+### Q1: Authentication
+**Context**: Need to decide on authentication method
+**Question**: Which authentication method should we use?
+
+**Answer**: Use API Keys
+`;
+      await fs.writeFile(
+        join(repoDir, 'specs', '001-my-feature', 'clarifications.md'),
+        clarificationsContent
+      );
+
+      const config = parseConfig();
+      const tool = createManageClarificationsTool(config, mockCoreAPIWithFacet);
+
+      const result = await tool.execute({
+        operation: 'read',
+        feature_dir: join(repoDir, 'specs', '001-my-feature'),
+        cwd: repoDir,
+        issue_number: 42,
+      });
+
+      const response = JSON.parse(result.content[0].text);
+      expect(response.batches[0].questions[0].answer).toBe('Use API Keys');
+    });
+
+    it('should return github_comment_ids for batch marker comments', async () => {
+      const mockIssueTracker = {
+        addComment: vi.fn().mockResolvedValue({
+          id: '456',
+          body: '',
+          author: 'bot',
+          createdAt: new Date(),
+        }),
+        listComments: vi.fn().mockResolvedValue([
+          {
+            id: '101',
+            body: '<!-- generacy-clarification:batch-1 -->\n\n## Clarification Questions (Batch 1)\n\n### Q1: Auth\n**Context**: Context\n**Question**: Question?',
+            author: 'bot',
+            createdAt: new Date(),
+          },
+          {
+            id: '102',
+            body: 'Some unrelated comment',
+            author: 'user',
+            createdAt: new Date(),
+          },
+        ]),
+      };
+
+      const mockCoreAPIWithFacet = {
+        ...createMockCoreAPI(),
+        getFacet: vi.fn((name: string) => {
+          if (name === 'IssueTracker') return mockIssueTracker;
+          return undefined;
+        }),
+      };
+
+      const repoDir = join(testDir, 'repo');
+      await fs.mkdir(repoDir);
+      await fs.mkdir(join(repoDir, '.git'));
+      await fs.mkdir(join(repoDir, 'specs'));
+      await fs.mkdir(join(repoDir, 'specs', '001-my-feature'));
+
+      const clarificationsContent = `# Clarifications
+
+Questions and answers to clarify the feature specification.
+
+## Batch 1 - 2024-01-15 10:30
+
+### Q1: Auth
+**Context**: Context
+**Question**: Question?
+
+**Answer**: *Pending*
+`;
+      await fs.writeFile(
+        join(repoDir, 'specs', '001-my-feature', 'clarifications.md'),
+        clarificationsContent
+      );
+
+      const config = parseConfig();
+      const tool = createManageClarificationsTool(config, mockCoreAPIWithFacet);
+
+      const result = await tool.execute({
+        operation: 'read',
+        feature_dir: join(repoDir, 'specs', '001-my-feature'),
+        cwd: repoDir,
+        issue_number: 42,
+      });
+
+      const response = JSON.parse(result.content[0].text);
+      expect(response.github_comment_ids).toContain('101');
+      expect(response.github_comment_ids).not.toContain('102');
+    });
+
+    it('should work normally without issue_number (backward compatibility)', async () => {
+      const repoDir = join(testDir, 'repo');
+      await fs.mkdir(repoDir);
+      await fs.mkdir(join(repoDir, '.git'));
+      await fs.mkdir(join(repoDir, 'specs'));
+      await fs.mkdir(join(repoDir, 'specs', '001-my-feature'));
+
+      const clarificationsContent = `# Clarifications
+
+Questions and answers to clarify the feature specification.
+
+## Batch 1 - 2024-01-15 10:30
+
+### Q1: Authentication
+**Context**: Need to decide on authentication method
+**Question**: Which authentication method should we use?
+
+**Answer**: Use OAuth 2.0
+`;
+      await fs.writeFile(
+        join(repoDir, 'specs', '001-my-feature', 'clarifications.md'),
+        clarificationsContent
+      );
+
+      const config = parseConfig();
+      const tool = createManageClarificationsTool(config, mockCoreAPI);
+
+      const result = await tool.execute({
+        operation: 'read',
+        feature_dir: join(repoDir, 'specs', '001-my-feature'),
+        cwd: repoDir,
+      });
+
+      const response = JSON.parse(result.content[0].text);
+      expect(response.success).toBe(true);
+      expect(response.exists).toBe(true);
+      expect(response.batches).toHaveLength(1);
+      expect(response.batches[0].questions[0].answer).toBe('Use OAuth 2.0');
+      expect(response.github_answers).toBeUndefined();
+    });
+  });
 });

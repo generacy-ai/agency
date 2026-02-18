@@ -18,6 +18,8 @@ import {
   type AppendClarificationsOutput,
   type UpdateAnswerOutput,
   type HumancyRequestStatus,
+  type GitHubCommentResult,
+  type ParsedAnswer,
 } from '../types/clarification.js';
 import { createError } from '../types/errors.js';
 import { FEATURE_NAME_PATTERN } from '../types/patterns.js';
@@ -40,6 +42,12 @@ import {
   updateAnswerInContent,
   CLARIFICATIONS_FILE_HEADER,
 } from '../utils/clarification-parser.js';
+import {
+  formatClarificationComment,
+  parseClarificationMarker,
+  parseAnswersFromComments,
+  CLARIFICATION_MARKER_PREFIX,
+} from '../utils/issue-comment.js';
 
 /**
  * Parameters for the manage_clarifications tool
@@ -62,6 +70,9 @@ interface ManageClarificationsParams {
 
   /** Answer text (for 'update_answer' operation) */
   answer?: string;
+
+  /** GitHub issue number. When provided, enables GitHub comment mode. */
+  issue_number?: number;
 }
 
 /**
@@ -89,12 +100,31 @@ async function getFeatureName(repoRoot: string): Promise<string | null> {
 }
 
 /**
- * Extended core API with optional getTool method.
+ * Minimal IssueTracker facet interface for comment operations.
+ * Defined locally to avoid direct dependency on @generacy-ai/latency.
+ */
+interface IssueTrackerFacet {
+  addComment(issueId: string, comment: string): Promise<{ id: string; body: string; author: string; createdAt: Date }>;
+  listComments(issueId: string): Promise<Array<{ id: string; body: string; author: string; createdAt: Date }>>;
+}
+
+/**
+ * Extended core API with optional getTool and getFacet methods.
  *
- * Some deployments extend AgencyCoreAPI with tool access.
+ * Some deployments extend AgencyCoreAPI with tool and facet access.
  */
 interface ExtendedCoreAPI extends AgencyCoreAPI {
   getTool?(name: string): AgencyTool | undefined;
+  getFacet?(name: string): IssueTrackerFacet | undefined;
+}
+
+/**
+ * Resolve the IssueTracker facet from the core API.
+ * Returns undefined if the facet is not available.
+ */
+function resolveIssueTracker(coreAPI: AgencyCoreAPI): IssueTrackerFacet | undefined {
+  const extended = coreAPI as ExtendedCoreAPI;
+  return extended.getFacet?.('IssueTracker');
 }
 
 /**
@@ -182,7 +212,11 @@ async function invokeHumancyForQuestions(
  * @param clarificationsPath - Path to clarifications.md
  * @returns Read operation result
  */
-async function handleReadOperation(clarificationsPath: string): Promise<ReadClarificationsOutput> {
+async function handleReadOperation(
+  clarificationsPath: string,
+  coreAPI?: AgencyCoreAPI,
+  issueNumber?: number
+): Promise<ReadClarificationsOutput> {
   const fileExists = await exists(clarificationsPath);
 
   if (!fileExists) {
@@ -199,12 +233,58 @@ async function handleReadOperation(clarificationsPath: string): Promise<ReadClar
   const parsed = parseClarificationsFile(content);
   const counts = countQuestions(parsed.batches);
 
+  // Fetch and parse GitHub answers if issue_number provided
+  let githubAnswers: ParsedAnswer[] | undefined;
+  let githubCommentIds: string[] | undefined;
+
+  if (issueNumber !== undefined && coreAPI) {
+    const issueTracker = resolveIssueTracker(coreAPI);
+    if (issueTracker) {
+      const comments = await issueTracker.listComments(String(issueNumber));
+
+      // Find clarification batch comment IDs
+      githubCommentIds = comments
+        .filter((c) => parseClarificationMarker(c.body) !== null)
+        .map((c) => c.id);
+
+      // Collect all question numbers from parsed batches
+      const allQuestionNumbers = parsed.batches.flatMap(
+        (batch) => batch.questions.map((q) => q.number)
+      );
+
+      // Parse answers from all comments (answers can be in any comment after batch)
+      githubAnswers = parseAnswersFromComments(comments, allQuestionNumbers);
+
+      // Merge GitHub answers into batches (file answers take precedence)
+      if (githubAnswers.length > 0) {
+        for (const batch of parsed.batches) {
+          for (const q of batch.questions) {
+            if (q.answer === null) {
+              const ghAnswer = githubAnswers.find(
+                (a) => a.question_number === q.number
+              );
+              if (ghAnswer) {
+                q.answer = ghAnswer.answer;
+                q.status = ClarificationStatus.ANSWERED;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Recount after merge
+  const finalCounts = countQuestions(parsed.batches);
+
   return {
     success: true,
     exists: true,
     batches: parsed.batches,
-    pending_count: counts.pending_count,
-    total_count: counts.total_count,
+    pending_count: finalCounts.pending_count,
+    total_count: finalCounts.total_count,
+    github_answers: githubAnswers,
+    github_comment_ids: githubCommentIds,
   };
 }
 
@@ -223,7 +303,8 @@ async function handleAppendOperation(
   clarificationsPath: string,
   featureDir: string,
   questions: ClarificationQuestionInput[],
-  coreAPI: AgencyCoreAPI
+  coreAPI: AgencyCoreAPI,
+  issueNumber?: number
 ): Promise<AppendClarificationsOutput> {
   // Ensure feature directory exists
   await mkdir(featureDir);
@@ -270,6 +351,22 @@ async function handleAppendOperation(
 
   await writeFile(clarificationsPath, newContent);
 
+  // Post GitHub comment if issue_number provided
+  let githubComment: GitHubCommentResult | undefined;
+  if (issueNumber !== undefined) {
+    const issueTracker = resolveIssueTracker(coreAPI);
+    if (issueTracker) {
+      const commentBody = formatClarificationComment(newBatch.number, newQuestions);
+      const posted = await issueTracker.addComment(String(issueNumber), commentBody);
+      githubComment = {
+        comment_id: posted.id,
+        issue_number: issueNumber,
+        batch_number: newBatch.number,
+        marker: `${CLARIFICATION_MARKER_PREFIX}:batch-${newBatch.number}`,
+      };
+    }
+  }
+
   // Invoke Humancy for questions
   const humancyRequests = await invokeHumancyForQuestions(coreAPI, newQuestions);
 
@@ -279,6 +376,7 @@ async function handleAppendOperation(
     questions_added: newQuestions.length,
     first_question_number: newQuestions[0]?.number ?? nextQuestionNumber,
     humancy_requests: humancyRequests,
+    github_comment: githubComment,
   };
 }
 
@@ -424,6 +522,11 @@ export function createManageClarificationsTool(
           type: 'string',
           description: "Answer text (for 'update_answer' operation)",
         },
+        issue_number: {
+          type: 'number',
+          description:
+            'GitHub issue number. When provided, posts clarification comments to the issue and reads answers from issue comments.',
+        },
       },
       required: ['operation'],
     },
@@ -435,6 +538,7 @@ export function createManageClarificationsTool(
         questions,
         question_number,
         answer,
+        issue_number,
       } = (params || {}) as ManageClarificationsParams;
       const workDir = cwd || process.cwd();
 
@@ -491,7 +595,7 @@ export function createManageClarificationsTool(
       // Handle operations
       switch (operation) {
         case 'read': {
-          const result = await handleReadOperation(clarificationsPath);
+          const result = await handleReadOperation(clarificationsPath, coreAPI, issue_number);
           return {
             content: [{ type: 'text', text: JSON.stringify(result) }],
           };
@@ -519,7 +623,8 @@ export function createManageClarificationsTool(
             clarificationsPath,
             featureDir,
             questions,
-            coreAPI
+            coreAPI,
+            issue_number
           );
           return {
             content: [{ type: 'text', text: JSON.stringify(result) }],
