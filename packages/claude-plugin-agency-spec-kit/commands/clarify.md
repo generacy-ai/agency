@@ -10,6 +10,26 @@ Identify ambiguous or underspecified areas in the feature specification and pers
 
 - `$ARGUMENTS`: (No arguments required)
 
+## Headless Mode (Automated Orchestrator Workflow)
+
+When running in `--headless` mode (i.e., as part of an automated orchestrator workflow with no interactive user), the clarify command follows a modified flow:
+
+**First invocation (no answers yet):**
+1. Execute Steps 1-5a normally (analyze spec, generate questions, persist to clarifications.md, post to GitHub issue)
+2. After Step 5a: If `pending_count > 0` and no `github_answers` are available, **exit successfully immediately**
+3. Do NOT proceed to Steps 6-7 (no interactive user to collect answers from)
+4. The orchestrator's gate system will add the `waiting-for:clarification` label and pause the workflow
+5. The developer will post answers as an issue comment and add the `completed:clarification` label
+
+**Resume invocation (after developer answers posted):**
+1. Step 2 reads existing clarifications with `github_answers` from issue comments
+2. Auto-accept all GitHub answers: Call `manage_clarifications` with operation "update_answer" for each answer found
+3. Update spec.md with any clarified information
+4. If follow-up questions are needed: post new batch, exit successfully again (repeat the cycle)
+5. If no follow-up questions: complete normally (exit successfully with no pending questions)
+
+**Detection:** You are in headless mode if you were invoked with `--headless` flag OR if the environment variable `CLAUDE_HEADLESS` is set to `true`.
+
 ## Instructions
 
 ### Step 1: Check Prerequisites
@@ -30,9 +50,13 @@ Call the `manage_clarifications` MCP tool with operation "read":
 - Check `github_answers` for any answers found on GitHub
 
 **If `github_answers` contains answers**:
+
+*In headless mode*: Auto-accept all GitHub answers — call `manage_clarifications` with operation "update_answer" for each answer. Do not prompt for confirmation.
+
+*In interactive mode*:
 1. Present each GitHub answer to the user for confirmation:
    ```
-   📥 Found answer on GitHub for Q[N]:
+   Found answer on GitHub for Q[N]:
    Author: @[username]
    Answer: [answer_text]
 
@@ -43,6 +67,10 @@ Call the `manage_clarifications` MCP tool with operation "read":
 4. If user rejects: Skip that answer
 
 If there are pending questions (answers marked `*Pending*` and no GitHub answers):
+
+*In headless mode*: If this is the first invocation (no answers yet), proceed to Step 3 to check for new questions. If this is a resume (the workflow was already paused for answers but none were found), exit successfully and let the gate keep the workflow paused.
+
+*In interactive mode*:
 - Present these to the user first
 - Ask if they want to answer pending questions before generating new ones
 - If yes, go to Step 6 (Collect Answers)
@@ -71,7 +99,7 @@ Before finalizing questions, compare each new question against existing question
 - Only include truly new questions
 
 If the spec is sufficiently clear (no ambiguities found) AND no pending questions exist:
-- Output: "✓ No clarifications needed - spec is unambiguous"
+- Output: "No clarifications needed - spec is unambiguous"
 - **Important**: The clarify phase still completes normally (it is NOT skipped)
 - This ensures the `completed:clarify` label will be added by the workflow
 - Skip to Step 8 (Report completion)
@@ -104,9 +132,23 @@ After persisting questions, call `manage_clarification_labels` MCP tool to add t
 
 This ensures the workflow blocks until the user answers the questions.
 
-**Note**: If the issue number cannot be extracted from the branch name, skip label management and continue with Step 6.
+**Note**: If the issue number cannot be extracted from the branch name, skip label management and continue.
+
+### Step 5b: Headless Exit Point
+
+**If in headless mode and `pending_count > 0` after posting questions:**
+- Output: "Clarification questions posted to issue. Waiting for developer answers."
+- Report the number of questions posted
+- **Exit successfully** — do NOT proceed to Step 6
+- The orchestrator will pause the workflow at the clarification gate
+- The developer will:
+  1. Post answers as an issue comment (format: `Q1: answer`, `Q2: answer`, ...)
+  2. Add the `completed:clarification` label
+- The orchestrator will resume the workflow, re-running this command
 
 ### Step 6: Present Questions and Collect Answers
+
+**(Skipped in headless mode — see Step 5b)**
 
 Present each NEW question to the user:
 
@@ -127,7 +169,7 @@ Wait for user answers. Users may:
 
 ### Step 7: Update Answers in clarifications.md
 
-For each answer provided by the user:
+For each answer provided by the user (or auto-accepted from GitHub in headless mode):
 - Call `manage_clarifications` MCP tool with operation "update_answer"
 - Provide `question_number` and `answer` text
 - The tool replaces `*Pending*` with the actual answer
@@ -187,18 +229,15 @@ Where:
 When running as part of an autodev workflow, labels track clarification state:
 
 ### Label Lifecycle
-1. **Questions pending**: `waiting-for:clarification` label may be added to the issue
-2. **User completes answering**: User adds `completed:clarification` label manually
-
-### Important Notes
-- Label management is handled by autodev (via `manage_clarification_labels` MCP tool)
-- The `completed:clarification` label must be added by the USER, not the agent
+1. **Questions posted**: `waiting-for:clarification` label added to the issue (by agent via `manage_clarification_labels`)
+2. **Developer answers**: Developer posts answers as issue comment, adds `completed:clarification` label
+3. **Agent resumes**: Agent reads answers from GitHub, processes them, may ask follow-ups or complete
 
 ### Label Reference
 | Label | Set By | Meaning |
 |-------|--------|---------|
-| `waiting-for:clarification` | Agent | Clarification pending |
-| `completed:clarification` | User | User has finished answering questions |
+| `waiting-for:clarification` | Agent | Clarification questions pending answers |
+| `completed:clarification` | Developer | Developer has posted answers |
 
 ## Constraints
 
@@ -221,11 +260,12 @@ Continue NOW with the parent workflow.
 ## Iterative Clarification
 
 The clarify command can run multiple times:
-1. **First run**: Identify ambiguities, persist questions, collect answers
-2. **Second run** (after answers integrated): Identify any new ambiguities
+1. **First run**: Identify ambiguities, persist questions, post to GitHub issue
+2. **Resume** (after answers provided): Read answers, integrate into spec, check for follow-ups
 3. **Repeat** until spec is sufficiently clear (no more questions generated)
 
 Each run:
 - Reads existing clarifications first (avoids duplicates)
 - Only adds new questions that weren't previously asked
+- In headless mode: auto-accepts GitHub answers without user confirmation
 - Updates answers for any pending questions

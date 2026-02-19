@@ -367,15 +367,16 @@ async function handleAppendOperation(
     }
   }
 
-  // Invoke Humancy for questions
-  const humancyRequests = await invokeHumancyForQuestions(coreAPI, newQuestions);
+  // Humancy invocation deferred to post-MVP — clarification is handled
+  // entirely via GitHub issue comments and the label-driven workflow protocol.
+  // See: agency#226, label-protocol.md
 
   return {
     success: true,
     batch_number: newBatch.number,
     questions_added: newQuestions.length,
     first_question_number: newQuestions[0]?.number ?? nextQuestionNumber,
-    humancy_requests: humancyRequests,
+    humancy_requests: [],
     github_comment: githubComment,
   };
 }

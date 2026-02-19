@@ -403,7 +403,7 @@ Questions and answers to clarify the feature specification.
       expect(response.error.code).toBe('CLARIFICATION_APPEND_FAILED');
     });
 
-    it('should report Humancy not available status', async () => {
+    it('should return empty humancy_requests (Humancy deferred to post-MVP)', async () => {
       const repoDir = join(testDir, 'repo');
       await fs.mkdir(repoDir);
       await fs.mkdir(join(repoDir, '.git'));
@@ -428,9 +428,7 @@ Questions and answers to clarify the feature specification.
 
       const response = JSON.parse(result.content[0].text);
       expect(response.success).toBe(true);
-      expect(response.humancy_requests).toHaveLength(1);
-      expect(response.humancy_requests[0].sent).toBe(false);
-      expect(response.humancy_requests[0].error).toContain('not available');
+      expect(response.humancy_requests).toHaveLength(0);
     });
   });
 
@@ -633,8 +631,8 @@ Questions and answers to clarify the feature specification.
     });
   });
 
-  describe('Humancy integration', () => {
-    it('should call humancy.ask_question for questions without options', async () => {
+  describe('Humancy integration (deferred to post-MVP)', () => {
+    it('should not invoke Humancy even when tools are available', async () => {
       const mockAskQuestion = {
         name: 'humancy.ask_question',
         execute: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: '{}' }] }),
@@ -672,66 +670,9 @@ Questions and answers to clarify the feature specification.
 
       const response = JSON.parse(result.content[0].text);
       expect(response.success).toBe(true);
-      expect(response.humancy_requests[0].sent).toBe(true);
-      expect(response.humancy_requests[0].type).toBe('ask_question');
-      expect(mockAskQuestion.execute).toHaveBeenCalledWith({
-        question: 'Test question?',
-        context: 'Test context',
-      });
-    });
-
-    it('should call humancy.request_decision for questions with options', async () => {
-      const mockRequestDecision = {
-        name: 'humancy.request_decision',
-        execute: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: '{}' }] }),
-      };
-
-      const mockCoreAPIWithHumancy = {
-        ...createMockCoreAPI(),
-        getTool: vi.fn((name: string) => {
-          if (name === 'humancy.request_decision') return mockRequestDecision;
-          return undefined;
-        }),
-      };
-
-      const repoDir = join(testDir, 'repo');
-      await fs.mkdir(repoDir);
-      await fs.mkdir(join(repoDir, '.git'));
-      await fs.mkdir(join(repoDir, 'specs'));
-      await fs.mkdir(join(repoDir, 'specs', '001-my-feature'));
-
-      const config = parseConfig();
-      const tool = createManageClarificationsTool(config, mockCoreAPIWithHumancy);
-
-      const result = await tool.execute({
-        operation: 'append',
-        feature_dir: join(repoDir, 'specs', '001-my-feature'),
-        cwd: repoDir,
-        questions: [
-          {
-            topic: 'Test',
-            context: 'Test context',
-            question: 'Test question?',
-            options: [
-              { label: 'A', description: 'Option A' },
-              { label: 'B', description: 'Option B' },
-            ],
-          },
-        ],
-      });
-
-      const response = JSON.parse(result.content[0].text);
-      expect(response.success).toBe(true);
-      expect(response.humancy_requests[0].sent).toBe(true);
-      expect(response.humancy_requests[0].type).toBe('request_decision');
-      expect(mockRequestDecision.execute).toHaveBeenCalledWith({
-        question: 'Test question?',
-        context: 'Test context',
-        options: [
-          { id: 'A', label: 'Option A' },
-          { id: 'B', label: 'Option B' },
-        ],
-      });
+      expect(response.humancy_requests).toHaveLength(0);
+      // Humancy tools should NOT be invoked (deferred to post-MVP)
+      expect(mockAskQuestion.execute).not.toHaveBeenCalled();
     });
   });
 
