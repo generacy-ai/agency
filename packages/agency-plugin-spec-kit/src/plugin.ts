@@ -18,6 +18,7 @@ import {
 } from './config.js';
 import { manifest } from './manifest.js';
 import { createTools } from './tools/index.js';
+import { BUILTIN_WORKFLOWS } from './workflows.js';
 
 /** Configuration key for plugin settings in Agency config */
 const CONFIG_KEY = 'plugins.speckit';
@@ -75,6 +76,25 @@ export class SpecKitPlugin implements AgencyPlugin {
       this.onModeChange?.(mode);
     });
     this.cleanups.push(unsubMode);
+
+    // Register bundled workflows with engine (when available)
+    for (const [name, filePath] of Object.entries(BUILTIN_WORKFLOWS)) {
+      try {
+        const coreAny = core as unknown as Record<string, unknown>;
+        const registerFn = coreAny['registerWorkflow'];
+        if (typeof registerFn === 'function') {
+          (registerFn as (name: string, path: string, opts: Record<string, unknown>) => void)(
+            name, filePath, { priority: 'fallback' },
+          );
+        }
+      } catch (error) {
+        core.recordEvent({
+          type: 'plugin.workflow.registration_failed',
+          timestamp: new Date(),
+          data: { workflow: name, error: String(error) },
+        });
+      }
+    }
   }
 
   /**

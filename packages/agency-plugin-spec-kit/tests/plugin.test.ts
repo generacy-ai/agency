@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { SpecKitPlugin, createSpecKitPlugin } from '../src/plugin.js';
 import { manifest, PLUGIN_MANIFEST } from '../src/manifest.js';
 import { DEFAULT_CONFIG, resolveConfig, parseConfig, SpecKitConfigSchema } from '../src/config.js';
+import { BUILTIN_WORKFLOWS } from '../src/workflows.js';
 import type { AgencyCoreAPI, AgencyTool } from '@generacy-ai/agency';
 
 describe('SpecKitPlugin', () => {
@@ -137,6 +138,57 @@ describe('SpecKitPlugin', () => {
       expect(config).toBeDefined();
       expect(config!.paths.specs).toBe('custom-specs');
       expect(config!.paths.templates).toBe('.specify/templates'); // default
+    });
+
+    it('should not throw when core lacks registerWorkflow method', async () => {
+      const plugin = new SpecKitPlugin();
+      const core = createMockCoreAPI();
+      // core has no registerWorkflow — existing behavior preserved
+
+      await expect(plugin.initialize(core)).resolves.toBeUndefined();
+    });
+
+    it('should call core.registerWorkflow for each bundled workflow when method exists', async () => {
+      const plugin = new SpecKitPlugin();
+      const core = createMockCoreAPI();
+      const registerWorkflow = vi.fn();
+      (core as unknown as Record<string, unknown>)['registerWorkflow'] = registerWorkflow;
+
+      await plugin.initialize(core);
+
+      const workflowNames = Object.keys(BUILTIN_WORKFLOWS);
+      expect(registerWorkflow).toHaveBeenCalledTimes(workflowNames.length);
+      for (const name of workflowNames) {
+        expect(registerWorkflow).toHaveBeenCalledWith(
+          name,
+          BUILTIN_WORKFLOWS[name as keyof typeof BUILTIN_WORKFLOWS],
+          { priority: 'fallback' },
+        );
+      }
+    });
+
+    it('should log event and continue when registerWorkflow throws', async () => {
+      const plugin = new SpecKitPlugin();
+      const core = createMockCoreAPI();
+      const error = new Error('registration failed');
+      const registerWorkflow = vi.fn(() => { throw error; });
+      (core as unknown as Record<string, unknown>)['registerWorkflow'] = registerWorkflow;
+
+      await expect(plugin.initialize(core)).resolves.toBeUndefined();
+
+      // Should have attempted registration for each workflow
+      const workflowNames = Object.keys(BUILTIN_WORKFLOWS);
+      expect(registerWorkflow).toHaveBeenCalledTimes(workflowNames.length);
+
+      // Should have recorded an event for each failed registration
+      for (const name of workflowNames) {
+        expect(core.recordEvent).toHaveBeenCalledWith(
+          expect.objectContaining({
+            type: 'plugin.workflow.registration_failed',
+            data: { workflow: name, error: String(error) },
+          }),
+        );
+      }
     });
   });
 

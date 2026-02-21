@@ -213,6 +213,18 @@ export type {
   BacklogConfig,
 } from './providers/index.js';
 
+// ============================================================================
+// Workflows - Bundled canonical workflow files
+// ============================================================================
+
+export {
+  BUILTIN_WORKFLOWS,
+  getBuiltinWorkflowPath,
+  resolveWorkflow,
+} from './workflows.js';
+
+export type { BuiltinWorkflowName } from './workflows.js';
+
 // Default export for plugin
 import { SpecKitPlugin } from './plugin.js';
 export default SpecKitPlugin;
