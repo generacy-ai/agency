@@ -12,17 +12,17 @@
 
 ## Phase 1: Add Workflow Files and Package Configuration
 
-### T001 [P] [US1] Copy canonical feature workflow into plugin package
+### T001 [DONE] [P] [US1] Copy canonical feature workflow into plugin package
 **File**: `packages/agency-plugin-spec-kit/workflows/speckit-feature.yaml`
 - Copy `/workspaces/agency/.generacy/speckit-feature.yaml` (v1.3.0) to `packages/agency-plugin-spec-kit/workflows/speckit-feature.yaml`
 - Verify the file is valid YAML and contains expected top-level fields (`name`, `description`, `version`, `inputs`, `phases`)
 
-### T002 [P] [US1] Copy canonical bugfix workflow into plugin package
+### T002 [DONE] [P] [US1] Copy canonical bugfix workflow into plugin package
 **File**: `packages/agency-plugin-spec-kit/workflows/speckit-bugfix.yaml`
 - Copy `/workspaces/agency/.generacy/speckit-bugfix.yaml` (v1.3.0) to `packages/agency-plugin-spec-kit/workflows/speckit-bugfix.yaml`
 - Verify the file is valid YAML and contains expected top-level fields (`name`, `description`, `version`, `inputs`, `phases`)
 
-### T003 [US1] Update package.json to include workflows and add yaml devDependency
+### T003 [DONE] [US1] Update package.json to include workflows and add yaml devDependency
 **File**: `packages/agency-plugin-spec-kit/package.json`
 - Add `"workflows"` to the `files` array: change `"files": ["dist"]` to `"files": ["dist", "workflows"]`
 - Add `"yaml": "^2.8.2"` to `devDependencies` (for test-time YAML parsing; already in monorepo lockfile)
@@ -32,7 +32,7 @@
 
 ## Phase 2: Create Workflows Module
 
-### T004 [US1] Create workflows.ts with path resolution and helpers
+### T004 [DONE] [US1] Create workflows.ts with path resolution and helpers
 **File**: `packages/agency-plugin-spec-kit/src/workflows.ts`
 - Define `BuiltinWorkflowName` type union: `'speckit-feature' | 'speckit-bugfix'`
 - Create `BUILTIN_WORKFLOWS` constant mapping names to absolute file paths using `import.meta.url` + `fileURLToPath` + `resolve(__dirname, '../workflows/<name>.yaml')`
@@ -44,7 +44,7 @@
 
 ## Phase 3: Wire Into Plugin Lifecycle
 
-### T005 [US1] Register bundled workflows during plugin initialization
+### T005 [DONE] [US1] Register bundled workflows during plugin initialization
 **File**: `packages/agency-plugin-spec-kit/src/plugin.ts`
 - Add import: `import { BUILTIN_WORKFLOWS } from './workflows.js'`
 - At end of `initialize()` method (after tool registration and mode subscription), add workflow registration loop
@@ -55,7 +55,7 @@
 
 ## Phase 4: Update Barrel Export
 
-### T006 [US1] Re-export workflow utilities from package entry point
+### T006 [DONE] [US1] Re-export workflow utilities from package entry point
 **File**: `packages/agency-plugin-spec-kit/src/index.ts`
 - Add named exports: `BUILTIN_WORKFLOWS`, `getBuiltinWorkflowPath`, `resolveWorkflow`
 - Add type export: `BuiltinWorkflowName`
@@ -66,7 +66,7 @@
 
 ## Phase 5: Add Tests
 
-### T007 [US1] Write unit tests for workflow bundling and resolution
+### T007 [DONE] [US1] Write unit tests for workflow bundling and resolution
 **File**: `packages/agency-plugin-spec-kit/tests/workflows.test.ts`
 - **Bundled file existence tests:**
   - `BUILTIN_WORKFLOWS` contains entries for both `speckit-feature` and `speckit-bugfix`
@@ -87,7 +87,7 @@
   - Returns `undefined` for unknown names with no local override
   - Uses `fs.mkdtempSync` for temp dirs and cleans up in `afterEach`
 
-### T008 [US1] Add plugin initialization tests for workflow registration
+### T008 [DONE] [US1] Add plugin initialization tests for workflow registration
 **File**: `packages/agency-plugin-spec-kit/tests/plugin.test.ts`
 - Add test: `initialize()` does not throw when `core` lacks `registerWorkflow` method (existing behavior preserved)
 - Add test: `initialize()` calls `core.registerWorkflow` for each workflow when method exists on core mock
@@ -97,7 +97,7 @@
 
 ## Phase 6: Update Documentation
 
-### T009 [US1] Add Workflow Management section to README
+### T009 [DONE] [US1] Add Workflow Management section to README
 **File**: `packages/agency-plugin-spec-kit/README.md`
 - Add a "Bundled Workflows" section explaining:
   - What bundled workflows are (canonical `speckit-feature.yaml` and `speckit-bugfix.yaml` shipped with the plugin)
@@ -111,7 +111,7 @@
 
 ## Phase 7: Verification
 
-### T010 Build and test
+### T010 [DONE] Build and test
 **Files**:
 - All modified/created files
 - Verify `pnpm build` succeeds (TypeScript compiles without errors)

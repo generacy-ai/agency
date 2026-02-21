@@ -14,7 +14,8 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "workflows"
   ],
   "scripts": {
     "build": "tsc",
@@ -52,7 +53,8 @@
     "@generacy-ai/agency": "workspace:*",
     "@types/node": "^20.17.12",
     "typescript": "^5.7.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "yaml": "^2.8.2"
   },
   "agency": {
     "id": "@generacy-ai/agency-plugin-spec-kit",
