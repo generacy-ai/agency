@@ -238,6 +238,6 @@
     "@vscode/vsce": "^2.24.0",
     "esbuild": "^0.20.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.2.4"
   }
 }
