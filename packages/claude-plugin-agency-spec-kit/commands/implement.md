@@ -137,9 +137,10 @@ Execute the implementation plan by processing tasks defined in tasks.md.
    - **Proceed only after ALL parallel tasks complete**
    - If any task fails, record the failure but continue collecting other results
 
-7. **Update tasks.md** as work progresses:
-   - Mark completed tasks: `- [X] T001 ...`
-   - Keep incomplete tasks: `- [ ] T002 ...`
+7. **Update tasks.md** as work progresses (mark tasks IMMEDIATELY after finishing each one):
+   - **Checkbox format** (`- [ ] T001 ...`): Change to `- [X] T001 ...`
+   - **Heading format** (`### T001 Description`): Change to `### T001 [DONE] Description`
+   - Both formats may exist — handle whichever is present in the file
 
 8. **Handle errors**:
    - **Sequential task failure**: Halt execution, report error, do not proceed
@@ -171,7 +172,7 @@ Execute the implementation plan by processing tasks defined in tasks.md.
    **Note**: After reporting, check your todo list for any remaining parent workflow steps.
 
 10. **Check for remaining manual tasks**:
-    - After completing all automated tasks, parse tasks.md for incomplete tasks (`- [ ]`)
+    - After completing all automated tasks, parse tasks.md for incomplete tasks (unchecked `- [ ]` OR heading `### Txxx` without `[DONE]`)
     - For each incomplete task, check if it's manual using layered detection:
       1. **High confidence**: Contains `[manual]` marker in description
       2. **Medium confidence**: Contains keywords: "manual", "manually", "hand-test", "manual testing", "manually verify"
@@ -195,8 +196,11 @@ Execute the implementation plan by processing tasks defined in tasks.md.
 
 10a. **Early exit when already complete**:
     - At the START of execution (after loading tasks.md in step 3), check if all tasks are already complete
-    - If no incomplete tasks (`- [ ]`) exist:
-      - Report: "✓ All tasks already complete. Nothing to implement."
+    - A task is incomplete if it matches EITHER:
+      - Checkbox format: `- [ ] T001` (unchecked checkbox)
+      - Heading format: `### T001` without a `[DONE]` marker after the task ID
+    - If ALL tasks are complete (all checkboxes checked AND/OR all headings have `[DONE]`):
+      - Report: "All tasks already complete. Nothing to implement."
       - Skip steps 4-10
       - Exit immediately - do not re-process completed tasks
     - This prevents re-running implementation on an already-complete task list
