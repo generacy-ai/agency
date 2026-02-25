@@ -12,14 +12,14 @@
 
 ## Phase 1: Community Health Files
 
-### T001 [P] Add LICENSE file
+### T001 [DONE] [P] Add LICENSE file
 **File**: `LICENSE`
 - Create MIT license file at repository root
 - Use copyright line: `Copyright (c) 2026 The Generacy AI Authors`
 - Use standard MIT license text from https://opensource.org/licenses/MIT
 - Verify content matches what all 8 package.json files declare (`"license": "MIT"`)
 
-### T002 [P] Add SECURITY.md
+### T002 [DONE] [P] Add SECURITY.md
 **File**: `SECURITY.md`
 - Create security policy file at repository root
 - Include "Reporting a Vulnerability" section with GitHub Security Advisories link (`https://github.com/generacy-ai/agency/security/advisories/new`) as primary channel
@@ -28,13 +28,13 @@
 - Include "Response Process" section (best-effort, no SLA)
 - Include "Disclosure Policy" section (coordinated disclosure)
 
-### T003 [P] Verify `@generacy-ai/core-team` GitHub team exists
+### T003 [DONE] [P] Verify `@generacy-ai/core-team` GitHub team exists
 **Command**: `gh api orgs/generacy-ai/teams/core-team --jq '.slug'`
 - Run prerequisite check before creating CODEOWNERS
 - If team does not exist, stop and flag to user — CODEOWNERS will silently fail without a valid team
 - Document result for audit trail
 
-### T004 Add .github/CODEOWNERS
+### T004 [DONE] Add .github/CODEOWNERS
 **File**: `.github/CODEOWNERS`
 **Depends on**: T003
 - Create `.github/` directory (does not currently exist)
@@ -54,7 +54,7 @@
 
 ## Phase 2: Commit Community Health Files
 
-### T005 Commit all community health files
+### T005 [DONE] Commit all community health files
 **Files**:
 - `LICENSE`
 - `SECURITY.md`
@@ -68,13 +68,13 @@
 
 ## Phase 3: Secrets Audit
 
-### T006 Install gitleaks
+### T006 [DONE] Install gitleaks
 **Depends on**: T005 (run after files are committed so the scan covers the full history)
 - Download latest gitleaks pre-built Linux binary from GitHub releases
 - Extract to `/tmp/gitleaks`
 - Verify binary is executable and runs (`/tmp/gitleaks version`)
 
-### T007 Run full git history secrets scan
+### T007 [DONE] Run full git history secrets scan
 **Depends on**: T006
 - Execute gitleaks against the full repository history:
   ```
@@ -83,7 +83,7 @@
 - Capture exit code: `0` = no leaks, `1` = leaks found
 - Save report to `/tmp/gitleaks-report.json`
 
-### T008 Analyze and triage scan results
+### T008 [DONE] Analyze and triage scan results
 **Depends on**: T007
 - If exit code 0 (no findings): record clean result, proceed to T009
 - If findings exist, for each finding:
@@ -91,7 +91,7 @@
   - **False positives**: document rationale
   - **Real secrets**: stop and escalate — rotate/revoke credentials, notify team, plan history rewrite with `git filter-repo`, re-scan after remediation
 
-### T009 Archive audit report to GitHub issue #298
+### T009 [DONE] Archive audit report to GitHub issue #298
 **Depends on**: T008
 - Post scan summary as a comment on GitHub issue #298 using `gh issue comment`
 - Include: gitleaks version, scan date, total commits scanned, findings count, disposition of each finding (or "clean" if no findings)
@@ -100,7 +100,7 @@
 
 ## Phase 4: Verification & PR
 
-### T010 Verify all acceptance criteria
+### T010 [DONE] Verify all acceptance criteria
 **Depends on**: T005, T009
 - [ ] `LICENSE` file present at repo root with MIT license text and correct copyright line
 - [ ] `SECURITY.md` present at repo root with all four required sections
@@ -109,7 +109,7 @@
 - [ ] Gitleaks scan completed against full git history with exit code 0
 - [ ] Scan report archived in GitHub issue #298
 
-### T011 Create pull request
+### T011 [DONE] Create pull request
 **Depends on**: T010
 - Push `298-prepare-repository-public` branch to remote
 - Create PR from `298-prepare-repository-public` to `develop` using `gh pr create`
