@@ -1,4 +1,4 @@
-import type { ToolCallEvent } from './schemas.js';
+import { generateEventId, type ToolCallEvent } from './schemas.js';
 import type { ToolCallHandler, WrapHandlerOptions } from './types.js';
 import type { TelemetryBus } from './bus.js';
 
@@ -27,7 +27,7 @@ export function wrapToolHandler<TParams, TResult>(
 
   return async (params: TParams): Promise<TResult> => {
     const startTime = globalThis.performance.now();
-    const eventId = globalThis.crypto.randomUUID();
+    const eventId = generateEventId();
     const timestamp = new Date().toISOString();
 
     let result: TResult | undefined;

@@ -12,26 +12,26 @@
 
 ## Phase 1: Foundation — Dependencies and Infrastructure
 
-### T001 Add new dependencies to agency package
+### T001 [DONE] Add new dependencies to agency package
 **File**: `packages/agency/package.json`
 - Add `ulid` ^3.0.2 to `dependencies`
 - Add `zod-to-json-schema` ^3.23.5 to `devDependencies`
 - Add `tsx` to `devDependencies` (if not already present — needed for running generation scripts)
 - Run `pnpm install` and verify lockfile updates
 
-### T002 Add generation scripts to package.json
+### T002 [DONE] Add generation scripts to package.json
 **File**: `packages/agency/package.json`
 - Add `"generate:schemas"` script: `tsx src/scripts/generate-tool-result-schema.ts && tsx src/scripts/generate-tool-naming-schemas.ts`
 - Add `"prebuild"` script: `pnpm generate:schemas`
 - Verify `tsx` or equivalent runner is available for ESM TypeScript execution
 
-### T003 Configure .gitignore for generated schemas
+### T003 [DONE] Configure .gitignore for generated schemas
 **File**: `packages/agency/.gitignore`
 - Create `packages/agency/.gitignore` (or append to existing)
 - Add `src/schemas/generated/` to ignore generated JSON schema output
 - Verify `.gitignore` works correctly with `git status`
 
-### T004 Create directory structure with barrel files
+### T004 [DONE] Create directory structure with barrel files
 **Files**:
 - `packages/agency/src/tools/naming/index.ts`
 - `packages/agency/src/schemas/index.ts`
@@ -53,7 +53,7 @@
 
 ## Phase 2: Shared Common Types
 
-### T005 Create shared common types module
+### T005 [DONE] Create shared common types module
 **Files**:
 - `packages/agency/src/schemas/common/ids.ts`
 - `packages/agency/src/schemas/common/timestamps.ts`
@@ -66,7 +66,7 @@
 - Create barrel `index.ts` re-exporting all common types
 - These are foundational types — must be completed before any domain schema phase
 
-### T006 Write tests for shared common types
+### T006 [DONE] Write tests for shared common types
 **File**: `packages/agency/src/schemas/common/__tests__/ids.test.ts`
 - Test `createPrefixedIdSchema()` with various prefixes
 - Test ULID validation regex
@@ -78,7 +78,7 @@
 
 ## Phase 3: Tool Naming Schemas (P1 — Core)
 
-### T007 Migrate tool-naming prefix schema
+### T007 [DONE] Migrate tool-naming prefix schema
 **File**: `packages/agency/src/tools/naming/prefix.ts`
 - Copy from `/workspaces/contracts/src/schemas/tool-naming/prefix.ts`
 - Set `ToolPrefixValues` to the union of both repos' prefixes (10 total): `['source_control', 'build', 'run', 'test', 'debug', 'deploy', 'humancy', 'file', 'database', 'docs']`
@@ -86,44 +86,44 @@
 - Export `ToolPrefix` inferred type
 - Fix all imports to use `.js` extensions for ESM
 
-### T008 [P] Migrate tool-naming action schema
+### T008 [DONE] [P] Migrate tool-naming action schema
 **File**: `packages/agency/src/tools/naming/action.ts`
 - Copy from `/workspaces/contracts/src/schemas/tool-naming/action.ts`
 - Migrate `ActionNameSchema` (snake_case validation via Zod)
 - Fix imports for ESM (`.js` extensions)
 
-### T009 [P] Migrate tool-naming validation-error schema
+### T009 [DONE] [P] Migrate tool-naming validation-error schema
 **File**: `packages/agency/src/tools/naming/validation-error.ts`
 - Copy from `/workspaces/contracts/src/schemas/tool-naming/validation-error.ts`
 - Migrate `ToolValidationErrorSchema` and structured error types
 - Fix imports for ESM
 
-### T010 Migrate tool-naming tool-name schema
+### T010 [DONE] Migrate tool-naming tool-name schema
 **File**: `packages/agency/src/tools/naming/tool-name.ts`
 - Copy from `/workspaces/contracts/src/schemas/tool-naming/tool-name.ts`
 - Migrate `ToolNameSchema`, `parseToolName()`, `createToolName()` functions
 - Import from local `prefix.ts` and `action.ts` (not contracts)
 - Fix imports for ESM
 
-### T011 [P] Migrate tool-naming tool-definition schema
+### T011 [DONE] [P] Migrate tool-naming tool-definition schema
 **File**: `packages/agency/src/tools/naming/tool-definition.ts`
 - Copy from `/workspaces/contracts/src/schemas/tool-naming/tool-definition.ts`
 - Migrate `ToolDefinitionSchema` and associated types
 - Fix imports for ESM
 
-### T012 [P] Migrate tool-naming tool-catalog schema
+### T012 [DONE] [P] Migrate tool-naming tool-catalog schema
 **File**: `packages/agency/src/tools/naming/tool-catalog.ts`
 - Copy from `/workspaces/contracts/src/schemas/tool-naming/tool-catalog.ts`
 - Migrate `ToolCatalogSchema` and associated types
 - Fix imports for ESM
 
-### T013 Create tool-naming barrel export
+### T013 [DONE] Create tool-naming barrel export
 **File**: `packages/agency/src/tools/naming/index.ts`
 - Re-export all schemas, types, and functions from the naming module
 - Export: `ToolPrefixValues`, `ToolPrefixSchema`, `ToolPrefix`, `ActionNameSchema`, `ToolNameSchema`, `ToolValidationErrorSchema`, `ToolDefinitionSchema`, `ToolCatalogSchema`, `parseToolName`, `createToolName`
 - Verify no name collisions with existing tools exports
 
-### T014 Reconcile prefixes — update `prefixes.ts`
+### T014 [DONE] Reconcile prefixes — update `prefixes.ts`
 **File**: `packages/agency/src/tools/prefixes.ts`
 - Import `ToolPrefixValues` from `./naming/prefix.js`
 - Re-export as `STANDARD_PREFIXES` for backward compatibility: `export { ToolPrefixValues as STANDARD_PREFIXES }`
@@ -131,7 +131,7 @@
 - Keep `LENGTH_THRESHOLDS` as-is (contracts has no equivalent)
 - Ensure all existing consumers of `STANDARD_PREFIXES` still compile
 
-### T015 Reconcile validateToolName — use Zod internally
+### T015 [DONE] Reconcile validateToolName — use Zod internally
 **File**: `packages/agency/src/tools/validation.ts`
 - Replace regex-based implementation with contracts' Zod schema validation internally
 - Import `ToolNameSchema`, `ToolPrefixSchema` from `./naming/index.js`
@@ -141,13 +141,13 @@
 - Keep length threshold warnings from `LENGTH_THRESHOLDS`
 - The existing `ValidationResult` and `ValidationOptions` types stay in `types.ts` unchanged
 
-### T016 Update tools barrel export
+### T016 [DONE] Update tools barrel export
 **File**: `packages/agency/src/tools/index.ts`
 - Add `export * from './naming/index.js'`
 - Verify no name collisions — existing `validateToolName` from `validation.ts` keeps its name
 - Contracts' structured validator can be exported as `validateToolNameStructured` from the naming module if needed, or the raw Zod schemas are directly accessible
 
-### T017 Merge validation tests
+### T017 [DONE] Merge validation tests
 **File**: `packages/agency/src/tools/validation.test.ts`
 - Keep all existing ~40 assertions (they test the public API which is unchanged)
 - Add tests from contracts for newly migrated functionality:
@@ -158,7 +158,7 @@
   - Structured error code tests from contracts
 - Use vitest 3.x conventions (`import { describe, it, expect } from 'vitest'`, `globals: false`)
 
-### T018 Write tool-naming unit tests
+### T018 [DONE] Write tool-naming unit tests
 **File**: `packages/agency/src/tools/naming/__tests__/naming.test.ts`
 - Migrate contracts' tool-naming test files, adapt to vitest 3.x
 - Test `ToolPrefixSchema` with all 10 prefixes
@@ -171,7 +171,7 @@
 
 ## Phase 4: Tool Result Schema (P1 — Core)
 
-### T019 Migrate TerseToolResultSchema
+### T019 [DONE] Migrate TerseToolResultSchema
 **File**: `packages/agency/src/schemas/tool-result.ts`
 - Copy from `/workspaces/contracts/src/schemas/tool-result.ts`
 - Migrate `TerseToolResultSchema` (Zod object with `.passthrough()`)
@@ -180,18 +180,18 @@
 - Migrate `parseTerseToolResult()` / `safeParseTerseToolResult()` functions
 - Fix imports for ESM
 
-### T020 Update output/types.ts to re-export from schema
+### T020 [DONE] Update output/types.ts to re-export from schema
 **File**: `packages/agency/src/output/types.ts`
 - Remove the plain `TerseToolResult` interface definition (lines 25-31)
 - Import and re-export `TerseToolResult` from `../schemas/tool-result.js`
 - Keep `Verbosity`, `ExecResult`, `TerseOutputConfig`, `DEFAULT_TERSE_CONFIG` unchanged
 - Verify `TerseOutput` class (in `terse-output.ts`) still compiles — it uses `TerseToolResult` as a return type
 
-### T021 Update schemas barrel export
+### T021 [DONE] Update schemas barrel export
 **File**: `packages/agency/src/schemas/index.ts`
 - Export `TerseToolResultSchema`, `TerseToolResult` type, `TerseToolOptions` type, `parseTerseToolResult`, `safeParseTerseToolResult` from `./tool-result.js`
 
-### T022 Write tool-result tests
+### T022 [DONE] Write tool-result tests
 **File**: `packages/agency/src/schemas/__tests__/tool-result.test.ts`
 - Migrate contracts' `tool-result.test.ts`, adapt to vitest 3.x
 - Test `TerseToolResultSchema.parse()` with valid/invalid data
@@ -203,14 +203,14 @@
 
 ## Phase 5: Telemetry Schema Reconciliation (P1 — Core)
 
-### T023 Switch ToolCallEventV1 to ULID
+### T023 [DONE] Switch ToolCallEventV1 to ULID
 **File**: `packages/agency/src/telemetry/schemas.ts`
 - Replace `id: z.string().uuid()` with ULID validation: `z.string().regex(ULID_REGEX)`
 - Import `ulid` from the `ulid` package
 - Define `ULID_REGEX = /^[0-9A-HJKMNP-TV-Z]{26}$/`
 - Export `generateEventId()` function that returns `ulid()`
 
-### T024 Add contracts' extra fields to ToolCallEventV1
+### T024 [DONE] Add contracts' extra fields to ToolCallEventV1
 **File**: `packages/agency/src/telemetry/schemas.ts`
 - Add optional fields from contracts:
   - `errorCategory: z.string().optional()`
@@ -221,19 +221,19 @@
 - Keep `inputs` as optional (unchanged)
 - Keep all existing fields unchanged
 
-### T025 Create ToolStatsApiSchema
+### T025 [DONE] Create ToolStatsApiSchema
 **File**: `packages/agency/src/telemetry/schemas.ts`
 - Add `ToolStatsApiSchema` for API-facing stats (separate from runtime `ToolStatsSchema`)
 - Fields: `version`, `server`, `tool`, `timeWindow`, `totalCalls`, `successRate`, `avgDurationMs`, optional percentiles, optional `errorBreakdown`
 - Create `TimeWindowSchema` if needed (start/end timestamps)
 - Export from telemetry barrel
 
-### T026 Update telemetry barrel exports
+### T026 [DONE] Update telemetry barrel exports
 **File**: `packages/agency/src/telemetry/index.ts`
 - Add exports for `generateEventId`, `ToolStatsApiSchema`, `ULID_REGEX`
 - Add type export for `ToolStatsApi`
 
-### T027 Update telemetry tests
+### T027 [DONE] Update telemetry tests
 **File**: `packages/agency/src/__tests__/telemetry/schemas.test.ts`
 - Update `validEvent.id` from UUID format to ULID format in all test data
 - Update the "should reject invalid UUID" test to "should reject invalid ULID"
@@ -246,7 +246,7 @@
 
 ## Phase 6: Platform Schemas (P1 — Root Export)
 
-### T028 Migrate platform-api auth schemas
+### T028 [DONE] Migrate platform-api auth schemas
 **Files**:
 - `packages/agency/src/schemas/platform-api/auth/api-key.ts`
 - `packages/agency/src/schemas/platform-api/auth/auth-token.ts`
@@ -256,7 +256,7 @@
 - Fix imports to use `../../common/` for shared types (IDs, timestamps)
 - Fix all `.js` extensions for ESM
 
-### T029 [P] Migrate platform-api organization schemas
+### T029 [DONE] [P] Migrate platform-api organization schemas
 **Files**:
 - `packages/agency/src/schemas/platform-api/organization/organization.ts`
 - `packages/agency/src/schemas/platform-api/organization/membership.ts`

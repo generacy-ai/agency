@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { createTelemetryManager } from '../../telemetry/factory.js';
 import { MemoryStorageProvider } from '../../telemetry/providers/memory.js';
 import type { TelemetryStorageProvider } from '../../telemetry/types.js';
-import type { ToolCallEvent } from '../../telemetry/schemas.js';
+import { generateEventId, type ToolCallEvent } from '../../telemetry/schemas.js';
 
 describe('createTelemetryManager', () => {
   let manager: Awaited<ReturnType<typeof createTelemetryManager>> | null = null;
@@ -31,7 +31,7 @@ describe('createTelemetryManager', () => {
     // Record events to test maxEvents works
     for (let i = 0; i < 600; i++) {
       await provider.record({
-        id: crypto.randomUUID(),
+        id: generateEventId(),
         timestamp: new Date().toISOString(),
         toolName: 'test',
         serverName: 'test',

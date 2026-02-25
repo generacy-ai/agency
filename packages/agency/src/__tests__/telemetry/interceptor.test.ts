@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { wrapToolHandler, createHandlerWrapper } from '../../telemetry/interceptor.js';
 import { TelemetryBus } from '../../telemetry/bus.js';
-import type { ToolCallEvent } from '../../telemetry/schemas.js';
+import { ULID_REGEX, type ToolCallEvent } from '../../telemetry/schemas.js';
 
 describe('wrapToolHandler', () => {
   let bus: TelemetryBus;
@@ -208,7 +208,7 @@ describe('wrapToolHandler', () => {
       expect(event?.durationMs).toBeLessThan(200);
     });
 
-    it('should generate valid UUID for event id', async () => {
+    it('should generate valid ULID for event id', async () => {
       const handler = vi.fn().mockResolvedValue({});
       const wrapped = wrapToolHandler(handler, bus, {
         toolName: 'test-tool',
@@ -217,9 +217,7 @@ describe('wrapToolHandler', () => {
 
       await wrapped({});
 
-      const uuidRegex =
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      expect(emittedEvents[0]?.id).toMatch(uuidRegex);
+      expect(emittedEvents[0]?.id).toMatch(ULID_REGEX);
     });
 
     it('should generate valid ISO timestamp', async () => {
