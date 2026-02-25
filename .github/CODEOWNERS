@@ -1,0 +1,12 @@
+# Default owners for everything in the repo
+* @generacy-ai/core-team
+
+# Package-specific ownership
+/packages/agency/                      @generacy-ai/core-team
+/packages/agency-extension/            @generacy-ai/core-team
+/packages/agency-plugin-docker/        @generacy-ai/core-team
+/packages/agency-plugin-firebase/      @generacy-ai/core-team
+/packages/agency-plugin-git/           @generacy-ai/core-team
+/packages/agency-plugin-humancy/       @generacy-ai/core-team
+/packages/agency-plugin-npm/           @generacy-ai/core-team
+/packages/agency-plugin-spec-kit/      @generacy-ai/core-team
