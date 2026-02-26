@@ -179,7 +179,7 @@ describe('ContainerDetailPanel', () => {
 
     it('should handle start container message', async () => {
       const containerService = ContainerService.getInstance();
-      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0][0];
+      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0]![0];
 
       await messageHandler({ type: 'startContainer' });
 
@@ -197,7 +197,7 @@ describe('ContainerDetailPanel', () => {
 
     it('should handle stop container message', async () => {
       const containerService = ContainerService.getInstance();
-      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0][0];
+      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0]![0];
 
       await messageHandler({ type: 'stopContainer' });
 
@@ -215,7 +215,7 @@ describe('ContainerDetailPanel', () => {
 
     it('should handle rebuild container message', async () => {
       const containerService = ContainerService.getInstance();
-      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0][0];
+      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0]![0];
 
       await messageHandler({ type: 'rebuildContainer' });
 
@@ -232,7 +232,7 @@ describe('ContainerDetailPanel', () => {
     });
 
     it('should handle filter logs message', async () => {
-      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0][0];
+      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0]![0];
 
       await messageHandler({ type: 'filterLogs', payload: { filter: 'error' } });
 
@@ -242,7 +242,7 @@ describe('ContainerDetailPanel', () => {
     });
 
     it('should handle init message', async () => {
-      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0][0];
+      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0]![0];
 
       await messageHandler({ type: 'init' });
 
@@ -257,7 +257,7 @@ describe('ContainerDetailPanel', () => {
     });
 
     it('should filter logs based on search term', async () => {
-      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0][0];
+      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0]![0];
 
       // Wait for initial logs to load
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -301,7 +301,7 @@ describe('ContainerDetailPanel', () => {
     });
 
     it('should send container data to webview on init', async () => {
-      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0][0];
+      const messageHandler = (mockPanel.webview.onDidReceiveMessage as Mock).mock.calls[0]![0];
 
       await messageHandler({ type: 'init' });
 
@@ -310,7 +310,7 @@ describe('ContainerDetailPanel', () => {
       );
 
       expect(containerDataMessages.length).toBeGreaterThan(0);
-      expect(containerDataMessages[0][0].payload.container).toMatchObject({
+      expect(containerDataMessages[0]![0].payload.container).toMatchObject({
         id: 'abc123',
         name: 'test-container',
         status: 'running',

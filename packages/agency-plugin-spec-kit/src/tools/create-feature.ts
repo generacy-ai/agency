@@ -15,7 +15,6 @@ import {
   mkdir,
   writeFile,
   readFile,
-  readDir,
   RepoNotFoundError,
   isGitRepo,
 } from '../utils/index.js';
@@ -327,7 +326,7 @@ function populateTemplate(
  */
 export function createCreateFeatureTool(
   config: SpecKitConfig,
-  core: AgencyCoreAPI
+  _core: AgencyCoreAPI
 ): AgencyTool {
   return {
     name: 'spec_kit.create_feature',

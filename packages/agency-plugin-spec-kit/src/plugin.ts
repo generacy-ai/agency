@@ -13,8 +13,6 @@ import {
   parseConfig,
   type SpecKitConfig,
   type SpecKitPluginConfig,
-  DEFAULT_CONFIG as LEGACY_DEFAULT_CONFIG,
-  resolveConfig,
 } from './config.js';
 import { manifest } from './manifest.js';
 import { createTools } from './tools/index.js';
@@ -132,7 +130,7 @@ export class SpecKitPlugin implements AgencyPlugin {
    *
    * Mode-specific behavior will be implemented with tools.
    */
-  onModeChange?(mode: string): void {
+  onModeChange?(_mode: string): void {
     // Mode-specific tool filtering handled by mode affiliations
     // Additional behavior can be added here in future features
   }

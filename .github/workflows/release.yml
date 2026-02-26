@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: publish-release-${{ github.ref }}
+  # No cancel-in-progress — queue to avoid aborting mid-publish
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write # Required for npm provenance
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      # Verify latency dependencies are available on npm
+      - name: Verify dependencies
+        run: |
+          echo "Checking @generacy-ai/latency availability on npm..."
+          if ! npm view @generacy-ai/latency version 2>/dev/null; then
+            echo "::error::@generacy-ai/latency not published on npm. Cannot release."
+            exit 1
+          fi
+
+      - name: Create Release PR or Publish
+        uses: changesets/action@v1
+        with:
+          publish: pnpm changeset publish --provenance
+          title: "chore: version packages"
+          commit: "chore: version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

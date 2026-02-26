@@ -262,7 +262,7 @@ export class ActivityFeedPanel extends WebviewBase {
         break;
 
       default:
-        log.debug(`Ignoring unknown message type: ${msg.type}`);
+        log.debug(`Ignoring unknown message type: ${(msg as { type: string }).type}`);
     }
   }
 

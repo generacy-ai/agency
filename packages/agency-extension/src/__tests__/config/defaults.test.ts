@@ -49,8 +49,8 @@ describe('defaults', () => {
     it('should have a default mode', () => {
       const config = createDefaultConfig();
       expect(config.modes).toHaveLength(1);
-      expect(config.modes[0].id).toBe('default');
-      expect(config.modes[0].name).toBe('Default');
+      expect(config.modes[0]!.id).toBe('default');
+      expect(config.modes[0]!.name).toBe('Default');
     });
 
     it('should have empty containers array', () => {

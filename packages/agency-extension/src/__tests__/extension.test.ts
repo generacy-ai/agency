@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type * as vscode from 'vscode';
 
 // Mock vscode module - all variables must be defined inline to avoid hoisting issues
 vi.mock('vscode', () => ({
@@ -14,7 +13,19 @@ vi.mock('vscode', () => ({
     createTreeView: vi.fn(() => ({
       dispose: vi.fn(),
     })),
+    createStatusBarItem: vi.fn(() => ({
+      text: '',
+      tooltip: '',
+      command: '',
+      name: '',
+      backgroundColor: undefined,
+      show: vi.fn(),
+      hide: vi.fn(),
+      dispose: vi.fn(),
+    })),
+    registerWebviewViewProvider: vi.fn(() => ({ dispose: vi.fn() })),
   },
+  StatusBarAlignment: { Left: 1, Right: 2 },
   commands: {
     registerCommand: vi.fn((command: string, callback: () => void) => ({
       dispose: vi.fn(),
@@ -66,6 +77,7 @@ vi.mock('../services', () => ({
       initialize: vi.fn().mockResolvedValue(undefined),
       getPlugins: vi.fn(() => []),
       getConfig: vi.fn(() => null),
+      getContainers: vi.fn(() => []),
       onConfigChange: vi.fn(() => ({ dispose: vi.fn() })),
     })),
     reset: vi.fn(),
@@ -75,6 +87,7 @@ vi.mock('../services', () => ({
       initialize: vi.fn().mockResolvedValue(undefined),
       getConnectionStatus: vi.fn(() => 'disconnected'),
       onConnectionStatusChange: vi.fn(() => ({ dispose: vi.fn() })),
+      connect: vi.fn().mockResolvedValue(undefined),
     })),
     reset: vi.fn(),
   },
@@ -98,12 +111,44 @@ vi.mock('../services', () => ({
     })),
     reset: vi.fn(),
   },
+  ContainerService: {
+    getInstance: vi.fn(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      onContainerChange: vi.fn(() => ({ dispose: vi.fn() })),
+    })),
+    reset: vi.fn(),
+  },
+  McpConnectionManager: {
+    getInstance: vi.fn(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+    })),
+    reset: vi.fn(),
+  },
+}));
+
+// Mock ContainerService (imported directly by extension.ts)
+vi.mock('../services/ContainerService', () => ({
+  ContainerService: {
+    getInstance: vi.fn(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+      onContainerChange: vi.fn(() => ({ dispose: vi.fn() })),
+      getContainers: vi.fn(() => []),
+    })),
+    reset: vi.fn(),
+  },
 }));
 
 // Mock providers
 vi.mock('../providers', () => ({
   registerPluginTreeView: vi.fn().mockResolvedValue({ dispose: vi.fn() }),
   registerModeTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+  registerToolTreeView: vi.fn().mockResolvedValue({ dispose: vi.fn() }),
+  registerActivityTreeView: vi.fn().mockResolvedValue({ dispose: vi.fn() }),
+  ContainerTreeProvider: vi.fn().mockImplementation(() => ({
+    refresh: vi.fn(),
+    getTreeItem: vi.fn(),
+    getChildren: vi.fn(),
+  })),
 }));
 
 // Mock commands
@@ -112,7 +157,10 @@ vi.mock('../commands', () => ({
   initializePluginCommands: vi.fn(),
   registerToolCommands: vi.fn(() => [{ dispose: vi.fn() }]),
   initializeToolCommands: vi.fn(),
+  registerModeCommands: vi.fn(() => [{ dispose: vi.fn() }]),
   initializeModeCommands: vi.fn(),
+  registerContainerCommands: vi.fn(() => [{ dispose: vi.fn() }]),
+  initializeContainerCommands: vi.fn(),
   switchMode: vi.fn(),
   viewModeTools: vi.fn(),
 }));
@@ -125,10 +173,11 @@ vi.mock('../errors', () => ({
 }));
 
 // Mock status
-vi.mock('../status', () => ({
+vi.mock('../status/StatusBarManager', () => ({
   StatusBarManager: {
-    getInstance: vi.fn(() => ({
-      initialize: vi.fn(),
+    initialize: vi.fn(() => ({
+      updateMcpStatus: vi.fn(),
+      updateContainerStatus: vi.fn(),
       dispose: vi.fn(),
     })),
   },
@@ -209,35 +258,16 @@ describe('Extension', () => {
       expect(mockContext.subscriptions.length).toBeGreaterThan(0);
     });
 
-    it('should register commands', async () => {
+    it('should register commands via command modules', async () => {
+      const { registerPluginCommands, registerToolCommands, registerModeCommands, registerContainerCommands } = await import('../commands');
+
       await activate(mockContext);
 
-      // Verify that registerCommand was called (at least for status bar and welcome commands)
-      expect(mockCommands.registerCommand).toHaveBeenCalled();
-
-      // Verify some key commands are registered
-      const calls = mockCommands.registerCommand.mock.calls.map((call: unknown[]) => call[0]);
-
-      // Status bar commands
-      expect(calls).toContain('agency.showMcpStatus');
-      expect(calls).toContain('agency.connectMcp');
-      expect(calls).toContain('agency.showMcpError');
-      expect(calls).toContain('agency.showContainerStatus');
-
-      // Welcome view commands
-      expect(calls).toContain('agency.initConfig');
-      expect(calls).toContain('agency.showPlugins');
-      expect(calls).toContain('agency.openDocs');
-
-      // Mode commands
-      expect(calls).toContain('agency.switchMode');
-      expect(calls).toContain('agency.viewModeTools');
-
-      // Container stub commands
-      expect(calls).toContain('agency.startContainer');
-      expect(calls).toContain('agency.stopContainer');
-      expect(calls).toContain('agency.rebuildContainer');
-      expect(calls).toContain('agency.viewContainerLogs');
+      // Verify command registration functions were called
+      expect(registerPluginCommands).toHaveBeenCalled();
+      expect(registerToolCommands).toHaveBeenCalled();
+      expect(registerModeCommands).toHaveBeenCalled();
+      expect(registerContainerCommands).toHaveBeenCalled();
     });
 
     it('should set extension state after activation', async () => {

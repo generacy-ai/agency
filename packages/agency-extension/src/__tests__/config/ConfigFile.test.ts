@@ -157,7 +157,7 @@ describe('ConfigFile', () => {
     });
 
     it('should return null when no workspace is open', async () => {
-      mockVscode.workspace.workspaceFolders = undefined;
+      (mockVscode.workspace as any).workspaceFolders = undefined;
 
       const result = await readConfig(mockVscode, DEFAULT_CONFIG_PATH);
       expect(result).toBeNull();
@@ -194,7 +194,7 @@ describe('ConfigFile', () => {
     });
 
     it('should throw when no workspace is open', async () => {
-      mockVscode.workspace.workspaceFolders = undefined;
+      (mockVscode.workspace as any).workspaceFolders = undefined;
       const config = createDefaultConfig();
 
       await expect(writeConfig(mockVscode, DEFAULT_CONFIG_PATH, config)).rejects.toThrow(
@@ -227,7 +227,7 @@ describe('ConfigFile', () => {
     });
 
     it('should return false when no workspace is open', async () => {
-      mockVscode.workspace.workspaceFolders = undefined;
+      (mockVscode.workspace as any).workspaceFolders = undefined;
 
       const result = await configExists(mockVscode, DEFAULT_CONFIG_PATH);
       expect(result).toBe(false);
@@ -247,7 +247,7 @@ describe('ConfigFile', () => {
       const result = await initializeConfig(mockVscode, DEFAULT_CONFIG_PATH);
 
       expect(result.plugins).toHaveLength(1);
-      expect(result.plugins[0].id).toBe('existing');
+      expect(result.plugins[0]!.id).toBe('existing');
     });
 
     it('should create and return default config if file does not exist', async () => {
@@ -276,7 +276,7 @@ describe('ConfigFile', () => {
     });
 
     it('should return no-op disposable when no workspace is open', () => {
-      mockVscode.workspace.workspaceFolders = undefined;
+      (mockVscode.workspace as any).workspaceFolders = undefined;
 
       const disposable = watchConfig(mockVscode, DEFAULT_CONFIG_PATH, vi.fn());
 
@@ -288,7 +288,7 @@ describe('ConfigFile', () => {
       watchConfig(mockVscode, DEFAULT_CONFIG_PATH, vi.fn());
 
       expect(mockWatchers).toHaveLength(1);
-      const watcher = mockWatchers[0];
+      const watcher = mockWatchers[0]!;
       expect(watcher.onDidChange).toHaveBeenCalled();
       expect(watcher.onDidCreate).toHaveBeenCalled();
       expect(watcher.onDidDelete).toHaveBeenCalled();

@@ -6,7 +6,7 @@
  */
 
 import type { AgencyPlugin, AgencyCoreAPI } from '@generacy-ai/agency';
-import { manifest, modeAffiliations } from './manifest.js';
+import { manifest } from './manifest.js';
 import { mergeConfig, type NpmPluginConfig } from './config.js';
 import { createTools } from './tools/index.js';
 
@@ -49,7 +49,7 @@ export const plugin: AgencyPlugin = {
     // No cleanup needed for this plugin
   },
 
-  onModeChange(mode: string): void {
+  onModeChange(_mode: string): void {
     // Mode changes are handled automatically via tool filtering
   },
 };

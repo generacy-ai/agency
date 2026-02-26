@@ -1,15 +1,13 @@
 import type * as vscode from 'vscode';
-import { execa, type ExecaChildProcess, type Options as ExecaOptions } from 'execa';
+import { execa, type Options as ExecaOptions } from 'execa';
 import type {
   ContainerInfo,
   ContainerStatus,
   ContainerHealth,
   ContainerActionResult,
-  ContainerAction,
   ContainerLogEntry,
   ContainerLogOptions,
   ContainerStateEvent,
-  ContainerDiscoverySource,
   PortMapping,
 } from '../types';
 import { createScopedLogger, DisposableManager } from '../utils';
@@ -996,7 +994,7 @@ export class ContainerService {
     // Create a combined async iterator from both streams
     const decoder = new TextDecoder();
     let stdoutBuffer = '';
-    let stderrBuffer = '';
+    const _stderrBuffer = '';
 
     const processChunk = function* (
       chunk: Uint8Array,
@@ -1033,7 +1031,7 @@ export class ContainerService {
           yield result.entry;
         }
       }
-    } catch (error) {
+    } catch {
       // Stream ended or error occurred
       if (stdoutBuffer.length > 0) {
         yield {

@@ -18,14 +18,16 @@ const mockStderr = {
   on: vi.fn(),
 };
 
-const mockProcess = {
+const mockProcessObj = {
   stdin: mockStdin,
   stdout: mockStdout,
   stderr: mockStderr,
   on: vi.fn(),
   killed: false,
   kill: vi.fn(),
-} as unknown as ExecaChildProcess;
+};
+
+const mockProcess = mockProcessObj as unknown as ExecaChildProcess;
 
 vi.mock('execa', () => ({
   execa: vi.fn(() => mockProcess),
@@ -39,7 +41,7 @@ describe('DockerExecTransport', () => {
     vi.clearAllMocks();
 
     // Reset mock process state
-    mockProcess.killed = false;
+    mockProcessObj.killed = false;
     mockStdin.writable = true;
     mockStdin.write.mockImplementation((_data, callback) => {
       if (callback) callback();
@@ -315,7 +317,7 @@ describe('DockerExecTransport', () => {
       });
 
       // Simulate process error
-      const errorHandler = mockProcess.on.mock.calls.find((call) => call[0] === 'error')?.[1];
+      const errorHandler = mockProcessObj.on.mock.calls.find((call: any[]) => call[0] === 'error')?.[1];
       expect(errorHandler).toBeDefined();
       errorHandler(new Error('Process error'));
 
@@ -333,7 +335,7 @@ describe('DockerExecTransport', () => {
 
       unsubscribe();
 
-      const errorHandler = mockProcess.on.mock.calls.find((call) => call[0] === 'error')?.[1];
+      const errorHandler = mockProcessObj.on.mock.calls.find((call: any[]) => call[0] === 'error')?.[1];
       errorHandler(new Error('Process error'));
 
       expect(errors).toHaveLength(0);
@@ -350,7 +352,7 @@ describe('DockerExecTransport', () => {
       });
 
       // Simulate process exit
-      const exitHandler = mockProcess.on.mock.calls.find((call) => call[0] === 'exit')?.[1];
+      const exitHandler = mockProcessObj.on.mock.calls.find((call: any[]) => call[0] === 'exit')?.[1];
       expect(exitHandler).toBeDefined();
       exitHandler(1, null);
 

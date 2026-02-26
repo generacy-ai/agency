@@ -16,7 +16,7 @@ export interface BaseToolParams {
 // Status Tool Types
 // ============================================================================
 
-export interface StatusParams extends BaseToolParams {}
+export type StatusParams = BaseToolParams;
 
 export interface FileChange {
   /** File path relative to repo root */

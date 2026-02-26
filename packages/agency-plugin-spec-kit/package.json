@@ -35,6 +35,9 @@
   ],
   "author": "Generacy AI",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@octokit/rest": "^21.0.0",
     "simple-git": "^3.30.0",

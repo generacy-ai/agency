@@ -4,7 +4,7 @@
 
 import type { AgencyTool, ToolResult } from '@generacy-ai/agency';
 import { TerseOutput, terseToMcpToolResult } from '@generacy-ai/agency';
-import { InstallDependenciesSchema, zodToJsonSchema, type InstallDependenciesParams } from '../schemas.js';
+import { InstallDependenciesSchema, zodToJsonSchema } from '../schemas.js';
 import { detectPackageManager, isDetectionSuccess, buildCommand } from '../../pm/index.js';
 import { exec, formatCommand } from '../../exec/index.js';
 import type { NpmPluginConfig } from '../../config.js';

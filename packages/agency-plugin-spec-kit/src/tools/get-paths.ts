@@ -93,7 +93,7 @@ function buildFeaturePaths(
   featureName: string,
   hasGit: boolean,
   specsDir: string,
-  config: SpecKitConfig
+  _config: SpecKitConfig
 ): FeaturePaths {
   const featureDir = join(specsDir, featureName);
 

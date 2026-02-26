@@ -141,7 +141,7 @@ describe('StdioClient', () => {
       await client.connect();
       const tools = await client.listTools();
 
-      expect(tools[0].name).toBe('tool2');
+      expect(tools[0]!.name).toBe('tool2');
     });
   });
 
@@ -176,8 +176,8 @@ describe('StdioClient', () => {
       const tools = await client.listTools();
 
       expect(tools).toHaveLength(2);
-      expect(tools[0].name).toBe('tool1');
-      expect(tools[1].name).toBe('tool2');
+      expect(tools[0]!.name).toBe('tool1');
+      expect(tools[1]!.name).toBe('tool2');
     });
 
     it('should cache tools on subsequent calls', async () => {
@@ -201,8 +201,8 @@ describe('StdioClient', () => {
 
       const tools = await client.listTools();
 
-      expect(tools[0].namespace).toBe('server');
-      expect(tools[1].namespace).toBeUndefined();
+      expect(tools[0]!.namespace).toBe('server');
+      expect(tools[1]!.namespace).toBeUndefined();
     });
 
     it('should throw when not connected', async () => {
@@ -368,8 +368,8 @@ describe('StdioClient', () => {
       await client.executeTool({ name: 'test', arguments: { a: 1 } });
 
       expect(events.length).toBeGreaterThanOrEqual(1);
-      expect(events[0].toolName).toBe('test');
-      expect(events[0].arguments).toEqual({ a: 1 });
+      expect(events[0]!.toolName).toBe('test');
+      expect(events[0]!.arguments).toEqual({ a: 1 });
     });
 
     it('should emit tool call event on completion', async () => {
@@ -522,7 +522,7 @@ describe('StdioClient', () => {
 
       const result = await client.executeTool({ name: 'test', arguments: {} });
 
-      expect(result.content[0].type).toBe('text');
+      expect(result.content[0]!.type).toBe('text');
       expect((result.content[0] as { type: 'text'; text: string }).text).toBe('{"unknownType":"data"}');
     });
 

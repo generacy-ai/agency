@@ -24,6 +24,9 @@
   "keywords": ["mcp", "agent", "generacy", "git", "source-control"],
   "author": "Generacy AI",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "peerDependencies": {
     "@generacy-ai/agency": "workspace:*"
   },

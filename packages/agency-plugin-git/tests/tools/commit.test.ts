@@ -22,7 +22,7 @@ describe('source_control.commit', () => {
   it('should have correct metadata', () => {
     expect(tool.name).toBe('source_control.commit');
     expect(tool.namespace).toBe('source_control');
-    expect(tool.modes).toEqual(['coding']);
+    expect(tool.modes).toEqual(['default', 'coding']);
   });
 
   it('should require message parameter', async () => {

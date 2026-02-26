@@ -12,8 +12,8 @@
 import { join } from 'node:path';
 import type { SpecKitConfig } from '../config.js';
 import { exists, readFile } from '../utils/index.js';
-import type { TemplateType, TemplateDefinition, TemplateVariables } from './types.js';
-import { TEMPLATE_TYPES, isTemplateType } from './types.js';
+import type { TemplateType, TemplateDefinition } from './types.js';
+import { isTemplateType } from './types.js';
 
 // Import default template content
 import { SPEC_TEMPLATE_CONTENT } from './defaults/spec.js';

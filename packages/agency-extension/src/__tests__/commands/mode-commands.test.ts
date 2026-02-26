@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type * as vscode from 'vscode';
-import type { ModeConfig, ModeInfo, ModeSwitchResult } from '../../types/mode';
+import type { ModeInfo, ModeSwitchResult } from '../../types/mode';
+import type { ModeConfig } from '../../config/ConfigSchema';
 import type { ModeTreeItem } from '../../providers/ModeTreeProvider';
 
 // Mock ModeService
@@ -737,7 +738,7 @@ describe('Mode Commands', () => {
 
         await viewModeTools(mockVscode, 'debug');
 
-        const callArgs = mockShowQuickPick.mock.calls[0][0] as any[];
+        const callArgs = mockShowQuickPick.mock.calls[0]![0] as any[];
         const descriptions = callArgs.filter(
           (item) => item.label !== 'Mode: Debug' && item.kind === mockVscode.QuickPickItemKind.Separator
         );

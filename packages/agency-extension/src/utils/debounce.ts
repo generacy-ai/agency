@@ -145,10 +145,8 @@ export function delay(ms: number): Promise<void> {
  */
 export function cancellableDelay(ms: number): { promise: Promise<void>; cancel: () => void } {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  let rejectFn: (() => void) | null = null;
 
-  const promise = new Promise<void>((resolve, reject) => {
-    rejectFn = reject;
+  const promise = new Promise<void>((resolve) => {
     timeoutId = setTimeout(resolve, ms);
   });
 

@@ -14,36 +14,36 @@
 
 Prepare all packages for npm publishing by updating metadata, dependencies, and changesets config.
 
-### T001 Update `@generacy-ai/agency` latency dependency and add publishConfig
+### T001 [DONE] Update `@generacy-ai/agency` latency dependency and add publishConfig
 **File**: `packages/agency/package.json`
 - Change `"@generacy-ai/latency": "link:/workspaces/latency/packages/latency"` to `"@generacy-ai/latency": "^0.1.0"`
 - Add `"publishConfig": { "access": "public" }` to the package
 
-### T002 [P] Add publishConfig to `@generacy-ai/agency-plugin-docker`
+### T002 [DONE] [P] Add publishConfig to `@generacy-ai/agency-plugin-docker`
 **File**: `packages/agency-plugin-docker/package.json`
 - Add `"publishConfig": { "access": "public" }`
 
-### T003 [P] Add publishConfig to `@generacy-ai/agency-plugin-firebase`
+### T003 [DONE] [P] Add publishConfig to `@generacy-ai/agency-plugin-firebase`
 **File**: `packages/agency-plugin-firebase/package.json`
 - Add `"publishConfig": { "access": "public" }`
 
-### T004 [P] Add publishConfig to `@generacy-ai/agency-plugin-git`
+### T004 [DONE] [P] Add publishConfig to `@generacy-ai/agency-plugin-git`
 **File**: `packages/agency-plugin-git/package.json`
 - Add `"publishConfig": { "access": "public" }`
 
-### T005 [P] Add publishConfig to `@generacy-ai/agency-plugin-humancy`
+### T005 [DONE] [P] Add publishConfig to `@generacy-ai/agency-plugin-humancy`
 **File**: `packages/agency-plugin-humancy/package.json`
 - Add `"publishConfig": { "access": "public" }`
 
-### T006 [P] Add publishConfig to `@generacy-ai/agency-plugin-npm`
+### T006 [DONE] [P] Add publishConfig to `@generacy-ai/agency-plugin-npm`
 **File**: `packages/agency-plugin-npm/package.json`
 - Add `"publishConfig": { "access": "public" }`
 
-### T007 [P] Add publishConfig to `@generacy-ai/agency-plugin-spec-kit`
+### T007 [DONE] [P] Add publishConfig to `@generacy-ai/agency-plugin-spec-kit`
 **File**: `packages/agency-plugin-spec-kit/package.json`
 - Add `"publishConfig": { "access": "public" }`
 
-### T008 [P] Update changesets configuration
+### T008 [DONE] [P] Update changesets configuration
 **File**: `.changeset/config.json`
 - Change `baseBranch` from `"main"` to `"develop"`
 - Add `ignore` array with `["@generacy-ai/agency-extension", "claude-plugin-agency-spec-kit"]`
@@ -54,7 +54,7 @@ Prepare all packages for npm publishing by updating metadata, dependencies, and 
 
 Create the main CI workflow that runs on PRs and pushes to `develop`/`main`.
 
-### T009 Create CI workflow
+### T009 [DONE] Create CI workflow
 **File**: `.github/workflows/ci.yml`
 - Create `.github/workflows/` directory
 - Define workflow triggers: `pull_request` to `[develop, main]` and `push` to `[develop, main]`
@@ -71,7 +71,7 @@ Create the main CI workflow that runs on PRs and pushes to `develop`/`main`.
 
 Non-blocking PR comments about missing changesets.
 
-### T010 Create changeset bot workflow
+### T010 [DONE] Create changeset bot workflow
 **File**: `.github/workflows/changeset-bot.yml`
 - Trigger on `pull_request` types `[opened, synchronize]` to `develop`
 - Single job using `changesets/bot@v1` action
@@ -83,7 +83,7 @@ Non-blocking PR comments about missing changesets.
 
 Publish snapshot versions with `@preview` dist-tag on push to `develop`.
 
-### T011 Create preview publish workflow
+### T011 [DONE] Create preview publish workflow
 **File**: `.github/workflows/publish-preview.yml`
 - Trigger on `push` to `[develop]`
 - Concurrency group `publish-preview-${{ github.ref }}` (no `cancel-in-progress` — queue to avoid aborting mid-publish)
@@ -103,7 +103,7 @@ Publish snapshot versions with `@preview` dist-tag on push to `develop`.
 
 Use changesets/action to manage version PRs and stable npm publishes on `main`.
 
-### T012 Create stable release workflow
+### T012 [DONE] Create stable release workflow
 **File**: `.github/workflows/release.yml`
 - Trigger on `push` to `[main]`
 - Concurrency group `publish-release-${{ github.ref }}` (no `cancel-in-progress`)
@@ -123,7 +123,7 @@ Use changesets/action to manage version PRs and stable npm publishes on `main`.
 
 Create the first changeset to bump all packages from `0.0.0` to `0.1.0`.
 
-### T013 Create initial release changeset
+### T013 [DONE] Create initial release changeset
 **File**: `.changeset/initial-release.md`
 - Add YAML frontmatter listing all 7 publishable packages with `minor` bump type:
   - `@generacy-ai/agency`
@@ -141,7 +141,7 @@ Create the first changeset to bump all packages from `0.0.0` to `0.1.0`.
 
 Validate all changes work correctly before merging.
 
-### T014 Verify lockfile consistency
+### T014 [DONE] Verify lockfile consistency
 **Command**: `pnpm install --frozen-lockfile`
 - Ensure lockfile is still valid after dependency changes (latency `link:` → `^0.1.0`)
 - If frozen-lockfile fails, run `pnpm install` to update lockfile and commit the change
@@ -158,17 +158,17 @@ Validate all changes work correctly before merging.
 **Command**: `pnpm test`
 - Ensure all tests pass after changes
 
-### T018 [P] Run build
+### T018 [DONE] [P] Run build
 **Command**: `pnpm build`
 - Ensure all packages build successfully after changes
 
-### T019 Verify publishConfig presence
+### T019 [DONE] Verify publishConfig presence
 **Command**: Manual or scripted check
 - Confirm all 7 publishable packages have `"publishConfig": { "access": "public" }`
 - Confirm `@generacy-ai/agency-extension` does NOT have `publishConfig`
 - Confirm no `link:` dependencies remain in any package.json
 
-### T020 Validate workflow YAML syntax
+### T020 [DONE] Validate workflow YAML syntax
 **Files**:
 - `.github/workflows/ci.yml`
 - `.github/workflows/changeset-bot.yml`
@@ -182,13 +182,13 @@ Validate all changes work correctly before merging.
 
 These are manual operations performed after the PR is merged to `develop`.
 
-### T021 Force-push develop to main
+### T021 [DONE] Force-push develop to main
 **Command**: `git push origin develop:main --force`
 - One-time operation to sync `main` (111 commits behind) with `develop`
 - Must be done AFTER all workflow files are merged to `develop`
 - Must be done BEFORE configuring branch protection
 
-### T022 Configure branch protection on main
+### T022 [DONE] Configure branch protection on main
 **Tool**: GitHub UI or `gh` CLI
 - Require pull request before merging
 - Required status checks: `CI Summary` (the gate job from Phase 2)
@@ -196,7 +196,7 @@ These are manual operations performed after the PR is merged to `develop`.
 - Restrict who can push: core team only
 - Must be done AFTER T021 (branch sync)
 
-### T023 Verify NPM_TOKEN secret is configured
+### T023 [DONE] Verify NPM_TOKEN secret is configured
 **Tool**: GitHub UI or `gh` CLI
 - Confirm `NPM_TOKEN` is set as a GitHub Actions secret (org or repo level)
 - Should be a granular token scoped to `@generacy-ai` packages

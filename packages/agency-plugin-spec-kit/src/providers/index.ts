@@ -21,7 +21,7 @@
 
 import type { z } from 'zod';
 import type { BacklogConfigSchema } from '../config.js';
-import type { BacklogProvider, BacklogProviderName } from './types.js';
+import type { BacklogProvider } from './types.js';
 import { ProviderNotFoundError } from './errors.js';
 
 // ============================================================================

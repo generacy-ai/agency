@@ -134,6 +134,7 @@ function resolveIssueTracker(coreAPI: AgencyCoreAPI): IssueTrackerFacet | undefi
  * @param questions - Questions to send to Humancy
  * @returns Array of request statuses
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function invokeHumancyForQuestions(
   coreAPI: ExtendedCoreAPI,
   questions: ClarificationQuestion[]
@@ -231,7 +232,7 @@ async function handleReadOperation(
 
   const content = await readFile(clarificationsPath);
   const parsed = parseClarificationsFile(content);
-  const counts = countQuestions(parsed.batches);
+  countQuestions(parsed.batches);
 
   // Fetch and parse GitHub answers if issue_number provided
   let githubAnswers: ParsedAnswer[] | undefined;

@@ -70,7 +70,7 @@ export class SSEHandler {
         yield* this.streamEvents(url);
         // Stream ended normally, stop iterating
         break;
-      } catch (error) {
+      } catch {
         if (this.abortController.signal.aborted) {
           // Cleanup was requested
           break;

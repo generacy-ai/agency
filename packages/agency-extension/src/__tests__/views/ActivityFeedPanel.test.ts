@@ -57,9 +57,9 @@ const mockVscode = {
 const mockActivityService = {
   onToolCall: vi.fn(() => ({ dispose: vi.fn() })),
   onBatch: vi.fn(() => ({ dispose: vi.fn() })),
-  getEvents: vi.fn(() => []),
+  getEvents: vi.fn((): ToolCallEvent[] => []),
   getEventById: vi.fn(),
-  getStats: vi.fn(() => ({
+  getStats: vi.fn((): ActivityStats => ({
     totalCalls: 0,
     successCount: 0,
     errorCount: 0,
@@ -291,7 +291,7 @@ describe('ActivityFeedPanel', () => {
       const panel = ActivityFeedPanel.createOrShow(mockVscode, extensionUri);
 
       // Get the message handler
-      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0][0];
+      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0]![0];
 
       // Simulate init message
       onMessageCallback({ type: 'init' });
@@ -310,7 +310,7 @@ describe('ActivityFeedPanel', () => {
       const panel = ActivityFeedPanel.createOrShow(mockVscode, extensionUri);
 
       // Get the message handler
-      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0][0];
+      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0]![0];
 
       const filter: ActivityFilter = { toolName: 'test' };
       onMessageCallback({ type: 'filterChange', payload: filter });
@@ -330,7 +330,7 @@ describe('ActivityFeedPanel', () => {
       const panel = ActivityFeedPanel.createOrShow(mockVscode, extensionUri);
 
       // Get the message handler
-      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0][0];
+      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0]![0];
 
       onMessageCallback({ type: 'clearEvents' });
 
@@ -359,7 +359,7 @@ describe('ActivityFeedPanel', () => {
       const panel = ActivityFeedPanel.createOrShow(mockVscode, extensionUri);
 
       // Get the message handler
-      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0][0];
+      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0]![0];
 
       onMessageCallback({ type: 'expandEvent', payload: { eventId: 'test-1' } });
 
@@ -412,7 +412,7 @@ describe('ActivityFeedPanel', () => {
       const panel = ActivityFeedPanel.createOrShow(mockVscode, extensionUri);
 
       // Trigger init to send events
-      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0][0];
+      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0]![0];
       onMessageCallback({ type: 'init' });
 
       expect(mockWebview.postMessage).toHaveBeenCalledWith(
@@ -438,7 +438,7 @@ describe('ActivityFeedPanel', () => {
       const panel = ActivityFeedPanel.createOrShow(mockVscode, extensionUri);
 
       // Get the message handler
-      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0][0];
+      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0]![0];
 
       // Filter for only success status
       onMessageCallback({
@@ -461,7 +461,7 @@ describe('ActivityFeedPanel', () => {
       const panel = ActivityFeedPanel.createOrShow(mockVscode, extensionUri);
 
       // Get the message handler
-      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0][0];
+      const onMessageCallback = mockWebview.onDidReceiveMessage.mock.calls[0]![0];
 
       const now = Date.now();
       const fiveMinutesAgo = now - 5 * 60 * 1000;
@@ -492,7 +492,7 @@ describe('ActivityFeedPanel', () => {
       const panel = ActivityFeedPanel.createOrShow(mockVscode, extensionUri);
 
       // Get the onToolCall callback
-      const onToolCallCallback = mockActivityService.onToolCall.mock.calls[0][0];
+      const onToolCallCallback = mockActivityService.onToolCall.mock.calls[0]![0];
 
       // Clear any initial calls
       mockActivityService.getEvents.mockClear();
