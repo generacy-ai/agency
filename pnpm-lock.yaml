@@ -39,8 +39,8 @@ importers:
   packages/agency:
     dependencies:
       '@generacy-ai/latency':
-        specifier: link:/workspaces/latency/packages/latency
-        version: link:../../../latency/packages/latency
+        specifier: ^0.1.0
+        version: 0.1.0
       '@modelcontextprotocol/sdk':
         specifier: ^1.5.0
         version: 1.25.2(hono@4.11.4)(zod@3.25.76)
@@ -668,6 +668,9 @@ packages:
   '@eslint/plugin-kit@0.4.1':
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@generacy-ai/latency@0.1.0':
+    resolution: {integrity: sha512-KK0pRfGd7Kx73ht5OVYn+6UUyRe+GYb24o7oB5fPdEU/dpMdbjsl9PDCHlCXzCaESmb+BYqkLMU2BVgPO/w+PA==}
 
   '@hono/node-server@1.19.9':
     resolution: {integrity: sha512-vHL6w3ecZsky+8P5MD+eFfaGTyCeOHUIFYMGpQGbrBTSmNNoxv0if69rEZ5giu36weC5saFuznL411gRX7bJDw==}
@@ -3202,6 +3205,11 @@ snapshots:
     dependencies:
       '@eslint/core': 0.17.0
       levn: 0.4.1
+
+  '@generacy-ai/latency@0.1.0':
+    dependencies:
+      ulid: 3.0.2
+      zod: 3.25.76
 
   '@hono/node-server@1.19.9(hono@4.11.4)':
     dependencies:
