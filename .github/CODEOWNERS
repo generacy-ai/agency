@@ -10,3 +10,4 @@
 /packages/agency-plugin-humancy/       @generacy-ai/core-team
 /packages/agency-plugin-npm/           @generacy-ai/core-team
 /packages/agency-plugin-spec-kit/      @generacy-ai/core-team
+/packages/claude-plugin-agency-spec-kit/ @generacy-ai/core-team

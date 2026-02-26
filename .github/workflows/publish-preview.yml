@@ -1,7 +1,9 @@
 name: Publish Preview
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [develop]
 
 concurrency:
@@ -16,32 +18,50 @@ jobs:
   preview:
     name: Preview Publish
     runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - name: Check for changesets
+        id: changesets
+        run: |
+          CHANGESET_FILES=$(find .changeset -name '*.md' ! -name 'README.md' 2>/dev/null | head -1)
+          if [ -z "$CHANGESET_FILES" ]; then
+            echo "has_changesets=false" >> "$GITHUB_OUTPUT"
+            echo "No changeset files found, skipping preview publish"
+          else
+            echo "has_changesets=true" >> "$GITHUB_OUTPUT"
+            echo "Changeset files found, proceeding with preview publish"
+          fi
+
+      - name: Setup pnpm
+        if: steps.changesets.outputs.has_changesets == 'true'
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        if: steps.changesets.outputs.has_changesets == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
-      - run: npm install -g npm@latest
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+      - name: Update npm
+        if: steps.changesets.outputs.has_changesets == 'true'
+        run: npm install -g npm@latest
 
-      # Check if any changeset files exist
-      - name: Check for changesets
-        id: changesets
-        run: |
-          CHANGESET_FILES=$(find .changeset -name '*.md' ! -name 'README.md' | head -1)
-          if [ -n "$CHANGESET_FILES" ]; then
-            echo "has_changesets=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_changesets=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Install dependencies
+        if: steps.changesets.outputs.has_changesets == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        if: steps.changesets.outputs.has_changesets == 'true'
+        run: pnpm build
 
       - name: Publish preview snapshots
         if: steps.changesets.outputs.has_changesets == 'true'

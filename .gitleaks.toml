@@ -1,0 +1,8 @@
+title = "Gitleaks Configuration"
+
+[allowlist]
+  description = "Global allowlist"
+  paths = [
+    '''pnpm-lock\.yaml''',
+    '''\.gitleaks\.toml''',
+  ]
