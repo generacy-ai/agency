@@ -16,21 +16,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout latency dependency
-        uses: actions/checkout@v4
-        with:
-          repository: generacy-ai/latency
-          token: ${{ secrets.GH_TOKEN }}
-          path: .latency
-      - name: Link latency to expected path
-        run: sudo mkdir -p /workspaces && sudo ln -s "$GITHUB_WORKSPACE/.latency" /workspaces/latency
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
-      - name: Build latency dependency
-        run: cd /workspaces/latency && pnpm install --frozen-lockfile && pnpm build
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
 
@@ -39,21 +29,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout latency dependency
-        uses: actions/checkout@v4
-        with:
-          repository: generacy-ai/latency
-          token: ${{ secrets.GH_TOKEN }}
-          path: .latency
-      - name: Link latency to expected path
-        run: sudo mkdir -p /workspaces && sudo ln -s "$GITHUB_WORKSPACE/.latency" /workspaces/latency
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
-      - name: Build latency dependency
-        run: cd /workspaces/latency && pnpm install --frozen-lockfile && pnpm build
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
 
@@ -62,21 +42,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout latency dependency
-        uses: actions/checkout@v4
-        with:
-          repository: generacy-ai/latency
-          token: ${{ secrets.GH_TOKEN }}
-          path: .latency
-      - name: Link latency to expected path
-        run: sudo mkdir -p /workspaces && sudo ln -s "$GITHUB_WORKSPACE/.latency" /workspaces/latency
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
-      - name: Build latency dependency
-        run: cd /workspaces/latency && pnpm install --frozen-lockfile && pnpm build
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
 
@@ -85,21 +55,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout latency dependency
-        uses: actions/checkout@v4
-        with:
-          repository: generacy-ai/latency
-          token: ${{ secrets.GH_TOKEN }}
-          path: .latency
-      - name: Link latency to expected path
-        run: sudo mkdir -p /workspaces && sudo ln -s "$GITHUB_WORKSPACE/.latency" /workspaces/latency
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
-      - name: Build latency dependency
-        run: cd /workspaces/latency && pnpm install --frozen-lockfile && pnpm build
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 

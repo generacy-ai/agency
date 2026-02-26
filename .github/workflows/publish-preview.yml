@@ -10,7 +10,7 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write # Required for npm provenance
+  id-token: write
 
 jobs:
   preview:
@@ -20,24 +20,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Checkout latency dependency
-        uses: actions/checkout@v4
-        with:
-          repository: generacy-ai/latency
-          token: ${{ secrets.GH_TOKEN }}
-          path: .latency
-      - name: Link latency to expected path
-        run: sudo mkdir -p /workspaces && sudo ln -s "$GITHUB_WORKSPACE/.latency" /workspaces/latency
 
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
-      - name: Build latency dependency
-        run: cd /workspaces/latency && pnpm install --frozen-lockfile && pnpm build
 
+      - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
@@ -52,20 +43,8 @@ jobs:
             echo "has_changesets=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Verify latency dependencies are available on npm
-      - name: Verify dependencies
-        if: steps.changesets.outputs.has_changesets == 'true'
-        run: |
-          echo "Checking @generacy-ai/latency availability on npm..."
-          if ! npm view @generacy-ai/latency version 2>/dev/null; then
-            echo "::warning::@generacy-ai/latency not yet published on npm. Skipping preview publish."
-            echo "DEPS_AVAILABLE=false" >> "$GITHUB_ENV"
-          else
-            echo "DEPS_AVAILABLE=true" >> "$GITHUB_ENV"
-          fi
-
       - name: Publish preview snapshots
-        if: steps.changesets.outputs.has_changesets == 'true' && env.DEPS_AVAILABLE == 'true'
+        if: steps.changesets.outputs.has_changesets == 'true'
         run: |
           pnpm changeset version --snapshot preview
           pnpm changeset publish --tag preview --provenance

@@ -7,7 +7,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/generacy-ai/agency"
+    "url": "git+https://github.com/generacy-ai/agency.git",
+    "directory": "packages/agency-extension"
   },
   "engines": {
     "vscode": "^1.85.0"
