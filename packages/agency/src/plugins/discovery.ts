@@ -182,7 +182,7 @@ export class PluginDiscovery {
    */
   private extractManifest(
     packageJson: Record<string, unknown>,
-    packagePath: string
+    _packagePath: string
   ): PluginManifest | null {
     // Check for agency-specific manifest field
     const agencyManifest = packageJson[AGENCY_MANIFEST_FIELD];

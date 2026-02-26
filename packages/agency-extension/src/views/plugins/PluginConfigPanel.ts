@@ -66,7 +66,7 @@ interface ValidationErrorMessage {
   };
 }
 
-type OutgoingMessage = ConfigLoadedMessage | ConfigSavedMessage | ValidationErrorMessage;
+type _OutgoingMessage = ConfigLoadedMessage | ConfigSavedMessage | ValidationErrorMessage;
 
 /**
  * Panel instances tracked by plugin ID.
@@ -215,7 +215,7 @@ export class PluginConfigPanel extends WebviewBase {
         break;
 
       default:
-        log.debug(`Ignoring unknown message type: ${msg.type}`);
+        log.debug(`Ignoring unknown message type: ${(msg as { type: string }).type}`);
     }
   }
 

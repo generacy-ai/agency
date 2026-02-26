@@ -14,12 +14,10 @@ import {
   AGENT_CONFIGS,
   isAgentType,
 } from '../types/agent.js';
-import { createError } from '../types/errors.js';
 import {
   exists,
   readFile,
   writeFile,
-  readDir,
   findRepoRoot,
   RepoNotFoundError,
 } from '../utils/index.js';

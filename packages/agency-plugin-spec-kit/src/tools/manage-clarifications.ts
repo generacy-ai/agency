@@ -134,7 +134,7 @@ function resolveIssueTracker(coreAPI: AgencyCoreAPI): IssueTrackerFacet | undefi
  * @param questions - Questions to send to Humancy
  * @returns Array of request statuses
  */
-async function invokeHumancyForQuestions(
+async function _invokeHumancyForQuestions(
   coreAPI: ExtendedCoreAPI,
   questions: ClarificationQuestion[]
 ): Promise<HumancyRequestStatus[]> {
@@ -231,7 +231,7 @@ async function handleReadOperation(
 
   const content = await readFile(clarificationsPath);
   const parsed = parseClarificationsFile(content);
-  const counts = countQuestions(parsed.batches);
+  const _counts = countQuestions(parsed.batches);
 
   // Fetch and parse GitHub answers if issue_number provided
   let githubAnswers: ParsedAnswer[] | undefined;

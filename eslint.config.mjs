@@ -9,6 +9,10 @@ export default tseslint.config(
   },
   {
     files: ["packages/*/src/**/*.ts"],
+    ignores: [
+      "packages/*/src/**/*.test.ts",
+      "packages/*/src/__tests__/**/*.ts",
+    ],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -23,6 +27,19 @@ export default tseslint.config(
       "@typescript-eslint/explicit-function-return-type": "off",
       "@typescript-eslint/explicit-module-boundary-types": "off",
       "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-namespace": "off",
+    },
+  },
+  {
+    files: [
+      "packages/*/src/**/*.test.ts",
+      "packages/*/src/__tests__/**/*.ts",
+      "packages/*/tests/**/*.ts",
+    ],
+    rules: {
+      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-namespace": "off",
     },
   }
 );

@@ -40,7 +40,7 @@ function createMockCoreAPI(config?: Record<string, unknown>): AgencyCoreAPI {
 /**
  * Create a mock ProcessManager
  */
-function createMockProcessManager() {
+function _createMockProcessManager() {
   return {
     cleanup: vi.fn().mockResolvedValue(undefined),
     start: vi.fn(),

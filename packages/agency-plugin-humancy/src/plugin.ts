@@ -124,7 +124,7 @@ export class HumancyPlugin implements AgencyPlugin {
   /**
    * Handle mode changes
    */
-  onModeChange?(mode: string): void {
+  onModeChange?(_mode: string): void {
     // All modes include humancy tools, so no filtering needed
     // This hook is available for future mode-specific behavior
   }

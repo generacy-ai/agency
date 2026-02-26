@@ -105,7 +105,7 @@ export function generateSlug(
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
   // Normalize: lowercase and replace non-alphanumeric with spaces
-  let normalized = description
+  const normalized = description
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, ' ')
     .trim();

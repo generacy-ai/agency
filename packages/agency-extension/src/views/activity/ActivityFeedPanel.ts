@@ -3,7 +3,6 @@ import type {
   ToolCallEvent,
   ActivityFilter,
   ActivityStats,
-  ToolCallStatus,
 } from '../../types';
 import { WebviewBase, type WebviewMessage } from '../webview-base';
 import { ActivityService } from '../../services';
@@ -102,7 +101,7 @@ interface EventDetailMessage {
 /**
  * All outgoing message types.
  */
-type OutgoingMessage = EventsUpdatedMessage | EventDetailMessage;
+type _OutgoingMessage = EventsUpdatedMessage | EventDetailMessage;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Panel Tracking
@@ -262,7 +261,7 @@ export class ActivityFeedPanel extends WebviewBase {
         break;
 
       default:
-        log.debug(`Ignoring unknown message type: ${msg.type}`);
+        log.debug(`Ignoring unknown message type: ${(msg as { type: string }).type}`);
     }
   }
 

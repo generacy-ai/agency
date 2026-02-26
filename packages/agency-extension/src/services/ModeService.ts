@@ -11,7 +11,6 @@ import type {
 import type { ModeConfig } from '../config/ConfigSchema';
 import { ConfigService } from './ConfigService';
 import { createScopedLogger, DisposableManager } from '../utils';
-import { CONFIG_KEYS } from '../constants';
 
 const log = createScopedLogger('ModeService');
 

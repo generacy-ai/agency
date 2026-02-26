@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { HumancyPlugin, createHumancyPlugin, manifest } from '../index.js';
+import { HumancyPlugin, createHumancyPlugin } from '../index.js';
 import { ConnectionMode } from '../connection/index.js';
 import type { AgencyCoreAPI, AgencyTool } from '@generacy-ai/agency';
 

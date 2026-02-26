@@ -1,0 +1,53 @@
+name: Publish Preview
+
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: publish-preview-${{ github.ref }}
+  # No cancel-in-progress — queue to avoid aborting mid-publish
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  preview:
+    name: Preview Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm install -g npm@latest
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      # Check if any changeset files exist
+      - name: Check for changesets
+        id: changesets
+        run: |
+          CHANGESET_FILES=$(find .changeset -name '*.md' ! -name 'README.md' | head -1)
+          if [ -n "$CHANGESET_FILES" ]; then
+            echo "has_changesets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changesets=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish preview snapshots
+        if: steps.changesets.outputs.has_changesets == 'true'
+        run: |
+          pnpm changeset version --snapshot preview
+          pnpm changeset publish --tag preview --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -263,7 +263,7 @@ describe('createDiscoveryOptions', () => {
   });
 
   it('includes additional plugins when provided', () => {
-    const options = createDiscoveryOptions('/project', ['/custom/plugin1', '/custom/plugin2']);
+    const options = createDiscoveryOptions('/project', undefined, ['/custom/plugin1', '/custom/plugin2']);
 
     expect(options.searchPaths).toEqual(['/project/node_modules']);
     expect(options.additionalPlugins).toEqual(['/custom/plugin1', '/custom/plugin2']);

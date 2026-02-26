@@ -4,7 +4,6 @@ import {
   type PluginConfig,
   type ModeConfig,
   type ContainerConfig,
-  readConfig,
   writeConfig,
   watchConfig,
   initializeConfig,

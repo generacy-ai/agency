@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { execSync } from 'node:child_process';
 import { isGitRepo, getCurrentBranch } from '../../src/utils/git.js';
 
 describe('git utilities', () => {
@@ -62,12 +63,12 @@ describe('git utilities', () => {
 
     // Integration test - only runs if we're in an actual git repo
     it('should return branch name for actual git repo (integration)', async () => {
-      // Use the actual workspace which is a git repo
-      const workspaceRoot = '/workspaces/agency';
+      // Dynamically find the repo root so this works in any environment (local dev, CI, etc.)
+      const workspaceRoot = execSync('git rev-parse --show-toplevel', { encoding: 'utf-8' }).trim();
 
       const branch = await getCurrentBranch(workspaceRoot);
 
-      // Should return a string (the current branch name)
+      // Should return a non-empty string (branch name, or "HEAD" in detached HEAD state)
       expect(typeof branch).toBe('string');
       expect(branch).not.toBe('');
     });

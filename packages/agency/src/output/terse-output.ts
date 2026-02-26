@@ -184,7 +184,7 @@ export class TerseOutput {
             return this.successWithSummary(result.shortMessage, summary);
           }
           return this.success(SUCCESS_MESSAGES.completed);
-        case Verbosity.VERBOSE:
+        case Verbosity.VERBOSE: {
           // Full output in VERBOSE mode
           const parts = [result.shortMessage ?? SUCCESS_MESSAGES.completed];
           if (result.stdout) {
@@ -197,6 +197,7 @@ export class TerseOutput {
             success: true,
             output: parts.join('\n'),
           };
+        }
         default:
           return this.success(
             result.shortMessage ?? SUCCESS_MESSAGES.completed

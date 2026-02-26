@@ -3,10 +3,8 @@ import type {
   ToolInfo,
   ToolResult,
   ToolExecutionRecord,
-  ToolExecutionStatus,
   JsonSchema,
   JsonSchemaItem,
-  ToolResultContent,
 } from '../../types';
 import { WebviewBase, type WebviewMessage } from '../webview-base';
 import { McpClientService } from '../../services';
@@ -82,7 +80,7 @@ interface HistoryUpdatedMessage {
   };
 }
 
-type OutgoingMessage =
+type _OutgoingMessage =
   | ToolLoadedMessage
   | ExecutionStartedMessage
   | ExecutionCompleteMessage
@@ -239,7 +237,7 @@ export class ToolExecutionPanel extends WebviewBase {
         break;
 
       default:
-        log.debug(`Ignoring unknown message type: ${msg.type}`);
+        log.debug(`Ignoring unknown message type: ${(msg as { type: string }).type}`);
     }
   }
 

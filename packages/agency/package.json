@@ -2,6 +2,11 @@
   "name": "@generacy-ai/agency",
   "version": "0.0.0",
   "description": "Core agent infrastructure for Generacy platform",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/generacy-ai/agency.git",
+    "directory": "packages/agency"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -65,8 +70,11 @@
   ],
   "author": "Generacy AI",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
-    "@generacy-ai/latency": "link:/workspaces/latency/packages/latency",
+    "@generacy-ai/latency": "^0.1.0",
     "@modelcontextprotocol/sdk": "^1.5.0",
     "minimatch": "^10.0.0",
     "semver": "^7.6.0",
