@@ -18,3 +18,4 @@ export {
   LENGTH_THRESHOLDS,
   type StandardPrefix,
 } from './prefixes.js';
+export * from './naming/index.js';

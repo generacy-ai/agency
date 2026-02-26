@@ -4,16 +4,19 @@
  * Validates tool names follow the naming convention: prefix.action_name
  * - Prefix: snake_case, from STANDARD_PREFIXES or custom (with warning/error)
  * - Action: snake_case only
+ *
+ * Uses Zod schemas from `./naming/` internally while preserving the original
+ * function signature for backward compatibility.
  */
 
 import { STANDARD_PREFIXES, LENGTH_THRESHOLDS } from './prefixes.js';
+import { ToolPrefixSchema } from './naming/prefix.js';
+import { ActionNameSchema } from './naming/action.js';
 import type { ValidationOptions, ValidationResult } from './types.js';
 
 /**
- * Pattern for valid snake_case identifiers
- * - Starts with lowercase letter
- * - Contains lowercase letters, numbers
- * - Underscores separate words
+ * Pattern for valid snake_case identifiers.
+ * Used as a quick structural check before delegating to Zod schemas.
  */
 const SNAKE_CASE_PATTERN = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
 
@@ -24,6 +27,9 @@ const SNAKE_CASE_PATTERN = /^[a-z][a-z0-9]*(_[a-z0-9]+)*$/;
  * - Exactly one dot separator
  * - Prefix must be snake_case (from standard list or custom with warning/error)
  * - Action must be snake_case
+ *
+ * Internally delegates to Zod schemas (ToolPrefixSchema, ActionNameSchema)
+ * for validation while mapping results to the existing error/warning format.
  *
  * @param name - The tool name to validate
  * @param options - Validation options (strict mode rejects custom prefixes)
@@ -58,13 +64,17 @@ export function validateToolName(
     return { valid: false, errors, warnings };
   }
 
-  // Validate prefix format (snake_case)
+  // Validate prefix format (snake_case) before checking Zod enum.
+  // The Zod enum only contains known prefixes, so a custom snake_case prefix
+  // would fail the enum check. We need to distinguish format errors from
+  // "valid format but unknown prefix" — hence the regex pre-check.
   if (!SNAKE_CASE_PATTERN.test(prefix)) {
     errors.push(`Prefix must be snake_case: ${prefix}`);
   }
 
-  // Validate action format (snake_case)
-  if (!SNAKE_CASE_PATTERN.test(action)) {
+  // Validate action format using Zod ActionNameSchema
+  const actionResult = ActionNameSchema.safeParse(action);
+  if (!actionResult.success) {
     errors.push(`Action must be snake_case: ${action}`);
   }
 
@@ -73,11 +83,9 @@ export function validateToolName(
     return { valid: false, errors, warnings };
   }
 
-  // Check if prefix is standard or custom
-  const isStandardPrefix = (STANDARD_PREFIXES as readonly string[]).includes(
-    prefix
-  );
-  if (!isStandardPrefix) {
+  // Check prefix against Zod enum for standard prefix validation
+  const prefixResult = ToolPrefixSchema.safeParse(prefix);
+  if (!prefixResult.success) {
     if (strict) {
       errors.push(`Custom prefix not allowed in strict mode: ${prefix}`);
     } else {
