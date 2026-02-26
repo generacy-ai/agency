@@ -12,13 +12,13 @@
 
 ## Phase 1: Stable Release Safety & Provenance
 
-### T001 Update `release.yml` trigger to `workflow_run` CI gate
+### T001 [DONE] Update `release.yml` trigger to `workflow_run` CI gate
 **File**: `.github/workflows/release.yml`
 - Change `on: push` trigger to `on: workflow_run` gated on the `CI` workflow completing on `main`
 - Add `if` conditional on the `release` job: `github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'`
 - Update concurrency group from `publish-release-${{ github.ref }}` to static `publish-release` (since `github.ref` is unreliable under `workflow_run`)
 
-### T002 Add `--provenance` flag to stable publish command
+### T002 [DONE] Add `--provenance` flag to stable publish command
 **File**: `.github/workflows/release.yml`
 - Change `publish: pnpm changeset publish` to `publish: pnpm changeset publish --provenance`
 - Note: `id-token: write` permission is already set (line 14)
@@ -27,7 +27,7 @@
 
 ## Phase 2: Latency Dependency Verification
 
-### T003 [P] Add latency verification step to `publish-preview.yml` (soft gate)
+### T003 [DONE] [P] Add latency verification step to `publish-preview.yml` (soft gate)
 **File**: `.github/workflows/publish-preview.yml`
 - Insert a new step after "Check for changesets" (after line 40) with `id: latency`
 - The step runs `npm view @generacy-ai/latency@preview version` and sets `found=true`/`found=false` output
@@ -36,7 +36,7 @@
 - Update all subsequent step conditions (lines 43, 49, 55, 59, 63, 67) to also require `steps.latency.outputs.found == 'true'`
 - Updated condition pattern: `if: steps.changesets.outputs.has_changesets == 'true' && steps.latency.outputs.found == 'true'`
 
-### T004 [P] Add latency verification step to `release.yml` (hard gate)
+### T004 [DONE] [P] Add latency verification step to `release.yml` (hard gate)
 **File**: `.github/workflows/release.yml`
 - Insert a new step after "Install dependencies" (`pnpm install`) and before "Build"
 - The step runs `npm view @generacy-ai/latency@latest version`
@@ -47,7 +47,7 @@
 
 ## Phase 3: Node Version Consistency
 
-### T005 [P] Fix Node version in `changeset-bot.yml`
+### T005 [DONE] [P] Fix Node version in `changeset-bot.yml`
 **File**: `.github/workflows/changeset-bot.yml`
 - Change `node-version: 20` (line 19) to `node-version: 22`
 - Aligns with all other workflows (`ci.yml`, `release.yml`, `publish-preview.yml`) which use Node 22
@@ -56,7 +56,7 @@
 
 ## Phase 4: Documentation
 
-### T006 [P] Create branch protection setup checklist
+### T006 [DONE] [P] Create branch protection setup checklist
 **File**: `.github/BRANCH_PROTECTION.md` (new file)
 - Document required branch protection rules for `main` branch:
   - Require PR reviews (1 approval, dismiss stale approvals)
@@ -73,7 +73,7 @@
 
 ## Phase 5: Validation
 
-### T007 Validate YAML syntax of all modified workflows
+### T007 [DONE] Validate YAML syntax of all modified workflows
 **Files**:
 - `.github/workflows/release.yml`
 - `.github/workflows/publish-preview.yml`
@@ -83,7 +83,7 @@
 - Verify all `${{ }}` expression syntax is correct
 - Verify step `id` references match between steps (e.g., `steps.latency.outputs.found`)
 
-### T008 Validate workflow trigger and condition logic
+### T008 [DONE] Validate workflow trigger and condition logic
 **Files**:
 - `.github/workflows/release.yml`
 - `.github/workflows/publish-preview.yml`

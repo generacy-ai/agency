@@ -1,11 +1,13 @@
 name: Release
 
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
 
 concurrency:
-  group: publish-release-${{ github.ref }}
+  group: publish-release
   # No cancel-in-progress — queue to avoid aborting mid-publish
 
 permissions:
@@ -17,6 +19,9 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,12 +35,21 @@ jobs:
 
       - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
+
+      - name: Verify latency dependency
+        run: |
+          if ! npm view @generacy-ai/latency@latest version 2>/dev/null; then
+            echo "::error::@generacy-ai/latency@latest not found on npm. Cannot publish — consumers would get unresolvable dependency."
+            exit 1
+          fi
+          echo "@generacy-ai/latency@latest is available on npm"
+
       - run: pnpm build
 
       - name: Create Release PR or Publish
         uses: changesets/action@v1
         with:
-          publish: pnpm changeset publish
+          publish: pnpm changeset publish --provenance
           title: "chore: version packages"
           commit: "chore: version packages"
         env:
