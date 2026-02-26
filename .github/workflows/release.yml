@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: generacy-ai/latency
-          token: ${{ secrets.GH_PAT }}
+          token: ${{ secrets.GH_TOKEN }}
           path: .latency
       - name: Link latency to expected path
         run: sudo mkdir -p /workspaces && sudo ln -s "$GITHUB_WORKSPACE/.latency" /workspaces/latency
