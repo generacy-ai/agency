@@ -91,7 +91,7 @@
 - Confirm `publish-preview.yml` already uses `workflow_run` pattern correctly (use as reference for `release.yml` changes)
 - Confirm conditional step chaining in `publish-preview.yml` correctly gates all publish-related steps behind both changeset and latency checks
 
-### T009 Push branch and open PR for review
+### T009 [DONE] Push branch and open PR for review
 - Push `292-1-3-ci-cd` branch to remote
 - Open PR against `develop` with summary of all changes
 - Verify CI passes on the PR itself (the existing `ci.yml` should run)
