@@ -21,7 +21,7 @@ This project is pre-1.0. Only the latest released version receives security upda
 
 ## Response Process
 
-1. Your report will be acknowledged as soon as possible.
+1. Your report will be acknowledged within 5 business days.
 2. We will investigate and validate the reported vulnerability.
 3. A fix will be developed and tested.
 4. A security advisory will be published alongside the fix.
