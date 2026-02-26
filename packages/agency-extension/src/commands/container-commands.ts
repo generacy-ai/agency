@@ -52,6 +52,17 @@ export function setVscodeModule(vsModule: typeof vscode): void {
 }
 
 /**
+ * Get the VS Code module reference.
+ * @throws Error if module is not set
+ */
+function _getVscodeModule(): typeof vscode {
+  if (!vscodeModule) {
+    throw new Error('VS Code module not set. Call setVscodeModule first.');
+  }
+  return vscodeModule;
+}
+
+/**
  * Get the extension URI.
  * @returns The extension URI or null if not set
  */

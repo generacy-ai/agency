@@ -60,6 +60,6 @@ export default plugin;
 // Re-export types and utilities for external use
 export type { NpmPluginConfig } from './config.js';
 export { DEFAULT_CONFIG, mergeConfig } from './config.js';
-export { manifest, modeAffiliations } from './manifest.js';
+export { manifest } from './manifest.js';
 export type { PackageManager, DetectionResult, DetectionOutcome } from './pm/index.js';
 export { detectPackageManager, isDetectionSuccess } from './pm/index.js';

@@ -66,7 +66,7 @@ interface ValidationErrorMessage {
   };
 }
 
-type OutgoingMessage = ConfigLoadedMessage | ConfigSavedMessage | ValidationErrorMessage;
+type _OutgoingMessage = ConfigLoadedMessage | ConfigSavedMessage | ValidationErrorMessage;
 
 /**
  * Panel instances tracked by plugin ID.

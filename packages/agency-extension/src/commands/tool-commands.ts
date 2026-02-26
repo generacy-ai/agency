@@ -238,7 +238,7 @@ async function promptForToolParameters(
 
   const templateJson = JSON.stringify(template, null, 2);
 
-  // Build description of parameters (used for reference)
+  // Build description of parameters
   const _paramDescriptions = Object.entries(properties)
     .map(([key, prop]) => {
       const isRequired = required.includes(key);

@@ -3,7 +3,6 @@ import type {
   ToolCallEvent,
   ActivityFilter,
   ActivityStats,
-  ToolCallStatus,
 } from '../../types';
 import { WebviewBase, type WebviewMessage } from '../webview-base';
 import { ActivityService } from '../../services';
@@ -102,7 +101,7 @@ interface EventDetailMessage {
 /**
  * All outgoing message types.
  */
-type OutgoingMessage = EventsUpdatedMessage | EventDetailMessage;
+type _OutgoingMessage = EventsUpdatedMessage | EventDetailMessage;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Panel Tracking

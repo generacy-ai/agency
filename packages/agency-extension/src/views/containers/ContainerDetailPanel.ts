@@ -100,7 +100,7 @@ interface ActionResultMessage {
 /**
  * All outgoing message types.
  */
-type OutgoingMessage = ContainerDataMessage | LogDataMessage | ActionResultMessage;
+type _OutgoingMessage = ContainerDataMessage | LogDataMessage | ActionResultMessage;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Panel Tracking

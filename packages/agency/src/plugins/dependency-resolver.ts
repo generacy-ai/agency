@@ -117,7 +117,7 @@ export class DependencyResolver {
    * @returns Array of plugin IDs in dependency order (dependencies first)
    */
   private topologicalSort(manifests: PluginManifest[]): string[] {
-    const manifestMap = new Map(manifests.map((m) => [m.id, m]));
+    const _manifestMap = new Map(manifests.map((m) => [m.id, m]));
     const pluginIds = new Set(manifests.map((m) => m.id));
 
     // Build in-degree map (count of dependencies for each plugin)

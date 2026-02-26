@@ -1031,7 +1031,8 @@ export class ContainerService {
           yield result.entry;
         }
       }
-    } catch {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_error) {
       // Stream ended or error occurred
       if (stdoutBuffer.length > 0) {
         yield {

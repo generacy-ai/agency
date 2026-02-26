@@ -70,7 +70,8 @@ export class SSEHandler {
         yield* this.streamEvents(url);
         // Stream ended normally, stop iterating
         break;
-      } catch {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (error) {
         if (this.abortController.signal.aborted) {
           // Cleanup was requested
           break;

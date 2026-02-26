@@ -191,15 +191,15 @@ describe('ModeTreeProvider', () => {
         mockModeService._setModes(flatModes);
 
         const provider = new ModeTreeProvider(mockVscode, mockModeService as any);
-        const children = provider.getChildren() as ModeTreeItem[];
+        const children = provider.getChildren();
 
         expect(children).toHaveLength(2);
-        expect(children[0]!.modeId).toBe('mode-1');
-        expect(children[0]!.label).toBe('Mode 1');
-        expect(children[0]!.toolCount).toBe(2);
-        expect(children[1]!.modeId).toBe('mode-2');
-        expect(children[1]!.label).toBe('Mode 2');
-        expect(children[1]!.toolCount).toBe(2);
+        expect(children[0].modeId).toBe('mode-1');
+        expect(children[0].label).toBe('Mode 1');
+        expect(children[0].toolCount).toBe(2);
+        expect(children[1].modeId).toBe('mode-2');
+        expect(children[1].label).toBe('Mode 2');
+        expect(children[1].toolCount).toBe(2);
       });
 
       it('should return empty children for leaf modes', () => {
@@ -221,8 +221,8 @@ describe('ModeTreeProvider', () => {
         mockModeService._setModes(flatModes);
 
         const provider = new ModeTreeProvider(mockVscode, mockModeService as any);
-        const rootChildren = provider.getChildren() as ModeTreeItem[];
-        const leafChildren = provider.getChildren(rootChildren[0]!);
+        const rootChildren = provider.getChildren();
+        const leafChildren = provider.getChildren(rootChildren[0]);
 
         expect(leafChildren).toEqual([]);
       });

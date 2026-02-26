@@ -179,9 +179,9 @@ describe('ActivityTreeProvider', () => {
       const children = provider.getChildren();
 
       expect(children).toHaveLength(3);
-      expect(children[0]!.type).toBe('timeGroup');
-      expect(children[1]!.type).toBe('timeGroup');
-      expect(children[2]!.type).toBe('timeGroup');
+      expect(children[0].type).toBe('timeGroup');
+      expect(children[1].type).toBe('timeGroup');
+      expect(children[2].type).toBe('timeGroup');
     });
 
     it('should return time groups with correct labels', async () => {
@@ -194,9 +194,9 @@ describe('ActivityTreeProvider', () => {
         label: string;
       }>;
 
-      expect(children[0]!.label).toBe('Last Minute');
-      expect(children[1]!.label).toBe('Last 5 Minutes');
-      expect(children[2]!.label).toBe('Older');
+      expect(children[0].label).toBe('Last Minute');
+      expect(children[1].label).toBe('Last 5 Minutes');
+      expect(children[2].label).toBe('Older');
     });
 
     it('should return activities for time group', async () => {
@@ -225,8 +225,8 @@ describe('ActivityTreeProvider', () => {
       const children = provider.getChildren(timeGroup);
 
       expect(children).toHaveLength(2);
-      expect(children[0]!.type).toBe('activity');
-      expect(children[1]!.type).toBe('activity');
+      expect(children[0].type).toBe('activity');
+      expect(children[1].type).toBe('activity');
     });
 
     it('should return empty array for activity items', async () => {

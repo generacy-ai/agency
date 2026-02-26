@@ -140,8 +140,7 @@ interface RepoContext {
 /**
  * Options for gh CLI execution.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-interface GhExecOptions {
+interface _GhExecOptions {
   /** Working directory for the command */
   cwd?: string;
   /** Maximum retry attempts for transient errors */

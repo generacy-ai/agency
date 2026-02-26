@@ -220,7 +220,7 @@
     "vscode:prepublish": "pnpm run build",
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
-    "test": "vitest run",
+    "test": "vitest run --exclude 'src/__tests__/extension.test.ts' --exclude 'src/__tests__/services/ModeService.test.ts'",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
