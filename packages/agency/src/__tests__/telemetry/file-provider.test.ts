@@ -4,13 +4,13 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { FileStorageProvider, FileProviderOptionsSchema } from '../../telemetry/providers/file.js';
-import type { ToolCallEvent } from '../../telemetry/schemas.js';
+import { generateEventId, type ToolCallEvent } from '../../telemetry/schemas.js';
 
 describe('FileStorageProvider', () => {
   let testDir: string;
 
   beforeEach(async () => {
-    // Create a unique temp directory for each test
+    // Create a unique temp directory for each test (randomUUID is fine for dir names)
     testDir = join(tmpdir(), `telemetry-test-${randomUUID()}`);
     await mkdir(testDir, { recursive: true });
   });
@@ -26,7 +26,7 @@ describe('FileStorageProvider', () => {
 
   function createTestEvent(overrides: Partial<ToolCallEvent> = {}): ToolCallEvent {
     return {
-      id: randomUUID(),
+      id: generateEventId(),
       timestamp: new Date().toISOString(),
       toolName: 'test_tool',
       serverName: 'test_server',

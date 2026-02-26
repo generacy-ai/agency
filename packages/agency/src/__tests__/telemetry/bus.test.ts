@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TelemetryBus } from '../../telemetry/bus.js';
 import type { TelemetryStorageProvider } from '../../telemetry/types.js';
-import type { ToolCallEvent } from '../../telemetry/schemas.js';
+import { generateEventId, type ToolCallEvent } from '../../telemetry/schemas.js';
 
 function createMockProvider(name: string): TelemetryStorageProvider & {
   recordedEvents: ToolCallEvent[];
@@ -20,7 +20,7 @@ function createMockProvider(name: string): TelemetryStorageProvider & {
 
 function createTestEvent(overrides: Partial<ToolCallEvent> = {}): ToolCallEvent {
   return {
-    id: '550e8400-e29b-41d4-a716-446655440000',
+    id: generateEventId(),
     timestamp: '2026-01-17T12:00:00.000Z',
     toolName: 'test-tool',
     serverName: 'test-server',
@@ -99,7 +99,8 @@ describe('TelemetryBus', () => {
       const provider = createMockProvider('test-provider');
       bus.subscribe(provider);
 
-      const event1 = createTestEvent({ id: '11111111-1111-1111-1111-111111111111' });
+      const event1Id = generateEventId();
+      const event1 = createTestEvent({ id: event1Id });
       bus.emit(event1);
 
       // Wait for async record
@@ -107,14 +108,14 @@ describe('TelemetryBus', () => {
 
       bus.unsubscribe('test-provider');
 
-      const event2 = createTestEvent({ id: '22222222-2222-2222-2222-222222222222' });
+      const event2 = createTestEvent({ id: generateEventId() });
       bus.emit(event2);
 
       // Wait again
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(provider.recordedEvents).toHaveLength(1);
-      expect(provider.recordedEvents[0]?.id).toBe('11111111-1111-1111-1111-111111111111');
+      expect(provider.recordedEvents[0]?.id).toBe(event1Id);
     });
   });
 
@@ -160,9 +161,9 @@ describe('TelemetryBus', () => {
       bus.subscribe(provider);
 
       const events = [
-        createTestEvent({ id: '11111111-1111-1111-1111-111111111111', toolName: 'tool-1' }),
-        createTestEvent({ id: '22222222-2222-2222-2222-222222222222', toolName: 'tool-2' }),
-        createTestEvent({ id: '33333333-3333-3333-3333-333333333333', toolName: 'tool-3' }),
+        createTestEvent({ toolName: 'tool-1' }),
+        createTestEvent({ toolName: 'tool-2' }),
+        createTestEvent({ toolName: 'tool-3' }),
       ];
 
       events.forEach((event) => bus.emit(event));

@@ -1,24 +1,25 @@
 /**
  * Standard prefixes and length thresholds for tool naming convention
+ *
+ * This module re-exports from the canonical tool-naming prefix schema
+ * for backward compatibility. The source of truth is `./naming/prefix.ts`.
  */
 
+import { ToolPrefixValues } from './naming/prefix.js';
+
 /**
- * Approved prefixes for tool naming convention
+ * Approved prefixes for tool naming convention (10 total).
+ *
+ * Re-exported from the canonical Zod-based prefix schema for backward
+ * compatibility. Prefer importing `ToolPrefixValues` and `ToolPrefixSchema`
+ * from `./naming/prefix.js` for new code.
  */
-export const STANDARD_PREFIXES = [
-  'source_control',
-  'build',
-  'run',
-  'test',
-  'humancy',
-  'debug',
-  'docs',
-] as const;
+export { ToolPrefixValues as STANDARD_PREFIXES } from './naming/prefix.js';
 
 /**
  * Type representing a standard prefix
  */
-export type StandardPrefix = typeof STANDARD_PREFIXES[number];
+export type StandardPrefix = (typeof ToolPrefixValues)[number];
 
 /**
  * Recommended length limits (warnings only, not hard limits)
