@@ -39,12 +39,24 @@ jobs:
             echo "Changeset files found, proceeding with preview publish"
           fi
 
-      - name: Setup pnpm
+      - name: Verify latency dependency
         if: steps.changesets.outputs.has_changesets == 'true'
+        id: latency
+        run: |
+          if npm view @generacy-ai/latency@preview version 2>/dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "@generacy-ai/latency@preview is available on npm"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::@generacy-ai/latency@preview not found on npm — skipping preview publish"
+          fi
+
+      - name: Setup pnpm
+        if: steps.changesets.outputs.has_changesets == 'true' && steps.latency.outputs.found == 'true'
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        if: steps.changesets.outputs.has_changesets == 'true'
+        if: steps.changesets.outputs.has_changesets == 'true' && steps.latency.outputs.found == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -52,19 +64,19 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Update npm
-        if: steps.changesets.outputs.has_changesets == 'true'
+        if: steps.changesets.outputs.has_changesets == 'true' && steps.latency.outputs.found == 'true'
         run: npm install -g npm@latest
 
       - name: Install dependencies
-        if: steps.changesets.outputs.has_changesets == 'true'
+        if: steps.changesets.outputs.has_changesets == 'true' && steps.latency.outputs.found == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        if: steps.changesets.outputs.has_changesets == 'true'
+        if: steps.changesets.outputs.has_changesets == 'true' && steps.latency.outputs.found == 'true'
         run: pnpm build
 
       - name: Publish preview snapshots
-        if: steps.changesets.outputs.has_changesets == 'true'
+        if: steps.changesets.outputs.has_changesets == 'true' && steps.latency.outputs.found == 'true'
         run: |
           pnpm changeset version --snapshot preview
           pnpm changeset publish --tag preview --provenance
