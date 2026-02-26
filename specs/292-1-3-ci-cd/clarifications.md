@@ -1,6 +1,6 @@
 # Clarification Questions
 
-## Status: Pending
+## Status: Resolved
 
 ## Questions
 
@@ -12,7 +12,7 @@
 - B) Both preview and stable: Add verification to both workflows. Preview uses soft failure (skip); stable uses hard failure (block release).
 - C) Neither — accept the gap: Rely on npm install failures downstream to surface missing latency. The `^0.1.0` range in `package.json` is sufficient documentation.
 - D) Preview soft + stable soft: Add verification to both but make it a warning in both cases, never blocking.
-**Answer**:
+**Answer**: B) Both preview and stable. Add verification to both workflows. Preview uses soft failure (warn and skip) since a missing `@preview` latency is expected during bootstrapping. Stable uses hard failure — a `@latest` publish with an unresolvable latency dependency would break consumers. This aligns with the buildout plan's explicit dependency chain verification requirement.
 
 ---
 
@@ -23,7 +23,7 @@
 - A) Use official `changesets/bot@v1`: Provides visible PR comments, better developer experience, matches spec wording.
 - B) Keep current custom script: The `::warning::` annotation is sufficient; avoids adding another third-party action.
 - C) Update spec to match implementation: Document the custom approach as intentional and update FR-011 accordingly.
-**Answer**:
+**Answer**: C) Update spec to match implementation. `changesets/bot@v1` doesn't exist as a GitHub Action — it's a separate GitHub App requiring org-level installation. The custom script with `::warning::` annotation was the pragmatic fallback and works (visible in PR's Actions/Checks tab). Update FR-011 to reflect the custom check approach. Installing the changeset-bot GitHub App can be a separate future enhancement.
 
 ---
 
@@ -34,7 +34,7 @@
 - A) Add `--provenance` to stable publish: Change to `publish: pnpm changeset publish --provenance` in `release.yml` to match FR-009.
 - B) Investigate changesets/action behavior: The action may handle provenance via environment variables or npm config. Verify before changing.
 - C) Accept the gap: Provenance on preview is sufficient; stable releases don't need it.
-**Answer**:
+**Answer**: A) Add `--provenance` to stable publish. One-line change: `publish: pnpm changeset publish --provenance`. The `id-token: write` permission is already set in `release.yml`. Preview already does this. No reason for the stable workflow to differ.
 
 ---
 
@@ -45,7 +45,7 @@
 - A) Update to Node 22: Align all workflows with FR-004 for consistency.
 - B) Keep Node 20: The bot workflow is non-critical and doesn't affect builds or publishes.
 - C) Update spec to say "CI and publish workflows": Narrow FR-004's scope to exclude informational workflows.
-**Answer**:
+**Answer**: A) Update to Node 22. Trivial change, no downside. Consistency across all workflows avoids confusion and aligns with the intent of FR-004. The `changeset-bot.yml` doesn't need Node 20 for any technical reason.
 
 ---
 
@@ -55,7 +55,7 @@
 **Options**:
 - A) Accept changesets default format: Whatever `changeset version --snapshot` produces is fine. Update spec to match actual output.
 - B) Enforce dot-separated format: Investigate if changesets can be configured for the exact `0.1.0-preview.{timestamp}` format.
-**Answer**:
+**Answer**: A) Accept changesets default format. Consumers install via dist-tag (`npm install @generacy-ai/agency@preview`), not explicit version strings. The exact separator character is an implementation detail of the changesets library and shouldn't be prescribed. Update the spec's US2 acceptance criteria to say "changesets snapshot format" rather than specifying the exact pattern.
 
 ---
 
@@ -66,7 +66,7 @@
 - A) Add Turborepo remote caching: Configure `TURBO_TOKEN` and `TURBO_TEAM` secrets for Vercel remote cache. Could significantly reduce CI time.
 - B) Keep pnpm caching only: Current approach is simpler, avoids additional service dependency (Vercel). Revisit if SC-002 is not met.
 - C) Out of scope: Defer caching optimization to a separate issue.
-**Answer**:
+**Answer**: C) Out of scope. Priority is getting CI/CD pipelines working correctly. Turborepo remote caching adds a Vercel dependency and requires secrets management. If SC-002 (< 5 min pipeline) isn't met after initial setup, create a separate optimization issue. pnpm dependency caching via `actions/setup-node` is sufficient for now.
 
 ---
 
@@ -77,7 +77,7 @@
 - A) Add `workflow_run` gate: Make `release.yml` trigger on CI completion (like preview) for defense-in-depth.
 - B) Rely on branch protection: Branch protection on `main` is sufficient. Adding `workflow_run` adds complexity and delays.
 - C) Add CI steps inline: Run lint/typecheck/test in `release.yml` before the publish step (duplicates CI but ensures safety).
-**Answer**:
+**Answer**: A) Add `workflow_run` gate. A broken package published to `@latest` is significantly worse than a broken `@preview`. Branch protection can be bypassed by admins, and misconfiguration is a real risk. The `workflow_run` pattern is already proven in `publish-preview.yml` — reuse it for `release.yml`. Minimal added complexity, meaningful safety gain.
 
 ---
 
@@ -89,7 +89,7 @@
 - B) Add failure notifications: Send Slack/email notification on publish failure so maintainers can investigate.
 - C) Accept manual monitoring: Maintainers monitor GitHub Actions for failures. No automated retry or notification needed at this stage.
 - D) Out of scope: Document as a future enhancement. Current focus is on getting the happy path working.
-**Answer**:
+**Answer**: D) Out of scope. Changesets' built-in idempotency handles partial failures — re-running the workflow skips already-published packages. Preview publishes are low-risk by nature. Adding retry logic or notifications is over-engineering for the initial setup. Document as a future enhancement if publish failures become a recurring problem.
 
 ---
 
@@ -100,7 +100,7 @@
 - A) Add detailed configuration section: Document exact settings — required status checks (`CI Summary`), required reviewers count, dismiss stale reviews, admin enforcement, etc.
 - B) Add a setup checklist: Include a one-time setup checklist in the spec with the minimum required branch protection settings.
 - C) Keep general reference: The current assumption statement is sufficient. Branch protection is standard GitHub knowledge.
-**Answer**:
+**Answer**: B) Add a setup checklist. The critical detail is the exact status check name: `CI Summary` (from the `ci-summary` job). Getting this wrong silently breaks the protection. Include a concise one-time setup checklist with: required status check (`CI Summary`), require PR, dismiss stale reviews, and whether to enforce for admins.
 
 ---
 
@@ -111,4 +111,4 @@
 - A) Yes, protect `develop`: Require `CI Summary` to pass before merging to `develop`. Prevents untested preview publishes.
 - B) No, keep `develop` unprotected: `develop` is a working branch; protection would slow down development. Preview publishes are low-risk.
 - C) Lighter protection: Require CI but not reviews on `develop`. Full protection only on `main`.
-**Answer**:
+**Answer**: C) Lighter protection. Require CI to pass but don't require reviews on `develop`. This prevents untested code from triggering preview publishes to npm (which external consumers could install), while keeping the development workflow smooth. Full review requirements on `develop` would create friction that slows down frequent iteration.
