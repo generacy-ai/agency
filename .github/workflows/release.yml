@@ -36,6 +36,8 @@ jobs:
           node-version: 20
           cache: pnpm
           registry-url: https://registry.npmjs.org
+      - name: Build latency dependency
+        run: cd /workspaces/latency && pnpm install --frozen-lockfile && pnpm build
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build

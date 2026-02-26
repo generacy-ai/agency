@@ -29,6 +29,8 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+      - name: Build latency dependency
+        run: cd /workspaces/latency && pnpm install --frozen-lockfile && pnpm build
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
 
@@ -50,6 +52,8 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+      - name: Build latency dependency
+        run: cd /workspaces/latency && pnpm install --frozen-lockfile && pnpm build
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
 
@@ -71,6 +75,8 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+      - name: Build latency dependency
+        run: cd /workspaces/latency && pnpm install --frozen-lockfile && pnpm build
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
 
@@ -92,6 +98,8 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+      - name: Build latency dependency
+        run: cd /workspaces/latency && pnpm install --frozen-lockfile && pnpm build
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
