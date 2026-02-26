@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  '@generacy-ai/latency': link:/workspaces/latency/packages/latency
-
 importers:
 
   .:

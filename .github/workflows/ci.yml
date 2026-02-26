@@ -16,6 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout latency dependency
+        uses: actions/checkout@v4
+        with:
+          repository: generacy-ai/latency
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: .latency
+      - name: Link latency to expected path
+        run: sudo mkdir -p /workspaces && sudo ln -s "$GITHUB_WORKSPACE/.latency" /workspaces/latency
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -29,6 +37,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout latency dependency
+        uses: actions/checkout@v4
+        with:
+          repository: generacy-ai/latency
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: .latency
+      - name: Link latency to expected path
+        run: sudo mkdir -p /workspaces && sudo ln -s "$GITHUB_WORKSPACE/.latency" /workspaces/latency
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -42,6 +58,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout latency dependency
+        uses: actions/checkout@v4
+        with:
+          repository: generacy-ai/latency
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: .latency
+      - name: Link latency to expected path
+        run: sudo mkdir -p /workspaces && sudo ln -s "$GITHUB_WORKSPACE/.latency" /workspaces/latency
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -55,6 +79,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout latency dependency
+        uses: actions/checkout@v4
+        with:
+          repository: generacy-ai/latency
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: .latency
+      - name: Link latency to expected path
+        run: sudo mkdir -p /workspaces && sudo ln -s "$GITHUB_WORKSPACE/.latency" /workspaces/latency
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
