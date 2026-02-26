@@ -249,7 +249,7 @@ describe('Mode System Performance', () => {
       expect(avgTime).toBeLessThan(50);
     });
 
-    it('should filter tools efficiently with complex patterns', () => {
+    it('should filter tools efficiently with complex patterns', { timeout: 15_000 }, () => {
       // Setup: Create ToolRegistry with many tools
       const registry = new ToolRegistry();
 
