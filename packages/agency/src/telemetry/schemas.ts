@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { ulid } from 'ulid';
+import { ULID_REGEX } from '../schemas/common/ids.js';
 
-/** ULID regex: 26 characters, Crockford Base32 */
-export const ULID_REGEX = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+export { ULID_REGEX };
 
 /**
  * Generate a unique event ID using ULID.

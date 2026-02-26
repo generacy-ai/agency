@@ -1,5 +1,8 @@
 // Schemas barrel — re-exports from domain schema modules
 
+// Common (IDs, timestamps)
+export * from './common/index.js';
+
 // Tool result schemas (terse output pattern)
 export {
   TerseToolResultSchema,

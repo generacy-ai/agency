@@ -10,8 +10,7 @@ import {
 export { MembershipIdSchema, generateMembershipId };
 export type { MembershipId } from '../../common/ids.js';
 
-// ULID regex for validation
-const ULID_REGEX = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+import { ULID_REGEX } from '../../common/ids.js';
 
 /**
  * Organization member roles with hierarchical permissions.

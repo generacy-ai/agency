@@ -1,11 +1,9 @@
 import { z } from 'zod';
 import { ulid } from 'ulid';
 import { ISOTimestampSchema } from '../../common/timestamps.js';
+import { ULID_REGEX } from '../../common/ids.js';
 import { FeatureEntitlementSchema } from './feature-entitlement.js';
 import { SubscriptionStatusSchema } from './humancy-tier.js';
-
-// ULID regex: 26 characters, Crockford Base32
-const ULID_REGEX = /^[0-9A-HJKMNP-TV-Z]{26}$/;
 
 /**
  * Branded type for Generacy subscription IDs.

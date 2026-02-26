@@ -16,6 +16,34 @@
     },
     "./cli": {
       "import": "./dist/cli.js"
+    },
+    "./schemas/extension-comms": {
+      "import": "./dist/schemas/extension-comms/index.js",
+      "types": "./dist/schemas/extension-comms/index.d.ts"
+    },
+    "./schemas/github-app": {
+      "import": "./dist/schemas/github-app/index.js",
+      "types": "./dist/schemas/github-app/index.d.ts"
+    },
+    "./schemas/knowledge-store": {
+      "import": "./dist/schemas/knowledge-store/index.js",
+      "types": "./dist/schemas/knowledge-store/index.d.ts"
+    },
+    "./schemas/learning-loop": {
+      "import": "./dist/schemas/learning-loop/index.js",
+      "types": "./dist/schemas/learning-loop/index.d.ts"
+    },
+    "./schemas/decision-model": {
+      "import": "./dist/schemas/decision-model/index.js",
+      "types": "./dist/schemas/decision-model/index.d.ts"
+    },
+    "./schemas/attribution-metrics": {
+      "import": "./dist/schemas/attribution-metrics/index.js",
+      "types": "./dist/schemas/attribution-metrics/index.d.ts"
+    },
+    "./schemas/data-export": {
+      "import": "./dist/schemas/data-export/index.js",
+      "types": "./dist/schemas/data-export/index.d.ts"
     }
   },
   "files": [

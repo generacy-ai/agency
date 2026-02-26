@@ -7,8 +7,7 @@ import { MemberRoleSchema } from './membership.js';
 export { InviteIdSchema, generateInviteId };
 export type { InviteId } from '../../common/ids.js';
 
-// ULID regex for validation
-const ULID_REGEX = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+import { ULID_REGEX } from '../../common/ids.js';
 
 /**
  * Invite status tracking.

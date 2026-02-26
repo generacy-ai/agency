@@ -6,8 +6,7 @@ import { OrganizationIdSchema, generateOrganizationId } from '../../common/ids.j
 export { OrganizationIdSchema, generateOrganizationId };
 export type { OrganizationId } from '../../common/ids.js';
 
-// ULID regex for validation
-const ULID_REGEX = /^[0-9A-HJKMNP-TV-Z]{26}$/;
+import { ULID_REGEX } from '../../common/ids.js';
 
 /**
  * Organization slug validation.

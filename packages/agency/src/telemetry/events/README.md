@@ -9,52 +9,54 @@ Tool call telemetry enables:
 - Aggregation of tool usage statistics and success rates
 - Error categorization and analysis
 - Time-window based performance metrics
-- Anonymous metrics for privacy-preserving analytics
 
 ## Migrated from @generacy-ai/contracts
 
-This module was migrated from `@generacy-ai/contracts/telemetry/` as part of the contracts retirement effort (Issue 246-1-9).
+This module was migrated from `@generacy-ai/contracts/telemetry/` as part of the contracts retirement effort (Issue #296).
 
 ## Exports
 
-- **ToolCallEventSchema**: Schema for individual tool call events with inputs, duration, and results
-- **ToolStatsSchema**: Schema for aggregated tool statistics (total calls, success rate, avg duration)
-- **ErrorCategorySchema**: Schema for categorizing tool errors (validation, execution, timeout, permission)
+- **ToolCallEventV1** / **ToolCallEvent**: Schema for individual tool call events with inputs, duration, and results
+- **ToolStatsSchema**: Schema for runtime-aggregated tool statistics (total calls, counts, duration percentiles)
+- **ToolStatsApiSchema**: Schema for API-facing aggregated statistics (success rate, error breakdown, time windows)
+- **ErrorCategorySchema**: Schema for categorizing tool errors (validation, timeout, permission, network, internal, unknown)
 - **TimeWindowSchema**: Schema for time-based analysis windows
-- **AnonymousToolMetricSchema**: Schema for privacy-preserving tool metrics
+- **generateEventId**: ULID-based event ID generator
 
 ## Usage
 
 ```typescript
 import {
-  ToolCallEventSchema,
-  ToolStatsSchema,
-  ErrorCategory
+  ToolCallEventV1,
+  ToolStatsApiSchema,
+  ErrorCategory,
+  generateEventId,
 } from '@generacy-ai/agency';
 
 // Capture a tool call event
-const event = ToolCallEventSchema.parse({
-  id: generateId(),
-  version: '1.0.0',
+const event = ToolCallEventV1.parse({
+  id: generateEventId(),
   timestamp: new Date().toISOString(),
-  sessionId: sessionId,
-  server: 'agency-001',
-  tool: 'file.read_content',
+  toolName: 'file.read_content',
+  serverName: 'agency-001',
   inputs: { path: '/path/to/file' },
   durationMs: 45,
-  success: true
+  success: true,
 });
 
-// Track tool statistics
-const stats = ToolStatsSchema.parse({
-  tool: 'git.commit_changes',
+// API-facing aggregated statistics
+const apiStats = ToolStatsApiSchema.parse({
+  version: '1.0.0',
+  server: 'agency-001',
+  tool: 'source_control.commit_changes',
+  timeWindow: 'last_7d',
   totalCalls: 150,
   successRate: 0.98,
   avgDurationMs: 230,
-  errorCategories: {
+  errorBreakdown: {
     [ErrorCategory.VALIDATION]: 2,
-    [ErrorCategory.EXECUTION]: 1
-  }
+    [ErrorCategory.INTERNAL]: 1,
+  },
 });
 ```
 
