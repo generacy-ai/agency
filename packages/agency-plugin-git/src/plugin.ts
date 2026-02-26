@@ -78,7 +78,7 @@ export class GitPlugin implements AgencyPlugin {
     this.core = null;
   }
 
-  onModeChange?(mode: string): void {
+  onModeChange?(_mode: string): void {
     // Tools automatically filter based on mode affiliations
     // No additional action needed
   }

@@ -16,6 +16,7 @@ export interface BaseToolParams {
 // Status Tool Types
 // ============================================================================
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface StatusParams extends BaseToolParams {}
 
 export interface FileChange {

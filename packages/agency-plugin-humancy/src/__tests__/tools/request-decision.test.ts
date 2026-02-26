@@ -643,6 +643,7 @@ describe('humancy.request_decision', () => {
     });
 
     it('should handle SSE connection errors gracefully', async () => {
+      // eslint-disable-next-line require-yield
       const mockSubscribe = vi.fn().mockImplementation(async function* () {
         throw new Error('SSE connection failed');
       });

@@ -55,7 +55,7 @@ export function setVscodeModule(vsModule: typeof vscode): void {
  * Get the VS Code module reference.
  * @throws Error if module is not set
  */
-function getVscodeModule(): typeof vscode {
+function _getVscodeModule(): typeof vscode {
   if (!vscodeModule) {
     throw new Error('VS Code module not set. Call setVscodeModule first.');
   }

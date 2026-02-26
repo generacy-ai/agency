@@ -2,7 +2,7 @@
  * Parse git blame --porcelain output
  */
 
-import type { BlameResult, BlameLine } from '../types.js';
+import type { BlameResult } from '../types.js';
 
 /**
  * Parse git blame --porcelain output into BlameResult
@@ -31,7 +31,7 @@ export function parseBlame(output: string): BlameResult {
   let currentAuthor = '';
   let currentDate = '';
   let currentLineNumber = 0;
-  let hashInfoCache: Record<string, { author: string; date: string }> = {};
+  const hashInfoCache: Record<string, { author: string; date: string }> = {};
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];

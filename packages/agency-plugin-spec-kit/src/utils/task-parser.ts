@@ -26,13 +26,11 @@
  * ```
  */
 
-import type { Task, TaskGroupEntry, SubTask } from '../types/task.js';
+import type { Task, TaskGroupEntry } from '../types/task.js';
 import {
-  TASK_ID_PATTERN,
   TASK_GROUP_HEADER_PATTERN,
   PHASE_HEADER_PATTERN,
   CHECKBOX_PATTERN,
-  USER_STORY_EXTRACT_PATTERN,
   EXISTING_ISSUE_EXTRACT_PATTERN,
   PARALLEL_MARKER_PATTERN,
   DEPENDENCY_PATTERN,

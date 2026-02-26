@@ -4,7 +4,7 @@
 
 import type { AgencyTool, ToolResult } from '@generacy-ai/agency';
 import { TerseOutput, terseToMcpToolResult } from '@generacy-ai/agency';
-import { FormatSchema, zodToJsonSchema, type FormatParams } from '../schemas.js';
+import { FormatSchema, zodToJsonSchema } from '../schemas.js';
 import { detectPackageManager, isDetectionSuccess, buildCommand } from '../../pm/index.js';
 import { validateScript, formatScriptNotFoundError } from '../../scripts/index.js';
 import { exec, formatCommand } from '../../exec/index.js';

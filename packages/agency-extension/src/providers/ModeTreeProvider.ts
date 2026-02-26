@@ -1,5 +1,5 @@
 import type * as vscode from 'vscode';
-import type { ModeInfo, ModeTreeNode } from '../types/mode';
+import type { ModeInfo } from '../types/mode';
 import { ModeService } from '../services';
 import { createScopedLogger, DisposableManager } from '../utils';
 
@@ -52,7 +52,7 @@ export class ModeTreeProvider implements vscode.TreeDataProvider<ModeTreeItem> {
    * Get tree item representation.
    */
   getTreeItem(element: ModeTreeItem): vscode.TreeItem | Thenable<vscode.TreeItem> {
-    const { TreeItem, TreeItemCollapsibleState, ThemeIcon } = this._vscodeModule;
+    const { TreeItem, ThemeIcon } = this._vscodeModule;
 
     const item = new TreeItem(element.label, element.collapsibleState);
     item.id = element.modeId;

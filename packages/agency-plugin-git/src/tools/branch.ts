@@ -8,7 +8,7 @@ import type { AgencyTool, ToolResult } from '@generacy-ai/agency';
 import { TerseOutput, terseToMcpToolResult } from '@generacy-ai/agency';
 import type { GitPluginConfig } from '../config.js';
 import type { BranchParams, BranchInfo, BranchListResult } from '../types.js';
-import { execGitOrThrow, execGit } from '../utils/exec-git.js';
+import { execGitOrThrow } from '../utils/exec-git.js';
 
 export function createBranchTool(config: GitPluginConfig): AgencyTool {
   return {

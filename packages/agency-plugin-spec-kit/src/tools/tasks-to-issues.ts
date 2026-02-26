@@ -44,11 +44,10 @@ import {
   updateTasksWithIssueLinks,
   type IssueLinksMap,
 } from '../utils/task-parser.js';
-import { validateTaskDependencies, isValidTaskDAG } from '../utils/dependency.js';
+import { validateTaskDependencies } from '../utils/dependency.js';
 import {
   groupTasks,
   topologicalSort,
-  buildIssueBodyForGroup,
   convertGroupEntriesToTaskGroups,
   type SortableTaskGroup,
 } from '../utils/grouping.js';
@@ -56,7 +55,6 @@ import {
   checkGhCli,
   createIssue,
   getIssueLabels,
-  searchIssues,
   findExistingIssue,
   type GhCliError,
 } from '../utils/github-cli.js';
@@ -289,7 +287,7 @@ function createIssuePlans(groups: SortableTaskGroup[]): IssuePlan[] {
  */
 export function createTasksToIssuesTool(
   config: SpecKitConfig,
-  core: AgencyCoreAPI
+  _core: AgencyCoreAPI
 ): AgencyTool {
   return {
     name: 'spec_kit.tasks_to_issues',
@@ -563,13 +561,13 @@ export function createTasksToIssuesTool(
       }
 
       // Step 12: Update tasks.md with issue links
-      let tasksUpdated = false;
+      let _tasksUpdated = false;
       if (issueLinks.size > 0) {
         try {
           const updatedContent = updateTasksWithIssueLinks(tasksContent, issueLinks);
           if (updatedContent !== tasksContent) {
             await writeFile(tasksPath, updatedContent);
-            tasksUpdated = true;
+            _tasksUpdated = true;
           }
         } catch {
           // Log warning but don't fail

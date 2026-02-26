@@ -352,7 +352,7 @@ export class AgencyServer {
    * This is called by plugins via CoreAPI. Override or extend
    * to integrate with telemetry providers.
    */
-  private recordTelemetryEvent(event: TelemetryEvent): void {
+  private recordTelemetryEvent(_event: TelemetryEvent): void {
     // Base implementation does nothing
     // Can be extended to integrate with TelemetryManager
   }

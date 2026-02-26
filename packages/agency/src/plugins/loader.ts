@@ -19,7 +19,6 @@ import type { ChannelManager } from '../channels/manager.js';
 import type { ModeManager } from '../modes/manager.js';
 import type {
   AgencyPlugin,
-  AgencyCoreAPI,
   DiscoveredPlugin,
   PluginManifest,
   PluginState,
@@ -248,7 +247,7 @@ export class PluginLoader {
    */
   async loadPlugin(
     plugin: AgencyPlugin | LegacyAgencyPlugin,
-    pluginOptions?: Record<string, unknown>
+    _pluginOptions?: Record<string, unknown>
   ): Promise<void> {
     const pluginId = this.getPluginId(plugin);
 

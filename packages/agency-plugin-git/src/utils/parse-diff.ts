@@ -2,7 +2,7 @@
  * Parse git diff output
  */
 
-import type { DiffResult, DiffFileStat } from '../types.js';
+import type { DiffResult } from '../types.js';
 
 /**
  * Parse git diff --numstat output into DiffResult

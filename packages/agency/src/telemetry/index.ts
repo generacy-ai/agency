@@ -5,9 +5,17 @@ export {
   TelemetryFilterSchema,
   StatsFilterSchema,
   ToolStatsSchema,
+  TimeWindow,
+  TimeWindowSchema,
+  ErrorCategory,
+  ErrorCategorySchema,
+  ToolStatsApiSchema,
+  ULID_REGEX,
+  generateEventId,
   type TelemetryFilter,
   type StatsFilter,
   type ToolStats,
+  type ToolStatsApi,
 } from './schemas.js';
 
 // Interfaces and types

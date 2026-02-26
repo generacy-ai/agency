@@ -100,7 +100,7 @@ interface ActionResultMessage {
 /**
  * All outgoing message types.
  */
-type OutgoingMessage = ContainerDataMessage | LogDataMessage | ActionResultMessage;
+type _OutgoingMessage = ContainerDataMessage | LogDataMessage | ActionResultMessage;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Panel Tracking
@@ -275,7 +275,7 @@ export class ContainerDetailPanel extends WebviewBase {
         break;
 
       default:
-        log.debug(`Ignoring unknown message type: ${msg.type}`);
+        log.debug(`Ignoring unknown message type: ${(msg as { type: string }).type}`);
     }
   }
 

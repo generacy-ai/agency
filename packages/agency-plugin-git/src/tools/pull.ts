@@ -8,7 +8,7 @@ import type { AgencyTool, ToolResult } from '@generacy-ai/agency';
 import { TerseOutput, terseToMcpToolResult } from '@generacy-ai/agency';
 import type { GitPluginConfig } from '../config.js';
 import type { PullParams } from '../types.js';
-import { execGitOrThrow, execGit, classifyError } from '../utils/exec-git.js';
+import { execGit, classifyError } from '../utils/exec-git.js';
 import { parseConflictsFromFiles, getConflictedFilesFromStatus } from '../utils/conflict-parser.js';
 import { ConflictError } from '../errors/index.js';
 

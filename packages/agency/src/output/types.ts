@@ -4,6 +4,9 @@
  * These types are platform-agnostic. Convert to MCP format at the server boundary.
  */
 
+// Re-export TerseToolResult from the canonical Zod schema
+export type { TerseToolResult } from '../schemas/tool-result.js';
+
 /**
  * Output verbosity levels for terse output pattern.
  */
@@ -16,18 +19,6 @@ export enum Verbosity {
 
   /** Full output always (debugging mode) */
   VERBOSE = 'verbose',
-}
-
-/**
- * Platform-agnostic tool result type.
- * Convert to MCP CallToolResult at the MCP server boundary.
- */
-export interface TerseToolResult {
-  /** Whether the operation succeeded */
-  success: boolean;
-
-  /** Human-readable output message */
-  output: string;
 }
 
 /**

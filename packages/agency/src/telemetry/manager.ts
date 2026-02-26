@@ -1,4 +1,3 @@
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { TelemetryBus } from './bus.js';
 import type { TelemetryStorageProvider } from './types.js';
 import type { TelemetryConfig } from './config.js';

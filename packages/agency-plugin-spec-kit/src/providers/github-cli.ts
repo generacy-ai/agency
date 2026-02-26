@@ -140,7 +140,7 @@ interface RepoContext {
 /**
  * Options for gh CLI execution.
  */
-interface GhExecOptions {
+interface _GhExecOptions {
   /** Working directory for the command */
   cwd?: string;
   /** Maximum retry attempts for transient errors */

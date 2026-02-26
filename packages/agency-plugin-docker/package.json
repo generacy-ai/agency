@@ -2,6 +2,11 @@
   "name": "@generacy-ai/agency-plugin-docker",
   "version": "0.0.0",
   "description": "Docker operations plugin for Agency",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/generacy-ai/agency.git",
+    "directory": "packages/agency-plugin-docker"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -23,6 +28,9 @@
   "keywords": ["mcp", "agent", "generacy", "docker"],
   "author": "Generacy AI",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "peerDependencies": {
     "@generacy-ai/agency": "workspace:*"
   },

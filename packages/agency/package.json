@@ -2,6 +2,11 @@
   "name": "@generacy-ai/agency",
   "version": "0.0.0",
   "description": "Core agent infrastructure for Generacy platform",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/generacy-ai/agency.git",
+    "directory": "packages/agency"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -16,12 +21,42 @@
     },
     "./cli": {
       "import": "./dist/cli.js"
+    },
+    "./schemas/extension-comms": {
+      "import": "./dist/schemas/extension-comms/index.js",
+      "types": "./dist/schemas/extension-comms/index.d.ts"
+    },
+    "./schemas/github-app": {
+      "import": "./dist/schemas/github-app/index.js",
+      "types": "./dist/schemas/github-app/index.d.ts"
+    },
+    "./schemas/knowledge-store": {
+      "import": "./dist/schemas/knowledge-store/index.js",
+      "types": "./dist/schemas/knowledge-store/index.d.ts"
+    },
+    "./schemas/learning-loop": {
+      "import": "./dist/schemas/learning-loop/index.js",
+      "types": "./dist/schemas/learning-loop/index.d.ts"
+    },
+    "./schemas/decision-model": {
+      "import": "./dist/schemas/decision-model/index.js",
+      "types": "./dist/schemas/decision-model/index.d.ts"
+    },
+    "./schemas/attribution-metrics": {
+      "import": "./dist/schemas/attribution-metrics/index.js",
+      "types": "./dist/schemas/attribution-metrics/index.d.ts"
+    },
+    "./schemas/data-export": {
+      "import": "./dist/schemas/data-export/index.js",
+      "types": "./dist/schemas/data-export/index.d.ts"
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
+    "generate:schemas": "tsx src/scripts/generate-tool-result-schema.ts && tsx src/scripts/generate-tool-naming-schemas.ts",
+    "prebuild": "pnpm generate:schemas",
     "build": "tsc",
     "test": "vitest run",
     "lint": "eslint src",
@@ -35,19 +70,25 @@
   ],
   "author": "Generacy AI",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
-    "@generacy-ai/latency": "link:/workspaces/latency/packages/latency",
+    "@generacy-ai/latency": "^0.1.0",
     "@modelcontextprotocol/sdk": "^1.5.0",
     "minimatch": "^10.0.0",
     "semver": "^7.6.0",
     "simple-git": "^3.30.0",
     "yaml": "^2.8.2",
+    "ulid": "^3.0.2",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^20.17.0",
     "@types/semver": "^7.5.8",
+    "tsx": "^4.19.0",
     "typescript": "^5.7.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "zod-to-json-schema": "^3.23.5"
   }
 }

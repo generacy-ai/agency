@@ -2,7 +2,7 @@
  * Tests for DecisionStore
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { DecisionStore } from '../../storage/decision-store.js';
 import type { DecisionRecord, DecisionOutcome } from '../../types/index.js';
 

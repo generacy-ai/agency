@@ -95,6 +95,9 @@ export { AgencyError, ErrorCodes, type ErrorCode } from './errors/index.js';
 // Telemetry - Tool call interception and event capture
 export * from './telemetry/index.js';
 
+// Schemas - P1 schemas (tool result, platform API, common)
+export * from './schemas/index.js';
+
 // Output - Terse output pattern utilities
 export {
   TerseOutput,

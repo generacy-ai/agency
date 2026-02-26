@@ -22,7 +22,6 @@
  */
 
 import type { Task, TaskGroup, GroupingStrategy, TaskGroupEntry } from '../types/task.js';
-import type { DependencyItem } from './dependency.js';
 
 // ============================================================================
 // Types

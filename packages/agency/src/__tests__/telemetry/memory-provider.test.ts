@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MemoryStorageProvider } from '../../telemetry/providers/memory.js';
-import type { ToolCallEvent } from '../../telemetry/schemas.js';
+import { generateEventId, type ToolCallEvent } from '../../telemetry/schemas.js';
 
 function createTestEvent(overrides: Partial<ToolCallEvent> = {}): ToolCallEvent {
   return {
-    id: globalThis.crypto.randomUUID(),
+    id: generateEventId(),
     timestamp: new Date().toISOString(),
     toolName: 'test-tool',
     serverName: 'test-server',
