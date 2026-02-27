@@ -648,6 +648,142 @@ describe('McpClientService', () => {
     });
   });
 
+  describe('Plugin Metadata', () => {
+    let service: McpClientService;
+
+    beforeEach(async () => {
+      service = McpClientService.getInstance();
+      await service.initialize(mockVscode);
+      await service.connect({ containerId: 'test-container' });
+    });
+
+    it('should call executeTool with agency.plugins_describe', async () => {
+      mockClientCallTool.mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify([
+          { id: 'plugin-1', name: 'Plugin One', description: 'A plugin', version: '1.0.0' },
+        ]) }],
+        isError: false,
+      });
+
+      const metadata = await service.getPluginMetadata();
+
+      expect(mockClientCallTool).toHaveBeenCalledWith({
+        name: 'agency.plugins_describe',
+        arguments: {},
+      });
+      expect(metadata).toHaveLength(1);
+      expect(metadata[0].id).toBe('plugin-1');
+      expect(metadata[0].name).toBe('Plugin One');
+    });
+
+    it('should parse valid metadata response', async () => {
+      mockClientCallTool.mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify([
+          {
+            id: 'plugin-1',
+            name: 'Plugin One',
+            description: 'A test plugin',
+            version: '2.0.0',
+            settingsSchema: { type: 'object', properties: { key: { type: 'string' } } },
+          },
+          {
+            id: 'plugin-2',
+            name: 'Plugin Two',
+          },
+        ]) }],
+        isError: false,
+      });
+
+      const metadata = await service.getPluginMetadata();
+
+      expect(metadata).toHaveLength(2);
+      expect(metadata[0]).toEqual({
+        id: 'plugin-1',
+        name: 'Plugin One',
+        description: 'A test plugin',
+        version: '2.0.0',
+        settingsSchema: { type: 'object', properties: { key: { type: 'string' } } },
+      });
+      expect(metadata[1]).toEqual({
+        id: 'plugin-2',
+        name: 'Plugin Two',
+        description: undefined,
+        version: undefined,
+        settingsSchema: undefined,
+      });
+    });
+
+    it('should return empty array when disconnected', async () => {
+      await service.disconnect();
+      service.setReconnectConfig({ enabled: false });
+
+      // getPluginMetadata should handle disconnected state gracefully
+      const metadata = await service.getPluginMetadata();
+      expect(metadata).toEqual([]);
+    });
+
+    it('should return empty array when tool call fails', async () => {
+      mockClientCallTool.mockResolvedValue({
+        content: [{ type: 'text', text: 'Tool not found' }],
+        isError: true,
+      });
+
+      const metadata = await service.getPluginMetadata();
+      expect(metadata).toEqual([]);
+    });
+
+    it('should return empty array when tool call throws', async () => {
+      mockClientCallTool.mockRejectedValue(new Error('Network error'));
+
+      const metadata = await service.getPluginMetadata();
+      expect(metadata).toEqual([]);
+    });
+
+    it('should handle response with plugins wrapper object', async () => {
+      mockClientCallTool.mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify({
+          plugins: [
+            { id: 'wrapped-plugin', name: 'Wrapped Plugin' },
+          ],
+        }) }],
+        isError: false,
+      });
+
+      const metadata = await service.getPluginMetadata();
+
+      expect(metadata).toHaveLength(1);
+      expect(metadata[0].id).toBe('wrapped-plugin');
+    });
+
+    it('should filter out entries without id or name', async () => {
+      mockClientCallTool.mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify([
+          { id: 'valid', name: 'Valid Plugin' },
+          { id: 'no-name' },
+          { name: 'No ID' },
+          null,
+          42,
+        ]) }],
+        isError: false,
+      });
+
+      const metadata = await service.getPluginMetadata();
+
+      expect(metadata).toHaveLength(1);
+      expect(metadata[0].id).toBe('valid');
+    });
+
+    it('should return empty array for invalid JSON response', async () => {
+      mockClientCallTool.mockResolvedValue({
+        content: [{ type: 'text', text: 'not-valid-json{{{' }],
+        isError: false,
+      });
+
+      const metadata = await service.getPluginMetadata();
+      expect(metadata).toEqual([]);
+    });
+  });
+
   describe('Error Handling', () => {
     it('should throw when connecting without initialization', async () => {
       const service = McpClientService.getInstance();

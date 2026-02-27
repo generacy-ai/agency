@@ -222,15 +222,18 @@ describe('ToolTreeProvider', () => {
   });
 
   describe('getChildren', () => {
-    it('should return status header when disconnected', async () => {
+    it('should return status header and connect prompt when disconnected', async () => {
       const provider = new ToolTreeProvider();
       await provider.initialize(mockVscode);
 
       const children = provider.getChildren();
 
-      expect(children).toHaveLength(1);
+      expect(children).toHaveLength(2);
       expect(children[0].type).toBe('status');
       expect((children[0] as { connectionStatus: string }).connectionStatus).toBe('disconnected');
+      expect(children[1].type).toBe('message');
+      expect((children[1] as { text: string }).text).toBe('Connect to MCP server to see tools');
+      expect((children[1] as { command: string }).command).toBe('agency.connectMcp');
     });
 
     it('should return status header and namespaces when connected', async () => {
@@ -289,6 +292,35 @@ describe('ToolTreeProvider', () => {
 
       const children = provider.getChildren(toolItem);
       expect(children).toEqual([]);
+    });
+
+    it('should return connect prompt with plug icon when disconnected', async () => {
+      const provider = new ToolTreeProvider();
+      await provider.initialize(mockVscode);
+
+      const children = provider.getChildren();
+      const messageItem = children.find((c) => c.type === 'message');
+      expect(messageItem).toBeDefined();
+
+      const treeItem = provider.getTreeItem(messageItem!);
+      expect(treeItem.label).toBe('Connect to MCP server to see tools');
+      expect(treeItem.command?.command).toBe('agency.connectMcp');
+      expect((treeItem.iconPath as { id: string }).id).toBe('plug');
+    });
+
+    it('should show connect prompt in error state', async () => {
+      const mockService = McpClientService.getInstance() as ReturnType<typeof McpClientService.getInstance> & {
+        _setConnectionStatus: (status: McpConnectionStatus) => void;
+      };
+      mockService._setConnectionStatus('error');
+
+      const provider = new ToolTreeProvider();
+      await provider.initialize(mockVscode);
+
+      const children = provider.getChildren();
+      const messageItem = children.find((c) => c.type === 'message');
+      expect(messageItem).toBeDefined();
+      expect((messageItem as { text: string }).text).toBe('Connect to MCP server to see tools');
     });
 
     it('should return empty array for status items', async () => {

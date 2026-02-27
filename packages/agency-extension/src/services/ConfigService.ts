@@ -306,7 +306,7 @@ export class ConfigService {
     // Check for schema field migration before normal loading.
     // Old-format fields (e.g. `inherits`, `tools`, `mcpCommand`) would be
     // silently dropped by Zod validation, so we must migrate the raw JSON first.
-    const migrated = await this._migrateSchemaFieldsIfNeeded(vscodeModule);
+    await this._migrateSchemaFieldsIfNeeded(vscodeModule);
 
     // Load or create config
     this._config = await initializeConfig(vscodeModule, DEFAULT_CONFIG_PATH);

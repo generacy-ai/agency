@@ -287,7 +287,7 @@ async function checkMcpConnection(): Promise<CheckResult> {
 /**
  * Check 4: Container is running (if configured).
  */
-async function checkContainer(vscodeModule: typeof vscode): Promise<CheckResult> {
+async function checkContainer(_vscodeModule: typeof vscode): Promise<CheckResult> {
   const name = 'Container';
 
   try {

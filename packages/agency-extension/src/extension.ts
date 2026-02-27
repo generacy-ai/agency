@@ -138,7 +138,7 @@ async function autoConnectMcpServer(
   } else if (settingCommand) {
     // Parse the setting command into command + args (e.g. "npx @generacy-ai/agency" → "npx", ["@generacy-ai/agency"])
     const parts = settingCommand.split(/\s+/);
-    mcpCommand = parts[0];
+    mcpCommand = parts[0]!;
     mcpArgs = parts.slice(1);
   } else {
     mcpCommand = 'npx';

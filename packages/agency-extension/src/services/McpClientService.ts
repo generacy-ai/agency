@@ -401,15 +401,15 @@ export class McpClientService {
 
       return plugins
         .filter((p: unknown): p is Record<string, unknown> =>
-          typeof p === 'object' && p !== null && typeof (p as Record<string, unknown>).id === 'string' && typeof (p as Record<string, unknown>).name === 'string'
+          typeof p === 'object' && p !== null && typeof (p as Record<string, unknown>)['id'] === 'string' && typeof (p as Record<string, unknown>)['name'] === 'string'
         )
         .map((p) => ({
-          id: p.id as string,
-          name: p.name as string,
-          description: typeof p.description === 'string' ? p.description : undefined,
-          version: typeof p.version === 'string' ? p.version : undefined,
-          settingsSchema: typeof p.settingsSchema === 'object' && p.settingsSchema !== null
-            ? (p.settingsSchema as PluginMetadata['settingsSchema'])
+          id: p['id'] as string,
+          name: p['name'] as string,
+          description: typeof p['description'] === 'string' ? p['description'] : undefined,
+          version: typeof p['version'] === 'string' ? p['version'] : undefined,
+          settingsSchema: typeof p['settingsSchema'] === 'object' && p['settingsSchema'] !== null
+            ? (p['settingsSchema'] as PluginMetadata['settingsSchema'])
             : undefined,
         }));
     } catch {

@@ -201,8 +201,8 @@ export class PluginConfigPanel extends WebviewBase {
         this._manifest = {
           id: metadata.id,
           name: metadata.name,
-          description: metadata.description,
-          version: metadata.version,
+          description: metadata.description ?? this._manifest?.description ?? '',
+          version: metadata.version ?? this._manifest?.version ?? '0.0.0',
           tools: this._manifest?.tools ?? [],
           ...this._manifest,
           settingsSchema: metadata.settingsSchema,

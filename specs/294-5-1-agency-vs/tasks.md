@@ -217,14 +217,14 @@
 - Reload: refresh webview content from disk
 - Keep: do nothing (user continues editing)
 
-### T024 Write conflict detection tests
+### T024 [DONE] Write conflict detection tests
 **File**: `packages/agency-extension/src/__tests__/services/ConfigService.test.ts`
 - Test: external file change with no dirty webview → no conflict event
 - Test: external file change with dirty webview → conflict event fired
 - Test: hash updated after save
 - Test: hash updated after load
 
-### T025 [P] Write plugin metadata tests
+### T025 [DONE] [P] Write plugin metadata tests
 **File**: `packages/agency-extension/src/__tests__/services/McpClientService.test.ts`
 - Test: `getPluginMetadata()` calls `executeTool('agency.plugins_describe', {})`
 - Test: parses valid metadata response
@@ -237,24 +237,24 @@
 
 **Goal**: Handle disconnected states, add extension icon (Q13, Q11).
 
-### T026 [P] Add disconnected message to ToolTreeProvider
+### T026 [DONE] [P] Add disconnected message to ToolTreeProvider
 **File**: `packages/agency-extension/src/providers/ToolTreeProvider.ts`
 - When MCP is disconnected: return a single tree item "Connect to MCP server to see tools"
 - Set click command to `COMMANDS.CONNECT_MCP`
 - Use `ThemeIcon('plug')` for the icon
 - Ensure the message replaces the empty state (not additional to status header)
 
-### T027 [P] Generate extension icon
+### T027 [DONE] [P] Generate extension icon
 **Files**:
 - `packages/agency-extension/media/icon.png` (new file — 128x128 PNG)
 - Convert from `media/icons/agency.svg` (or `media/icons/icon.png.svg`)
 - Use `sharp`, `resvg`, or manual export to generate 128x128 PNG
 
-### T028 Add icon field to package.json
+### T028 [DONE] Add icon field to package.json
 **File**: `packages/agency-extension/package.json`
 - Add `"icon": "media/icon.png"` to root
 
-### T029 Update ToolTreeProvider tests
+### T029 [DONE] Update ToolTreeProvider tests
 **File**: `packages/agency-extension/src/__tests__/providers/ToolTreeProvider.test.ts`
 - Add test: disconnected state shows "Connect to MCP server to see tools" item
 - Add test: click on disconnect item triggers `CONNECT_MCP` command
@@ -266,7 +266,7 @@
 
 **Goal**: Fix skipped tests, ensure new code is covered (Q9).
 
-### T030 Fix extension.test.ts
+### T030 [DONE] Fix extension.test.ts
 **File**: `packages/agency-extension/src/__tests__/extension.test.ts`
 - Audit the "should register commands" test against actual registered command IDs
 - Fix VS Code API mock to properly handle:
@@ -280,12 +280,12 @@
 - Verify `activate()` initializes all services
 - Verify `deactivate()` cleans up state
 
-### T031 Remove extension.test.ts exclusion from test script
+### T031 [DONE] Remove extension.test.ts exclusion from test script
 **File**: `packages/agency-extension/package.json`
 - Remove `--exclude 'src/__tests__/extension.test.ts'` from test script
 - Keep `--exclude 'src/__tests__/services/ModeService.test.ts'` (deferred to post-MVP per Q9)
 
-### T032 Run full test suite and fix regressions
+### T032 [DONE] Run full test suite and fix regressions
 **Files**: All test files
 - Run `pnpm --filter @generacy-ai/agency-extension test`
 - Fix any test failures caused by schema changes (Phase 1 cascading updates)
@@ -298,7 +298,7 @@
 
 **Goal**: Prepare for Marketplace publishing (Q10, Q11).
 
-### T033 [P] Update package.json for Marketplace
+### T033 [DONE] [P] Update package.json for Marketplace
 **File**: `packages/agency-extension/package.json`
 - Verify/add `"icon": "media/icon.png"` (from T028)
 - Add `"galleryBanner": { "color": "#1e1e1e", "theme": "dark" }`
@@ -306,7 +306,7 @@
 - Add `"pricing": "Free"`
 - Verify publisher is `"generacy-ai"`
 
-### T034 [P] Verify .vscodeignore
+### T034 [DONE] [P] Verify .vscodeignore
 **File**: `packages/agency-extension/.vscodeignore`
 - Verify `src/` is excluded (only `dist/` ships)
 - Verify `node_modules/` is excluded
@@ -314,13 +314,13 @@
 - Verify `vitest.config.ts`, `tsconfig.json`, `esbuild.config.mjs` are excluded
 - Verify `media/` is included (icons needed)
 
-### T035 [P] Confirm zero telemetry
+### T035 [DONE] [P] Confirm zero telemetry
 **Files**: All source files
 - Search codebase for any telemetry imports (`@vscode/extension-telemetry`, `TelemetryService`, etc.)
 - Confirm no outbound network calls exist outside MCP protocol
 - Document finding (pass/fail) in PR description
 
-### T036 Add CI publish step
+### T036 [DONE] Add CI publish step
 **File**: `.github/workflows/` (existing CI workflow)
 - Add conditional publish step for `develop` branch:
   ```yaml
