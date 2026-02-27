@@ -14,6 +14,7 @@ export type {
   PluginManifest,
   PluginState,
   PluginInfo,
+  PluginMetadata,
   JsonSchemaDefinition,
   JsonSchemaProperty,
 } from './plugin';
@@ -56,6 +57,7 @@ export type {
   ContainerLogEntry,
   ContainerLogOptions,
   ContainerDiscoverySource,
+  ConnectionConfig,
   ContainerConfig,
   ContainerStateEvent,
 } from './container';
@@ -84,3 +86,6 @@ export type {
 } from './mcp';
 
 export { DEFAULT_RECONNECT_CONFIG } from './mcp';
+
+// Config types
+export type { ConfigConflictEvent } from '../services/ConfigService';

@@ -41,6 +41,10 @@ export const COMMANDS = {
   STOP_CONTAINER: 'agency.stopContainer',
   REBUILD_CONTAINER: 'agency.rebuildContainer',
   VIEW_CONTAINER_LOGS: 'agency.viewContainerLogs',
+
+  // Setup commands
+  INIT: 'agency.init',
+  VERIFY_SETUP: 'agency.verifySetup',
 } as const;
 
 /** Mode command identifiers (alias for convenient access) */
@@ -55,6 +59,7 @@ export const CONFIG_KEYS = {
   CONFIG_PATH: 'agency.configPath',
   AUTO_CONNECT: 'agency.autoConnect',
   CURRENT_MODE: 'agency.currentMode',
+  MCP_SERVER_COMMAND: 'agency.mcpServerCommand',
 } as const;
 
 /** Default configuration values */

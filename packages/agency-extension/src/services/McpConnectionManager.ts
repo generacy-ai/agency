@@ -1,7 +1,7 @@
 import type * as vscode from 'vscode';
 import type { ContainerService } from './ContainerService';
 import type { McpClientService } from './McpClientService';
-import type { ContainerStateEvent, ContainerStatus } from '../types';
+import type { ConnectionConfig, ContainerStateEvent, ContainerStatus } from '../types';
 import { createScopedLogger, DisposableManager } from '../utils';
 
 const log = createScopedLogger('McpConnectionManager');
@@ -25,11 +25,8 @@ export interface McpContainerAssociation {
   /** Error message from the last failed connection attempt */
   error?: string;
 
-  /** MCP server command to run in the container */
-  mcpCommand: string;
-
-  /** Arguments for the MCP server command */
-  mcpArgs: string[];
+  /** MCP connection configuration (command, args, env) */
+  connection?: ConnectionConfig;
 }
 
 /**
@@ -245,17 +242,12 @@ export class McpConnectionManager {
     containerId: string,
     options: {
       autoConnect?: boolean;
-      mcpCommand?: string;
-      mcpArgs?: string[];
+      connection?: ConnectionConfig;
     } = {}
   ): Promise<void> {
     this._ensureInitialized();
 
-    const {
-      autoConnect = true,
-      mcpCommand = 'node',
-      mcpArgs = ['/workspaces/agency/packages/agency/dist/cli.js'],
-    } = options;
+    const { autoConnect = true, connection } = options;
 
     // Check if already associated
     const existing = this._associations.get(containerId);
@@ -265,8 +257,7 @@ export class McpConnectionManager {
         existing.autoConnect = autoConnect;
         log.debug(`Updated auto-connect for container ${containerId}: ${autoConnect}`);
       }
-      existing.mcpCommand = mcpCommand;
-      existing.mcpArgs = mcpArgs;
+      existing.connection = connection;
       return;
     }
 
@@ -275,8 +266,7 @@ export class McpConnectionManager {
       containerId,
       isConnected: false,
       autoConnect,
-      mcpCommand,
-      mcpArgs,
+      connection,
     };
     this._associations.set(containerId, association);
     log.info(`Associated container ${containerId} for MCP connection management`);
@@ -478,12 +468,15 @@ export class McpConnectionManager {
     const wasConnected = association.isConnected;
     association.lastAttempt = Date.now();
 
+    const command = association.connection?.command ?? 'npx';
+    const args = association.connection?.args ?? ['@generacy-ai/agency'];
+
     try {
       await this._mcpService.connect({
         transport: 'docker-exec',
         containerId,
-        command: association.mcpCommand,
-        args: association.mcpArgs,
+        command,
+        args,
       });
       association.isConnected = true;
       association.error = undefined;

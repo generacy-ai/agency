@@ -122,7 +122,7 @@ describe('ConfigFile', () => {
       const validConfig: AgencyConfig = {
         version: '1.0.0',
         plugins: [{ id: 'test-plugin', enabled: true, settings: {} }],
-        modes: [{ id: 'default', name: 'Default', tools: [] }],
+        modes: [{ id: 'default', name: 'Default', includedTools: [], excludedTools: [] }],
         containers: [],
       };
       setFileContent('/workspace/.agency/agency.config.json', JSON.stringify(validConfig));

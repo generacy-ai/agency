@@ -14,6 +14,8 @@ import {
   initializeModeCommands,
   registerContainerCommands,
   initializeContainerCommands,
+  registerSetupCommands,
+  initializeSetupCommands,
 } from './commands';
 import type { McpConnectionOptions } from './types';
 
@@ -76,6 +78,13 @@ function registerAllCommands(
   }
   log.debug(`Registered ${containerCommandDisposables.length} container commands`);
 
+  // Register setup commands (init, verify setup)
+  const setupCommandDisposables = registerSetupCommands(vscodeModule);
+  for (const disposable of setupCommandDisposables) {
+    state.disposables.add(disposable);
+  }
+  log.debug(`Registered ${setupCommandDisposables.length} setup commands`);
+
   // All commands are now fully implemented - no stub commands needed
   const stubCommands: string[] = [
   ];
@@ -94,7 +103,11 @@ function registerAllCommands(
 
 /**
  * Auto-connect to the local MCP server if configured.
- * Reads mcpCommand/mcpArgs from the first container config or uses defaults.
+ *
+ * Uses a 3-tier fallback chain for server discovery:
+ * 1. Per-container `connection.command` / `connection.args` from agency.config.json
+ * 2. VS Code setting `agency.mcpServerCommand`
+ * 3. Final fallback: `npx @generacy-ai/agency`
  */
 async function autoConnectMcpServer(
   vscodeModule: typeof vscode,
@@ -107,9 +120,30 @@ async function autoConnectMcpServer(
   const containers = configService.getContainers();
   const containerConfig = containers[0]; // Use first container config for MCP settings
 
-  // Default to the Agency MCP server
-  const mcpCommand = containerConfig?.mcpCommand ?? 'node';
-  const mcpArgs = containerConfig?.mcpArgs ?? ['/workspaces/agency/packages/agency/dist/cli.js'];
+  // 3-tier fallback chain for MCP server command:
+  // 1. Per-container connection.command
+  const containerCommand = containerConfig?.connection?.command;
+  const containerArgs = containerConfig?.connection?.args;
+
+  // 2. VS Code setting agency.mcpServerCommand
+  const settingCommand = vscodeModule.workspace.getConfiguration('agency').get<string>('mcpServerCommand');
+
+  // 3. Final fallback: npx @generacy-ai/agency
+  let mcpCommand: string;
+  let mcpArgs: string[];
+
+  if (containerCommand) {
+    mcpCommand = containerCommand;
+    mcpArgs = containerArgs ?? [];
+  } else if (settingCommand) {
+    // Parse the setting command into command + args (e.g. "npx @generacy-ai/agency" → "npx", ["@generacy-ai/agency"])
+    const parts = settingCommand.split(/\s+/);
+    mcpCommand = parts[0]!;
+    mcpArgs = parts.slice(1);
+  } else {
+    mcpCommand = 'npx';
+    mcpArgs = ['@generacy-ai/agency'];
+  }
 
   // Get workspace folder for the MCP server working directory
   const workspaceFolders = vscodeModule.workspace.workspaceFolders;
@@ -248,6 +282,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Initialize container commands with dependencies
     initializeContainerCommands(containerService, containerTreeProvider, context.extensionUri);
+
+    // Initialize setup commands (init, verify)
+    initializeSetupCommands();
 
     // Register commands
     registerAllCommands(vscodeModule, extensionState, log);

@@ -108,3 +108,24 @@ export interface JsonSchemaProperty {
   maxLength?: number;
   pattern?: string;
 }
+
+/**
+ * Metadata for a plugin returned from the MCP server via `agency.plugins_describe`.
+ * Used to discover plugin settings schemas for rendering typed form controls.
+ */
+export interface PluginMetadata {
+  /** Unique plugin identifier */
+  id: string;
+
+  /** Human-readable plugin name */
+  name: string;
+
+  /** Plugin description */
+  description?: string;
+
+  /** Plugin version (semver) */
+  version?: string;
+
+  /** JSON Schema defining the plugin's configurable settings */
+  settingsSchema?: JsonSchemaDefinition;
+}
