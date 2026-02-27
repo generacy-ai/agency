@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type * as vscode from 'vscode';
 import {
   type AgencyConfig,
@@ -27,19 +28,163 @@ interface ConfigMigration {
 }
 
 /**
+ * Event fired when an external config file change conflicts with
+ * unsaved webview edits.
+ */
+export interface ConfigConflictEvent {
+  /** Whether the config file was changed externally */
+  externalChanges: boolean;
+  /** Whether the webview has unsaved changes */
+  webviewDirty: boolean;
+}
+
+/**
  * Registry of config migrations.
  * Add new migrations here when schema changes.
  */
 const MIGRATIONS: ConfigMigration[] = [
-  // Example migration for future use:
-  // {
-  //   fromVersion: '1.0.0',
-  //   toVersion: '1.1.0',
-  //   migrate(config) {
-  //     return { ...config, newField: 'default' };
-  //   },
-  // },
+  // Add version-based migrations here as needed.
 ];
+
+/**
+ * Check whether a raw mode object uses old-format field names.
+ */
+function isModeOldFormat(mode: Record<string, unknown>): boolean {
+  return 'inherits' in mode || ('tools' in mode && !('includedTools' in mode));
+}
+
+/**
+ * Check whether a raw container object uses old-format field names.
+ */
+function isContainerOldFormat(container: Record<string, unknown>): boolean {
+  return 'mcpCommand' in container || 'mcpArgs' in container || 'dockerComposePath' in container;
+}
+
+/**
+ * Detect whether raw parsed JSON contains old-format config fields.
+ * Checks modes for `inherits`/`tools` and containers for `mcpCommand`/`mcpArgs`/`dockerComposePath`.
+ */
+export function needsSchemaMigration(raw: Record<string, unknown>): boolean {
+  const modes = raw['modes'];
+  if (Array.isArray(modes)) {
+    for (const mode of modes) {
+      if (mode && typeof mode === 'object' && isModeOldFormat(mode as Record<string, unknown>)) {
+        return true;
+      }
+    }
+  }
+
+  const containers = raw['containers'];
+  if (Array.isArray(containers)) {
+    for (const container of containers) {
+      if (container && typeof container === 'object' && isContainerOldFormat(container as Record<string, unknown>)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Migrate a single mode object from old format to new format.
+ * - `inherits` → `parentId`
+ * - `tools` → `includedTools` (with `excludedTools: []`)
+ */
+function migrateMode(mode: Record<string, unknown>): Record<string, unknown> {
+  const migrated = { ...mode };
+
+  if ('inherits' in migrated) {
+    migrated['parentId'] = migrated['inherits'];
+    delete migrated['inherits'];
+  }
+
+  if ('tools' in migrated && !('includedTools' in migrated)) {
+    migrated['includedTools'] = migrated['tools'];
+    migrated['excludedTools'] = [];
+    delete migrated['tools'];
+  }
+
+  return migrated;
+}
+
+/**
+ * Migrate a single container object from old format to new format.
+ * - `mcpCommand` → `connection.command`
+ * - `mcpArgs` → `connection.args`
+ * - `dockerComposePath` → `devcontainerPath`
+ */
+function migrateContainer(container: Record<string, unknown>): Record<string, unknown> {
+  const migrated = { ...container };
+
+  // Migrate flat mcpCommand/mcpArgs into nested connection object
+  if ('mcpCommand' in migrated || 'mcpArgs' in migrated) {
+    const connection: Record<string, unknown> = {};
+    if ('mcpCommand' in migrated) {
+      connection['command'] = migrated['mcpCommand'];
+      delete migrated['mcpCommand'];
+    }
+    if ('mcpArgs' in migrated) {
+      connection['args'] = migrated['mcpArgs'];
+      delete migrated['mcpArgs'];
+    }
+    // Preserve any existing connection.env if somehow both old and new fields exist
+    if (migrated['connection'] && typeof migrated['connection'] === 'object') {
+      const existing = migrated['connection'] as Record<string, unknown>;
+      if (existing['env']) {
+        connection['env'] = existing['env'];
+      }
+    }
+    migrated['connection'] = connection;
+  }
+
+  // Rename dockerComposePath → devcontainerPath
+  if ('dockerComposePath' in migrated) {
+    migrated['devcontainerPath'] = migrated['dockerComposePath'];
+    delete migrated['dockerComposePath'];
+  }
+
+  return migrated;
+}
+
+/**
+ * Migrate raw config JSON from old-format fields to new-format fields.
+ * This operates on the raw parsed JSON before Zod validation.
+ *
+ * Migrations applied:
+ * - modes[].inherits → modes[].parentId
+ * - modes[].tools → modes[].includedTools + excludedTools: []
+ * - containers[].mcpCommand → containers[].connection.command
+ * - containers[].mcpArgs → containers[].connection.args
+ * - containers[].dockerComposePath → containers[].devcontainerPath
+ */
+export function migrateOldFormatConfig(raw: Record<string, unknown>): Record<string, unknown> {
+  const migrated = { ...raw };
+
+  // Migrate modes
+  const modes = migrated['modes'];
+  if (Array.isArray(modes)) {
+    migrated['modes'] = modes.map((mode) => {
+      if (mode && typeof mode === 'object') {
+        return migrateMode(mode as Record<string, unknown>);
+      }
+      return mode;
+    });
+  }
+
+  // Migrate containers
+  const containers = migrated['containers'];
+  if (Array.isArray(containers)) {
+    migrated['containers'] = containers.map((container) => {
+      if (container && typeof container === 'object') {
+        return migrateContainer(container as Record<string, unknown>);
+      }
+      return container;
+    });
+  }
+
+  return migrated;
+}
 
 /**
  * Simple event emitter for VS Code-style events.
@@ -111,6 +256,9 @@ export class ConfigService {
   private _initialized = false;
   private _disposables = new DisposableManager();
   private _onConfigChange = new EventEmitter<AgencyConfig | null>();
+  private _onConfigConflict = new EventEmitter<ConfigConflictEvent>();
+  private _lastSavedHash = '';
+  private _webviewDirty = false;
 
   /**
    * Private constructor to enforce singleton pattern.
@@ -155,6 +303,11 @@ export class ConfigService {
 
     this._vscodeModule = vscodeModule;
 
+    // Check for schema field migration before normal loading.
+    // Old-format fields (e.g. `inherits`, `tools`, `mcpCommand`) would be
+    // silently dropped by Zod validation, so we must migrate the raw JSON first.
+    const migrated = await this._migrateSchemaFieldsIfNeeded(vscodeModule);
+
     // Load or create config
     this._config = await initializeConfig(vscodeModule, DEFAULT_CONFIG_PATH);
 
@@ -167,10 +320,37 @@ export class ConfigService {
       await this._saveConfig();
     }
 
+    // Compute initial hash for conflict detection
+    this._lastSavedHash = await this._computeConfigHash(vscodeModule);
+
     // Set up file watcher for external changes
-    const watcher = watchConfig(vscodeModule, DEFAULT_CONFIG_PATH, (newConfig) => {
+    const watcher = watchConfig(vscodeModule, DEFAULT_CONFIG_PATH, async (newConfig) => {
+      // Compute hash of the new file content before any migration
+      const newHash = await this._computeConfigHash(vscodeModule);
+
+      // Detect conflict: external change while webview has unsaved edits
+      if (newHash !== this._lastSavedHash && this._webviewDirty) {
+        this._onConfigConflict.fire({
+          externalChanges: true,
+          webviewDirty: true,
+        });
+        log.warn('Config conflict detected: external change while webview is dirty');
+      }
+
+      // Update hash to reflect the new file state
+      this._lastSavedHash = newHash;
+
+      // Check raw file for old-format fields that need migration
+      const watcherMigrated = await this._migrateSchemaFieldsIfNeeded(vscodeModule);
+      if (watcherMigrated) {
+        // Re-read the newly migrated config
+        newConfig = await this._readParsedConfig(vscodeModule);
+        // Update hash after migration rewrote the file
+        this._lastSavedHash = await this._computeConfigHash(vscodeModule);
+      }
+
       if (newConfig) {
-        // Check if migration is needed for externally changed config
+        // Check if version migration is needed for externally changed config
         if (!isCompatibleVersion(newConfig.version)) {
           newConfig = this._migrateConfig(newConfig);
         }
@@ -406,15 +586,142 @@ export class ConfigService {
   }
 
   /**
+   * Event fired when a config conflict is detected.
+   * Occurs when external file changes are detected while the webview has unsaved edits.
+   */
+  get onConfigConflict(): (listener: (event: ConfigConflictEvent) => void) => vscode.Disposable {
+    return this._onConfigConflict.event;
+  }
+
+  /**
+   * Set the webview dirty state.
+   * Called by webviews when the user edits config in the UI.
+   * Cleared automatically on save.
+   *
+   * @param dirty Whether the webview has unsaved changes
+   */
+  setWebviewDirty(dirty: boolean): void {
+    this._ensureInitialized();
+    this._webviewDirty = dirty;
+  }
+
+  /**
+   * Check if the webview has unsaved changes.
+   */
+  isWebviewDirty(): boolean {
+    return this._webviewDirty;
+  }
+
+  /**
    * Dispose of the ConfigService and clean up resources.
    */
   dispose(): void {
     this._disposables.dispose();
     this._onConfigChange.dispose();
+    this._onConfigConflict.dispose();
     this._config = null;
     this._vscodeModule = null;
     this._initialized = false;
+    this._lastSavedHash = '';
+    this._webviewDirty = false;
     log.debug('ConfigService disposed');
+  }
+
+  /**
+   * Compute a SHA-256 hash of the raw config file content.
+   * Returns an empty string if the file cannot be read.
+   */
+  private async _computeConfigHash(vscodeModule: typeof vscode): Promise<string> {
+    try {
+      const workspaceFolder = vscodeModule.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        return '';
+      }
+
+      const configUri = vscodeModule.Uri.joinPath(workspaceFolder.uri, DEFAULT_CONFIG_PATH);
+      const fileData = await vscodeModule.workspace.fs.readFile(configUri);
+      const content = new TextDecoder().decode(fileData);
+      return createHash('sha256').update(content).digest('hex');
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Read the raw config file as parsed JSON (without Zod validation).
+   * Returns null if the file doesn't exist, isn't valid JSON, or if
+   * the required VS Code filesystem APIs are not available.
+   */
+  private async _readRawConfig(vscodeModule: typeof vscode): Promise<Record<string, unknown> | null> {
+    try {
+      const workspaceFolder = vscodeModule.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        return null;
+      }
+
+      const configUri = vscodeModule.Uri.joinPath(workspaceFolder.uri, DEFAULT_CONFIG_PATH);
+      const fileData = await vscodeModule.workspace.fs.readFile(configUri);
+      const content = new TextDecoder().decode(fileData);
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Read and parse config using Zod (re-read after migration).
+   */
+  private async _readParsedConfig(vscodeModule: typeof vscode): Promise<AgencyConfig | null> {
+    const raw = await this._readRawConfig(vscodeModule);
+    if (!raw) {
+      return null;
+    }
+    return parseAgencyConfig(raw);
+  }
+
+  /**
+   * Check the raw config file for old-format fields and migrate if needed.
+   * Writes the migrated config back to disk.
+   *
+   * @returns true if migration was performed, false otherwise
+   */
+  private async _migrateSchemaFieldsIfNeeded(vscodeModule: typeof vscode): Promise<boolean> {
+    const raw = await this._readRawConfig(vscodeModule);
+    if (!raw || !needsSchemaMigration(raw)) {
+      return false;
+    }
+
+    log.warn('Detected old-format config fields, migrating to new schema');
+
+    const migrated = migrateOldFormatConfig(raw);
+    const parsed = parseAgencyConfig(migrated);
+    if (!parsed) {
+      log.error('Schema migration resulted in invalid config, skipping migration');
+      return false;
+    }
+
+    // Write migrated config back to disk
+    try {
+      const workspaceFolder = vscodeModule.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        return false;
+      }
+
+      const configUri = vscodeModule.Uri.joinPath(workspaceFolder.uri, DEFAULT_CONFIG_PATH);
+      const content = JSON.stringify(migrated, null, 2);
+      const encoded = new TextEncoder().encode(content);
+
+      await vscodeModule.workspace.fs.writeFile(configUri, encoded);
+      log.info('Config file migrated to new schema format');
+      return true;
+    } catch (error) {
+      log.error('Failed to write migrated config', error);
+      return false;
+    }
   }
 
   /**
@@ -436,6 +743,11 @@ export class ConfigService {
     }
 
     await writeConfig(this._vscodeModule, DEFAULT_CONFIG_PATH, this._config);
+
+    // Update hash to match what we just wrote and clear dirty flag
+    this._lastSavedHash = await this._computeConfigHash(this._vscodeModule);
+    this._webviewDirty = false;
+
     this._onConfigChange.fire(this._config);
   }
 

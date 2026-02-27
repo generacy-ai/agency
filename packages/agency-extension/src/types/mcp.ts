@@ -71,7 +71,7 @@ export interface McpReconnectConfig {
   /** Whether auto-reconnect is enabled (default: true) */
   enabled: boolean;
 
-  /** Maximum number of reconnect attempts (default: 5) */
+  /** Maximum number of reconnect attempts (default: 10) */
   maxAttempts: number;
 
   /** Initial delay between reconnect attempts in ms (default: 1000) */
@@ -89,7 +89,7 @@ export interface McpReconnectConfig {
  */
 export const DEFAULT_RECONNECT_CONFIG: McpReconnectConfig = {
   enabled: true,
-  maxAttempts: 5,
+  maxAttempts: 10,
   initialDelay: 1000,
   maxDelay: 30000,
   backoffMultiplier: 2,

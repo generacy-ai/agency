@@ -25,7 +25,8 @@
     "development"
   ],
   "activationEvents": [
-    "workspaceContains:.agency/agency.config.json"
+    "workspaceContains:.agency/agency.config.json",
+    "onCommand:agency.init"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -148,6 +149,16 @@
         "title": "View Container Logs",
         "category": "Agency",
         "icon": "$(output)"
+      },
+      {
+        "command": "agency.init",
+        "title": "Initialize Agency",
+        "category": "Agency"
+      },
+      {
+        "command": "agency.verifySetup",
+        "title": "Verify Setup",
+        "category": "Agency"
       }
     ],
     "configuration": {
@@ -167,6 +178,11 @@
           "type": "string",
           "default": "",
           "description": "Currently active mode ID. Empty string means use default mode."
+        },
+        "agency.mcpServerCommand": {
+          "type": "string",
+          "default": "npx @generacy-ai/agency",
+          "description": "Default MCP server command. Used when no per-container connection.command is specified."
         }
       }
     },

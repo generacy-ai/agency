@@ -15,15 +15,31 @@ export type PluginConfig = z.infer<typeof PluginConfigSchema>;
 /**
  * Schema for mode configuration.
  * Modes define which tools are available and can inherit from other modes.
+ * Aligned with core server's ModeDefinition (packages/agency/src/modes/types.ts).
  */
 export const ModeConfigSchema = z.object({
   id: z.string().min(1, 'Mode ID is required'),
   name: z.string().min(1, 'Mode name is required'),
-  inherits: z.string().optional(),
-  tools: z.array(z.string()).default([]),
+  description: z.string().optional(),
+  parentId: z.string().optional(),
+  includedTools: z.array(z.string()).default([]),
+  excludedTools: z.array(z.string()).default([]),
+  isDefault: z.boolean().optional(),
 });
 
 export type ModeConfig = z.infer<typeof ModeConfigSchema>;
+
+/**
+ * Schema for MCP connection configuration within a container.
+ * Groups command, args, and environment for connecting to an MCP server.
+ */
+export const ConnectionConfigSchema = z.object({
+  command: z.string().min(1, 'Connection command is required'),
+  args: z.array(z.string()).optional(),
+  env: z.record(z.string()).optional(),
+});
+
+export type ConnectionConfig = z.infer<typeof ConnectionConfigSchema>;
 
 /**
  * Schema for container configuration.
@@ -33,9 +49,8 @@ export const ContainerConfigSchema = z.object({
   id: z.string().min(1, 'Container ID is required'),
   name: z.string().min(1, 'Container name is required'),
   workspacePath: z.string().min(1, 'Workspace path is required'),
-  dockerComposePath: z.string().optional(),
-  mcpCommand: z.string().optional(),
-  mcpArgs: z.array(z.string()).optional(),
+  devcontainerPath: z.string().optional(),
+  connection: ConnectionConfigSchema.optional(),
 });
 
 export type ContainerConfig = z.infer<typeof ContainerConfigSchema>;

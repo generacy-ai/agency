@@ -179,7 +179,7 @@ export class StatusBarManager {
       case 'error':
         return {
           text: 'MCP',
-          tooltip: `MCP connection error: ${status.error.message}`,
+          tooltip: `MCP connection error: ${status.error.message}\nClick to reconnect`,
           icon: 'error',
           color: 'statusBarItem.errorForeground',
           command: COMMANDS.CONNECT_MCP,

@@ -38,3 +38,10 @@ export {
   showContainerPicker,
   setVscodeModule,
 } from './container-commands';
+
+export {
+  initAgency,
+  verifySetup,
+  registerSetupCommands,
+  initializeSetupCommands,
+} from './setup-commands';

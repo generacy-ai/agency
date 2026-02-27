@@ -14,7 +14,7 @@
 
 **Goal**: Align the extension's Zod schema and TypeScript types with the core server's mode and container models (Q1, Q2).
 
-### T001 Update ModeConfigSchema Zod schema
+### T001 [DONE] Update ModeConfigSchema Zod schema
 **File**: `packages/agency-extension/src/config/ConfigSchema.ts`
 - Rename `inherits` field to `parentId` (`z.string().optional()`)
 - Split `tools` into `includedTools` (`z.array(z.string()).default([])`) and `excludedTools` (`z.array(z.string()).default([])`)
@@ -22,26 +22,26 @@
 - Add `isDefault` field (`z.boolean().optional()`)
 - Add descriptive Zod error messages (e.g., `'Mode ID is required'`)
 
-### T002 [P] Update ContainerConfigSchema Zod schema
+### T002 [DONE] [P] Update ContainerConfigSchema Zod schema
 **File**: `packages/agency-extension/src/config/ConfigSchema.ts`
 - Add `ConnectionConfigSchema` nested object: `{ command: z.string().min(1), args?: z.array(z.string()), env?: z.record(z.string()) }`
 - Replace flat `mcpCommand`/`mcpArgs` with nested `connection: ConnectionConfigSchema.optional()`
 - Rename `dockerComposePath` to `devcontainerPath`
 - Add descriptive Zod error messages
 
-### T003 Update ContainerConfig TypeScript interface
+### T003 [DONE] Update ContainerConfig TypeScript interface
 **File**: `packages/agency-extension/src/types/container.ts`
 - Add `ConnectionConfig` interface: `{ command: string; args?: string[]; env?: Record<string, string> }`
 - Update `ContainerConfig` interface: replace `mcpCommand`/`mcpArgs`/`environment` with `connection?: ConnectionConfig`
 - Rename any `dockerComposePath` references to `devcontainerPath`
 - Verify `types/mode.ts` already uses `parentId`/`includedTools`/`excludedTools` (no change expected)
 
-### T004 Update default config
+### T004 [DONE] Update default config
 **File**: `packages/agency-extension/src/config/defaults.ts`
 - Update `createDefaultConfig()` default mode: replace `tools: []` with `includedTools: ['*']`, `excludedTools: []`
 - Ensure default mode uses new field names
 
-### T005 Add schema migration logic to ConfigService
+### T005 [DONE] Add schema migration logic to ConfigService
 **File**: `packages/agency-extension/src/services/ConfigService.ts`
 - Add migration function to detect old-format configs on load
 - Migrate `modes[].inherits` → `modes[].parentId`
@@ -52,18 +52,18 @@
 - Log migration warnings via logger
 - Write migrated config back to disk after migration
 
-### T006 Update extension.ts auto-connect fallback chain
+### T006 [DONE] Update extension.ts auto-connect fallback chain
 **File**: `packages/agency-extension/src/extension.ts`
 - Update `autoConnectMcpServer()` to read `containerConfig.connection?.command` instead of `containerConfig.mcpCommand`
 - Update args to read `containerConfig.connection?.args` instead of `containerConfig.mcpArgs`
 - Implement 3-tier fallback: container `connection.command` → VS Code setting `agency.mcpServerCommand` → `npx @generacy-ai/agency`
 
-### T007 [P] Update McpConnectionManager for new container schema
+### T007 [DONE] [P] Update McpConnectionManager for new container schema
 **File**: `packages/agency-extension/src/services/McpConnectionManager.ts`
 - Update any references to `containerConfig.mcpCommand`/`mcpArgs` to use `containerConfig.connection?.command`/`connection?.args`
 - Update container-to-MCP association logic if it reads flat fields
 
-### T008 Update schema tests
+### T008 [DONE] Update schema tests
 **Files**:
 - `packages/agency-extension/src/__tests__/config/ConfigSchema.test.ts`
 - `packages/agency-extension/src/__tests__/config/defaults.test.ts`
@@ -73,7 +73,7 @@
 - Add tests for new fields: `description`, `isDefault`, `connection.env`
 - Add test for default config with `includedTools: ['*']`
 
-### T009 [P] Update service and provider tests for schema changes
+### T009 [DONE] [P] Update service and provider tests for schema changes
 **Files**:
 - `packages/agency-extension/src/__tests__/services/ConfigService.test.ts`
 - `packages/agency-extension/src/__tests__/services/ContainerService.test.ts`
@@ -88,13 +88,13 @@
 
 **Goal**: Implement `agency.init` and `agency.verifySetup` commands (Q3, Q6).
 
-### T010 Add command constants
+### T010 [DONE] Add command constants
 **File**: `packages/agency-extension/src/constants.ts`
 - Add `INIT: 'agency.init'` to `COMMANDS` object
 - Add `VERIFY_SETUP: 'agency.verifySetup'` to `COMMANDS` object
 - Add `MCP_SERVER_COMMAND: 'agency.mcpServerCommand'` to `CONFIG_KEYS` object
 
-### T011 Implement setup commands module
+### T011 [DONE] Implement setup commands module
 **File**: `packages/agency-extension/src/commands/setup-commands.ts` (new file)
 - Implement `initAgency()` command:
   - Check if `.agency/agency.config.json` exists in workspace
@@ -112,24 +112,24 @@
   - "Show Details" button opens output channel
 - Export `registerSetupCommands()` and `initializeSetupCommands()` functions
 
-### T012 Export setup commands from barrel
+### T012 [DONE] Export setup commands from barrel
 **File**: `packages/agency-extension/src/commands/index.ts`
 - Add barrel export for setup-commands module
 - Export `registerSetupCommands`, `initializeSetupCommands`
 
-### T013 Register setup commands in extension activation
+### T013 [DONE] Register setup commands in extension activation
 **File**: `packages/agency-extension/src/extension.ts`
 - Import and call `initializeSetupCommands()` during activation
 - Register setup commands via `registerSetupCommands()` in `registerAllCommands()`
 
-### T014 Update package.json for new commands and activation
+### T014 [DONE] Update package.json for new commands and activation
 **File**: `packages/agency-extension/package.json`
 - Add `"onCommand:agency.init"` to `activationEvents` array
 - Add to `contributes.commands`:
   - `{ "command": "agency.init", "title": "Initialize Agency", "category": "Agency" }`
   - `{ "command": "agency.verifySetup", "title": "Verify Setup", "category": "Agency" }`
 
-### T015 Write setup commands tests
+### T015 [DONE] Write setup commands tests
 **File**: `packages/agency-extension/src/__tests__/commands/setup-commands.test.ts` (new file)
 - Test `initAgency()`:
   - Config doesn't exist → creates directory and config file
@@ -147,11 +147,11 @@
 
 **Goal**: Align reconnection params, server discovery, and status bar behavior with spec (Q4, Q8, Q12).
 
-### T016 [P] Update reconnect max attempts
+### T016 [DONE] [P] Update reconnect max attempts
 **File**: `packages/agency-extension/src/types/mcp.ts`
 - Change `DEFAULT_RECONNECT_CONFIG.maxAttempts` from `5` to `10`
 
-### T017 [P] Add mcpServerCommand VS Code setting
+### T017 [DONE] [P] Add mcpServerCommand VS Code setting
 **File**: `packages/agency-extension/package.json`
 - Add to `contributes.configuration.properties`:
   ```json
@@ -162,7 +162,7 @@
   }
   ```
 
-### T018 Verify status bar MCP click behavior
+### T018 [DONE] Verify status bar MCP click behavior
 **Files**:
 - `packages/agency-extension/src/status/StatusBarManager.ts`
 - `packages/agency-extension/src/__tests__/status/StatusBarManager.test.ts`
@@ -171,7 +171,7 @@
 - Add/update tests confirming toggle behavior
 - Verify reconnect exhaustion shows manual "Reconnect" action in status bar
 
-### T019 Update reconnect tests
+### T019 [DONE] Update reconnect tests
 **File**: `packages/agency-extension/src/__tests__/services/McpClientService.test.ts`
 - Update tests expecting `maxAttempts: 5` to expect `10`
 - Add test verifying 10 retry attempts with exponential backoff
@@ -183,7 +183,7 @@
 
 **Goal**: Implement MCP metadata query for plugin schemas and concurrent edit conflict detection (Q5, Q7).
 
-### T020 Add getPluginMetadata to McpClientService
+### T020 [DONE] Add getPluginMetadata to McpClientService
 **File**: `packages/agency-extension/src/services/McpClientService.ts`
 - Add `getPluginMetadata(): Promise<PluginMetadata[]>` method
 - Call `executeTool('agency.plugins_describe', {})` when connected
@@ -191,14 +191,14 @@
 - Graceful fallback: catch errors, log warning, return `[]`
 - Add `PluginMetadata` type to `types/plugin.ts` if not present
 
-### T021 Update PluginConfigPanel for metadata-driven forms
+### T021 [DONE] Update PluginConfigPanel for metadata-driven forms
 **File**: `packages/agency-extension/src/views/plugins/PluginConfigPanel.ts`
 - On panel open: query `McpClientService.getPluginMetadata()`
 - If schema available for plugin: render typed form controls from schema
 - If no schema (disconnected or no metadata): fall back to JSON editor
 - Maintain existing form generation logic as fallback path
 
-### T022 Implement config conflict detection
+### T022 [DONE] Implement config conflict detection
 **File**: `packages/agency-extension/src/services/ConfigService.ts`
 - Add `_lastSavedHash: string` field (SHA-256 of config content at last read/write)
 - Update `_lastSavedHash` on every `loadConfig()` and `writeConfig()` call
@@ -208,7 +208,7 @@
 - Fire conflict event when external change detected AND webview is dirty
 - Add `setWebviewDirty(dirty: boolean)` method for webviews to call
 
-### T023 Wire conflict detection to webview UI
+### T023 [DONE] Wire conflict detection to webview UI
 **Files**:
 - `packages/agency-extension/src/views/plugins/PluginConfigPanel.ts`
 - On webview edit: call `ConfigService.setWebviewDirty(true)`

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type * as vscode from 'vscode';
-import type { PluginConfig, PluginManifest } from '../../types';
+import type { PluginConfig, PluginManifest, PluginMetadata } from '../../types';
 import { PluginConfigPanel, _clearPanels } from '../../views/plugins/PluginConfigPanel';
-import { ConfigService } from '../../services';
+import { ConfigService, McpClientService } from '../../services';
 
 // Mock the utils module
 vi.mock('../../utils', () => ({
@@ -18,9 +18,12 @@ vi.mock('../../utils', () => ({
   })),
 }));
 
-// Mock ConfigService
+// Mock services
 vi.mock('../../services', () => ({
   ConfigService: {
+    getInstance: vi.fn(),
+  },
+  McpClientService: {
     getInstance: vi.fn(),
   },
 }));
@@ -31,6 +34,7 @@ describe('PluginConfigPanel', () => {
   let mockPanel: vscode.WebviewPanel;
   let mockWebview: vscode.Webview;
   let mockConfigService: Partial<ConfigService>;
+  let mockMcpClientService: Partial<McpClientService>;
 
   const samplePlugin: PluginConfig = {
     id: 'test-plugin',
@@ -115,6 +119,7 @@ describe('PluginConfigPanel', () => {
       },
       window: {
         createWebviewPanel: vi.fn(() => mockPanel),
+        showWarningMessage: vi.fn().mockResolvedValue(undefined),
       },
     } as unknown as typeof vscode;
 
@@ -124,9 +129,17 @@ describe('PluginConfigPanel', () => {
       getPlugins: vi.fn().mockReturnValue([samplePlugin]),
       savePluginConfig: vi.fn().mockResolvedValue(undefined),
       onConfigChange: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      onConfigConflict: vi.fn().mockReturnValue({ dispose: vi.fn() }),
+      setWebviewDirty: vi.fn(),
+    };
+
+    // Create mock McpClientService - defaults to returning empty metadata
+    mockMcpClientService = {
+      getPluginMetadata: vi.fn().mockResolvedValue([]),
     };
 
     (ConfigService.getInstance as ReturnType<typeof vi.fn>).mockReturnValue(mockConfigService);
+    (McpClientService.getInstance as ReturnType<typeof vi.fn>).mockReturnValue(mockMcpClientService);
   });
 
   describe('createOrShow()', () => {
@@ -169,6 +182,201 @@ describe('PluginConfigPanel', () => {
       );
 
       expect(panel).toBeInstanceOf(PluginConfigPanel);
+    });
+
+    it('should query McpClientService for plugin metadata on open', () => {
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      expect(mockMcpClientService.getPluginMetadata).toHaveBeenCalled();
+    });
+
+    it('should query metadata again when showing existing panel', () => {
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      // Show again
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      expect(mockMcpClientService.getPluginMetadata).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('metadata-driven forms', () => {
+    it('should apply MCP metadata schema and refresh panel', async () => {
+      const mcpMetadata: PluginMetadata[] = [{
+        id: 'test-plugin',
+        name: 'Test Plugin (Server)',
+        description: 'Server-provided description',
+        version: '2.0.0',
+        settingsSchema: {
+          type: 'object',
+          properties: {
+            serverSetting: {
+              type: 'string',
+              description: 'A setting from the server',
+            },
+          },
+        },
+      }];
+
+      (mockMcpClientService.getPluginMetadata as ReturnType<typeof vi.fn>)
+        .mockResolvedValue(mcpMetadata);
+
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin
+      );
+
+      // Wait for metadata fetch to complete
+      await vi.waitFor(() => {
+        // After metadata fetch, the HTML should be refreshed with server schema
+        expect(mockWebview.html).toContain('serverSetting');
+      });
+    });
+
+    it('should use manifest schema as fallback when MCP returns no metadata', async () => {
+      (mockMcpClientService.getPluginMetadata as ReturnType<typeof vi.fn>)
+        .mockResolvedValue([]);
+
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      // Wait for metadata fetch to complete
+      await vi.waitFor(() => {
+        // Should still use manifest schema fields
+        expect(mockWebview.html).toContain('apiKey');
+        expect(mockWebview.html).toContain('timeout');
+      });
+    });
+
+    it('should handle metadata fetch failure gracefully', async () => {
+      (mockMcpClientService.getPluginMetadata as ReturnType<typeof vi.fn>)
+        .mockRejectedValue(new Error('Connection failed'));
+
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      // Wait for metadata fetch to resolve (with error)
+      await vi.waitFor(() => {
+        // Should fall back to manifest schema
+        expect(mockWebview.html).toContain('apiKey');
+      });
+    });
+
+    it('should show JSON editor when no schema and no settings', async () => {
+      (mockMcpClientService.getPluginMetadata as ReturnType<typeof vi.fn>)
+        .mockResolvedValue([]);
+
+      const emptyPlugin: PluginConfig = { id: 'empty-plugin', enabled: true, settings: {} };
+      PluginConfigPanel.createOrShow(mockVscode, mockExtensionUri, emptyPlugin);
+
+      // Wait for metadata fetch to complete
+      await vi.waitFor(() => {
+        expect(mockWebview.html).toContain('jsonEditor');
+        expect(mockWebview.html).toContain('No settings schema available');
+      });
+    });
+
+    it('should set data-mode attribute on form', async () => {
+      (mockMcpClientService.getPluginMetadata as ReturnType<typeof vi.fn>)
+        .mockResolvedValue([]);
+
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      await vi.waitFor(() => {
+        expect(mockWebview.html).toContain('data-mode="schema"');
+      });
+    });
+
+    it('should set json-editor mode when no schema is available', async () => {
+      (mockMcpClientService.getPluginMetadata as ReturnType<typeof vi.fn>)
+        .mockResolvedValue([]);
+
+      const emptyPlugin: PluginConfig = { id: 'no-schema-plugin', enabled: true, settings: {} };
+      PluginConfigPanel.createOrShow(mockVscode, mockExtensionUri, emptyPlugin);
+
+      await vi.waitFor(() => {
+        expect(mockWebview.html).toContain('data-mode="json-editor"');
+      });
+    });
+
+    it('should prefer MCP schema over manifest schema', async () => {
+      const mcpMetadata: PluginMetadata[] = [{
+        id: 'test-plugin',
+        name: 'Test Plugin',
+        settingsSchema: {
+          type: 'object',
+          properties: {
+            mcpOnlySetting: {
+              type: 'string',
+              description: 'Only from MCP',
+            },
+          },
+        },
+      }];
+
+      (mockMcpClientService.getPluginMetadata as ReturnType<typeof vi.fn>)
+        .mockResolvedValue(mcpMetadata);
+
+      // Provide a manifest with different schema
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      await vi.waitFor(() => {
+        // MCP schema should take precedence
+        expect(mockWebview.html).toContain('mcpOnlySetting');
+        expect(mockWebview.html).toContain('Only from MCP');
+      });
+    });
+
+    it('should use settings-inferred form when settings exist but no schema', async () => {
+      (mockMcpClientService.getPluginMetadata as ReturnType<typeof vi.fn>)
+        .mockResolvedValue([]);
+
+      // Plugin with settings but no manifest/schema
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin
+      );
+
+      await vi.waitFor(() => {
+        // Should infer form fields from settings values
+        expect(mockWebview.html).toContain('data-mode="settings"');
+        expect(mockWebview.html).toContain('apiKey');
+      });
     });
   });
 
@@ -265,13 +473,6 @@ describe('PluginConfigPanel', () => {
       expect(mockWebview.html).toContain('balanced');
     });
 
-    it('should show empty state when plugin has no settings and no schema', () => {
-      const emptyPlugin: PluginConfig = { id: 'empty-plugin', enabled: true, settings: {} };
-      PluginConfigPanel.createOrShow(mockVscode, mockExtensionUri, emptyPlugin);
-
-      expect(mockWebview.html).toContain('No Settings');
-    });
-
     it('should include form reset button', () => {
       PluginConfigPanel.createOrShow(
         mockVscode,
@@ -281,6 +482,17 @@ describe('PluginConfigPanel', () => {
       );
 
       expect(mockWebview.html).toContain('resetBtn');
+    });
+
+    it('should include JSON editor styles', () => {
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      expect(mockWebview.html).toContain('json-editor');
     });
   });
 
@@ -368,6 +580,112 @@ describe('PluginConfigPanel', () => {
       panel.dispose();
 
       expect(mockPanel.dispose).toHaveBeenCalled();
+    });
+  });
+
+  describe('conflict detection', () => {
+    it('should subscribe to config conflict events', () => {
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      expect(mockConfigService.onConfigConflict).toHaveBeenCalled();
+    });
+
+    it('should show warning message on conflict', async () => {
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      // Get the conflict callback registered with onConfigConflict
+      const conflictCallback = (mockConfigService.onConfigConflict as ReturnType<typeof vi.fn>).mock.calls[0][0];
+
+      // Trigger the conflict
+      await conflictCallback({ externalChanges: true, webviewDirty: true });
+
+      expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+        'Config file changed externally. Reload and lose your changes, or keep editing?',
+        'Reload',
+        'Keep'
+      );
+    });
+
+    it('should refresh webview when user chooses Reload', async () => {
+      const panel = PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      const updatedPlugin: PluginConfig = {
+        id: 'test-plugin',
+        enabled: false,
+        settings: { apiKey: 'updated', timeout: 60 },
+      };
+      (mockConfigService.getPlugin as ReturnType<typeof vi.fn>).mockReturnValue(updatedPlugin);
+      (mockVscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockResolvedValue('Reload');
+
+      // Get the conflict callback
+      const conflictCallback = (mockConfigService.onConfigConflict as ReturnType<typeof vi.fn>).mock.calls[0][0];
+
+      await conflictCallback({ externalChanges: true, webviewDirty: true });
+
+      // Should clear dirty flag
+      expect(mockConfigService.setWebviewDirty).toHaveBeenCalledWith(false);
+    });
+
+    it('should do nothing when user chooses Keep', async () => {
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      (mockVscode.window.showWarningMessage as ReturnType<typeof vi.fn>).mockResolvedValue('Keep');
+
+      // Get the conflict callback
+      const conflictCallback = (mockConfigService.onConfigConflict as ReturnType<typeof vi.fn>).mock.calls[0][0];
+
+      await conflictCallback({ externalChanges: true, webviewDirty: true });
+
+      // Should NOT clear dirty flag
+      expect(mockConfigService.setWebviewDirty).not.toHaveBeenCalledWith(false);
+    });
+
+    it('should mark webview dirty on configEdited message', () => {
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      // Get the message handler registered with onDidReceiveMessage
+      const messageHandler = (mockWebview.onDidReceiveMessage as ReturnType<typeof vi.fn>).mock.calls[0][0];
+
+      // Send configEdited message
+      messageHandler({ type: 'configEdited' });
+
+      expect(mockConfigService.setWebviewDirty).toHaveBeenCalledWith(true);
+    });
+
+    it('should include configEdited postMessage in webview scripts', () => {
+      PluginConfigPanel.createOrShow(
+        mockVscode,
+        mockExtensionUri,
+        samplePlugin,
+        sampleManifest
+      );
+
+      expect(mockWebview.html).toContain("postMessage('configEdited')");
     });
   });
 });
