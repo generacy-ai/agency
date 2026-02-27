@@ -1,208 +1,66 @@
-# Publishing Guide
+# Publishing: Agency VS Code Extension
 
-This document describes how to publish the Agency VS Code Extension to the marketplace.
+Extension ID: `generacy-ai.agency-extension`
+Publisher: `generacy-ai`
 
-## Prerequisites
+## Release Streams
 
-### 1. Visual Studio Marketplace Publisher Account
+### Preview (pre-release)
 
-1. Go to [Visual Studio Marketplace Publisher Management](https://marketplace.visualstudio.com/manage)
-2. Sign in with your Microsoft/GitHub account
-3. Create a publisher with ID `generacy-ai` (if not exists)
-4. Generate a Personal Access Token (PAT):
-   - Go to Azure DevOps: https://dev.azure.com/
-   - Click on your profile → Security → Personal Access Tokens
-   - Create new token with:
-     - Name: `VS Code Extension Publishing`
-     - Organization: All accessible organizations
-     - Scopes: **Marketplace** → **Manage**
-   - Copy the PAT (you won't see it again!)
+- **Trigger**: Push to `develop` branch (after CI passes)
+- **Workflow**: `.github/workflows/ci.yml` → `publish-extension` job
+- **Command**: `vsce publish --pre-release --no-dependencies`
+- **Behavior**:
+  - Skips if `VSCE_PAT` secret is not configured
+  - Skips if the current `package.json` version already exists on the Marketplace
+  - VSIX artifact is uploaded to GitHub Actions regardless of publish outcome
 
-### 2. GitHub Repository Secrets
+### Stable
 
-Add the PAT as a repository secret:
-1. Go to repository Settings → Secrets and variables → Actions
-2. Create new secret:
-   - Name: `VSCE_PAT`
-   - Value: Your PAT from step 1
-
-### 3. Extension Icon
-
-Before publishing, convert the SVG icon to PNG:
-```bash
-cd packages/agency-extension/media
-# Convert icon.png.svg to icon.png (128x128)
-# You can use tools like:
-# - Inkscape: inkscape icon.png.svg --export-filename=icon.png -w 128 -h 128
-# - ImageMagick: convert -background none icon.png.svg -resize 128x128 icon.png
-# - Online tool: https://cloudconvert.com/svg-to-png
-```
-
-## Publishing Methods
-
-### Method 1: Automated via GitHub Actions (Recommended)
-
-#### Create a Release Tag
-
-```bash
-# Ensure you're on the main/develop branch
-git checkout develop
-
-# Create and push a version tag
-git tag extension-v0.1.0
-git push origin extension-v0.1.0
-```
-
-The GitHub Action will automatically:
-1. Build the extension
-2. Run tests
-3. Validate the package
-4. Publish to VS Code Marketplace
-5. Create a GitHub Release with the VSIX file
-
-#### Manual Trigger
-
-You can also manually trigger the workflow:
-1. Go to Actions → Publish Extension
-2. Click "Run workflow"
-3. Enter the version number
-4. Click "Run workflow"
-
-### Method 2: Manual Publishing
-
-#### 1. Prepare the Extension
-
-```bash
-cd packages/agency-extension
-
-# Install dependencies
-pnpm install
-
-# Build
-pnpm build
-
-# Run tests
-pnpm test
-
-# Validate
-pnpm exec vsce ls
-```
-
-#### 2. Package the Extension
-
-```bash
-# Create VSIX package
-pnpm exec vsce package --no-dependencies
-
-# This creates: generacy-ai-agency-extension-0.1.0.vsix
-```
-
-#### 3. Publish to Marketplace
-
-```bash
-# Publish with your PAT
-pnpm exec vsce publish --no-dependencies -p <YOUR_PAT>
-
-# Or use environment variable
-export VSCE_PAT=<YOUR_PAT>
-pnpm exec vsce publish --no-dependencies
-```
+- **Trigger**: Push to `main` branch, after changesets publishes packages
+- **Workflow**: `.github/workflows/release.yml` → "Publish extension to Marketplace" step
+- **Command**: `vsce publish --no-dependencies`
+- **Behavior**:
+  - Runs only when `changesets/action` outputs `published == 'true'`
+  - Skips if `VSCE_PAT` secret is not configured
 
 ## Versioning
 
-Follow [Semantic Versioning](https://semver.org/):
-- **MAJOR** (1.0.0): Breaking changes
-- **MINOR** (0.1.0): New features, backwards compatible
-- **PATCH** (0.0.1): Bug fixes
+Extension versioning is managed by [changesets](https://github.com/changesets/changesets). When making extension changes, include the extension in your changeset:
 
-### Updating Version
-
-1. Update `version` in `package.json`
-2. Update `CHANGELOG.md` with release notes
-3. Commit changes
-4. Create and push tag (automated publishing)
-
-Example:
 ```bash
-# Update package.json version
-# Update CHANGELOG.md
-
-git add packages/agency-extension/package.json packages/agency-extension/CHANGELOG.md
-git commit -m "chore: Bump extension version to 0.2.0"
-git push
-
-# Tag and push
-git tag extension-v0.2.0
-git push origin extension-v0.2.0
+pnpm changeset
+# Select agency-extension when prompted
 ```
 
-## Verification
+Changesets bumps the version in `package.json`. The `private: true` field prevents changesets from attempting an npm publish — the extension is published to the VS Code Marketplace only.
 
-After publishing, verify:
+## Secrets
 
-1. **Marketplace Listing**:
-   - Visit: https://marketplace.visualstudio.com/items?itemName=generacy-ai.agency-extension
-   - Check description, screenshots, categories
-   - Verify version number
+| Secret | Purpose | Provisioned via |
+|--------|---------|-----------------|
+| `VSCE_PAT` | Personal Access Token for VS Code Marketplace publishing | [generacy#244](https://github.com/generacy-ai/generacy/issues/244) |
 
-2. **Installation Test**:
-   ```bash
-   # Install in VS Code
-   code --install-extension generacy-ai.agency-extension
+Both workflows skip gracefully with a warning if `VSCE_PAT` is not configured.
 
-   # Or search in VS Code Extensions (Ctrl+Shift+X)
-   ```
+## Manual Publishing
 
-3. **Functionality Test**:
-   - Open a project with `.agency/agency.config.json`
-   - Verify extension activates
-   - Check all views load (Plugins, Tools, Activity, Containers, Modes)
-   - Test key commands
-
-## Troubleshooting
-
-### "Publisher not found" Error
-- Ensure `publisher` in package.json matches your marketplace publisher ID
-- Verify PAT has correct scopes (Marketplace → Manage)
-
-### "Icon not found" Error
-- Ensure `media/icon.png` exists (convert from SVG)
-- File must be exactly 128x128 PNG
-- Check path in package.json `"icon": "media/icon.png"`
-
-### "Package validation failed" Error
 ```bash
-# Run validation locally
-cd packages/agency-extension
-pnpm exec vsce ls
+# Package without publishing (for testing)
+pnpm --filter agency-extension package
 
-# Check for issues in output
+# Publish to Marketplace (requires VSCE_PAT env var)
+VSCE_PAT=<your-token> pnpm --filter agency-extension publish
 ```
 
-### "Build failed" Error
-- Ensure all dependencies are installed: `pnpm install`
-- Check TypeScript compilation: `pnpm typecheck`
-- Run tests: `pnpm test`
+## Recovery Procedure
 
-## Unpublishing (Use with Caution)
+The VS Code Marketplace **does not support unpublishing individual versions**. Running `vsce unpublish` removes the entire extension from the Marketplace, not a single version.
 
-To unpublish a specific version:
-```bash
-cd packages/agency-extension
-pnpm exec vsce unpublish generacy-ai.agency-extension@0.1.0
-```
+If a bad version is published, the recovery procedure is:
 
-To unpublish entire extension:
-```bash
-cd packages/agency-extension
-pnpm exec vsce unpublish generacy-ai.agency-extension
-```
+1. **Fix the issue** on a branch and merge to the target branch (`develop` or `main`)
+2. **Bump the version** via a changeset (even a patch bump is sufficient)
+3. **Merge the changeset version PR** — the pipeline publishes the corrected version automatically
 
-**Note**: Unpublishing should be avoided when possible. Users who installed the extension will experience broken installations.
-
-## Resources
-
-- [VS Code Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension)
-- [vsce CLI Documentation](https://github.com/microsoft/vscode-vsce)
-- [Marketplace Publisher Management](https://marketplace.visualstudio.com/manage)
-- [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+The bad version remains on the Marketplace but VS Code will prompt users to update to the newer fixed version. For pre-release publishes, the next push to `develop` with a version bump replaces the bad preview.

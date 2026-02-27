@@ -12,13 +12,13 @@
 
 ## Phase 1: Changesets Integration
 
-### T001 Remove extension from changesets ignore list
+### T001 [DONE] Remove extension from changesets ignore list
 **File**: `.changeset/config.json`
 - Remove `"@generacy-ai/agency-extension"` from the `ignore` array
 - Keep `"claude-plugin-agency-spec-kit"` in the ignore list
 - Verify JSON remains valid after edit
 
-### T002 [P] Mark extension package as private
+### T002 [DONE] [P] Mark extension package as private
 **File**: `packages/agency-extension/package.json`
 - Add `"private": true` after the `"license"` field
 - This prevents `changeset publish` from attempting npm publish
@@ -29,7 +29,7 @@
 
 ## Phase 2: Preview Publishing (ci.yml)
 
-### T003 Enhance publish-extension job with PAT guard and version check
+### T003 [DONE] Enhance publish-extension job with PAT guard and version check
 **File**: `.github/workflows/ci.yml`
 - Replace the existing `publish-extension` job (lines 67-83) with the enhanced version
 - Add `VSCE_PAT` existence check step (id: `pat`) that outputs `has_pat` and emits a `::warning::` if missing
@@ -43,7 +43,7 @@
 
 ## Phase 3: Stable Publishing (release.yml)
 
-### T004 Add extension publish step to release workflow
+### T004 [DONE] Add extension publish step to release workflow
 **File**: `.github/workflows/release.yml`
 - Add `id: changesets` to the existing "Create Release PR or Publish" step
 - Add a new step "Publish extension to Marketplace" after the changesets action step
@@ -56,7 +56,7 @@
 
 ## Phase 4: VSIX Artifact Upload (Optional)
 
-### T005 Add VSIX artifact upload to CI
+### T005 [DONE] Add VSIX artifact upload to CI
 **File**: `.github/workflows/ci.yml`
 - Add "Package VSIX" step that runs `pnpm --filter @generacy-ai/agency-extension package`
 - Gate on: PAT exists OR version already published (so artifact is always available when the job runs)
@@ -70,7 +70,7 @@
 
 ## Phase 5: Documentation
 
-### T006 [P] Create PUBLISHING.md with recovery procedure
+### T006 [DONE] [P] Create PUBLISHING.md with recovery procedure
 **File**: `packages/agency-extension/PUBLISHING.md`
 - Document the two release streams (preview via `develop`, stable via `main`)
 - Document that VS Code Marketplace does NOT support unpublishing individual versions
@@ -82,17 +82,17 @@
 
 ## Phase 6: Validation
 
-### T007 Validate changesets integration locally
+### T007 [DONE] Validate changesets integration locally
 - Run `pnpm install` to verify pnpm workspace resolution is unaffected by `private: true`
 - Run `pnpm --filter @generacy-ai/agency-extension build` to verify the extension builds
 - Run `pnpm --filter @generacy-ai/agency-extension package` to verify VSIX packaging works
 
-### T008 [P] Validate workflow YAML syntax
+### T008 [DONE] [P] Validate workflow YAML syntax
 - Verify `ci.yml` is valid YAML (no syntax errors in the enhanced publish-extension job)
 - Verify `release.yml` is valid YAML (no syntax errors in the added steps)
 - Confirm step IDs, conditional expressions, and output references are syntactically correct
 
-### T009 Validate CI behavior expectations
+### T009 [DONE] Validate CI behavior expectations
 - Verify `ci-summary` does not list `publish-extension` in its `needs` array
 - Confirm the publish-extension job `if` condition triggers only on `develop` push events
 - Confirm the release job extension publish step triggers only when changesets publishes
