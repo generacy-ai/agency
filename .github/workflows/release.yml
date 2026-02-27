@@ -47,6 +47,7 @@ jobs:
       - run: pnpm build
 
       - name: Create Release PR or Publish
+        id: changesets
         uses: changesets/action@v1
         with:
           publish: pnpm changeset publish --provenance
@@ -55,3 +56,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish extension to Marketplace
+        if: steps.changesets.outputs.published == 'true' && env.VSCE_PAT != ''
+        run: pnpm --filter agency-extension exec vsce publish --no-dependencies
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
