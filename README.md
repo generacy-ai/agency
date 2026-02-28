@@ -7,7 +7,7 @@ Agent environment curation for the [Generacy](https://generacy.ai) ecosystem. Ag
 | Package | Description |
 |---------|-------------|
 | [`@generacy-ai/agency`](packages/agency/) | Core MCP server with plugin-based tool registration |
-| [`@generacy-ai/agency-extension`](packages/agency-extension/) | VS Code extension for plugin configuration and activity monitoring |
+| [`agency`](packages/agency-extension/) | VS Code extension for plugin configuration and activity monitoring |
 | [`@generacy-ai/agency-plugin-git`](packages/agency-plugin-git/) | Git source control tools |
 | [`@generacy-ai/agency-plugin-docker`](packages/agency-plugin-docker/) | Docker operations tools |
 | [`@generacy-ai/agency-plugin-firebase`](packages/agency-plugin-firebase/) | Firebase operations tools |
