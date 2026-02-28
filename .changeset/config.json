@@ -7,7 +7,5 @@
   "access": "public",
   "baseBranch": "develop",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "claude-plugin-agency-spec-kit"
-  ]
+  "ignore": []
 }
