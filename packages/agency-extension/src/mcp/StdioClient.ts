@@ -137,7 +137,7 @@ export class StdioClient implements McpClient {
 
   constructor(config: StdioClientConfig) {
     this.config = {
-      clientName: config.clientName ?? 'agency-extension',
+      clientName: config.clientName ?? 'agency',
       clientVersion: config.clientVersion ?? '0.0.0',
       defaultExecutionTimeout:
         config.defaultExecutionTimeout ?? DEFAULT_CONFIG.EXECUTION_TIMEOUT,

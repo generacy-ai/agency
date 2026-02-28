@@ -1,6 +1,6 @@
 # Publishing: Agency VS Code Extension
 
-Extension ID: `generacy-ai.agency-extension`
+Extension ID: `generacy-ai.agency`
 Publisher: `generacy-ai`
 
 ## Release Streams
@@ -30,7 +30,7 @@ Extension versioning is managed by [changesets](https://github.com/changesets/ch
 
 ```bash
 pnpm changeset
-# Select agency-extension when prompted
+# Select agency when prompted
 ```
 
 Changesets bumps the version in `package.json`. The `private: true` field prevents changesets from attempting an npm publish — the extension is published to the VS Code Marketplace only.
@@ -47,10 +47,10 @@ Both workflows skip gracefully with a warning if `VSCE_PAT` is not configured.
 
 ```bash
 # Package without publishing (for testing)
-pnpm --filter agency-extension package
+pnpm --filter agency package
 
 # Publish to Marketplace (requires VSCE_PAT env var)
-VSCE_PAT=<your-token> pnpm --filter agency-extension publish
+VSCE_PAT=<your-token> pnpm --filter agency publish
 ```
 
 ## Recovery Procedure

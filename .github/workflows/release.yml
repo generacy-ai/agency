@@ -59,6 +59,6 @@ jobs:
 
       - name: Publish extension to Marketplace
         if: steps.changesets.outputs.published == 'true' && env.VSCE_PAT != ''
-        run: pnpm --filter agency-extension exec vsce publish --no-dependencies
+        run: pnpm --filter agency exec vsce publish --no-dependencies
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}

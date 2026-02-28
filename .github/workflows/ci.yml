@@ -95,7 +95,7 @@ jobs:
         run: |
           CURRENT_VERSION=$(node -p "require('./packages/agency-extension/package.json').version")
           echo "current=$CURRENT_VERSION"
-          if npx @vscode/vsce show generacy-ai.agency-extension --json 2>/dev/null | node -e "
+          if npx @vscode/vsce show generacy-ai.agency --json 2>/dev/null | node -e "
             const data = JSON.parse(require('fs').readFileSync('/dev/stdin', 'utf8'));
             const versions = data.versions?.map(v => v.version) || [];
             process.exit(versions.includes('$CURRENT_VERSION') ? 0 : 1);
@@ -115,19 +115,19 @@ jobs:
 
       - name: Publish extension (pre-release)
         if: steps.pat.outputs.has_pat == 'true' && steps.version.outputs.exists != 'true'
-        run: pnpm --filter agency-extension publish --pre-release
+        run: pnpm --filter agency publish --pre-release
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
       - name: Package VSIX
         if: steps.pat.outputs.has_pat == 'true'
-        run: pnpm --filter agency-extension package
+        run: pnpm --filter agency package
 
       - name: Upload VSIX artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: agency-extension-vsix
+          name: agency-vsix
           path: packages/agency-extension/*.vsix
           if-no-files-found: ignore
           retention-days: 30

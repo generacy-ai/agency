@@ -485,7 +485,7 @@ export class McpClientService {
       // Create MCP client
       this._client = new Client(
         {
-          name: 'agency-extension',
+          name: 'agency',
           version: '1.0.0',
         },
         {

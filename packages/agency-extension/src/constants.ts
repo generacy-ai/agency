@@ -3,7 +3,7 @@
  */
 
 /** Extension identifier */
-export const EXTENSION_ID = 'generacy-ai.agency-extension';
+export const EXTENSION_ID = 'generacy-ai.agency';
 
 /** Extension display name */
 export const EXTENSION_NAME = 'Agency';
