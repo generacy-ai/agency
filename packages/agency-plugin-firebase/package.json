@@ -27,7 +27,7 @@
   },
   "keywords": ["mcp", "agent", "generacy", "firebase"],
   "author": "Generacy AI",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "publishConfig": {
     "access": "public"
   },
