@@ -10,13 +10,13 @@
 - B: Exported CLI utility (explicit invocation required)
 - C: Both (postinstall by default, CLI for manual re-install)
 
-**Answer**: *Pending*
+**Answer**: B — Exported CLI utility. `generacy setup build` already orchestrates the install, so an explicit invocation is more predictable than a postinstall hook.
 
 ### Q2: Command Namespace Prefix
 **Context**: The marketplace plugin exposes commands as `agency-spec-kit:analyze`, `agency-spec-kit:clarify`, etc. When copying files to `~/.claude/commands/`, the filename determines the command name. Placing files directly would create `/analyze`, `/clarify` — conflicting with any other plugin's commands.
 **Question**: Should commands be placed in `~/.claude/commands/agency-spec-kit/` (preserving the `agency-spec-kit:` namespace) or directly in `~/.claude/commands/` (flat, potentially conflicting)?
 
-**Answer**: *Pending*
+**Answer**: Subdirectory `~/.claude/commands/agency-spec-kit/` — preserves the `agency-spec-kit:` namespace, avoids conflicts, matches existing marketplace plugin behavior.
 
 ### Q3: Coexistence with Marketplace Plugin
 **Context**: During the transition period, some developers may have both the marketplace plugin and the npm package installed. If both write to `~/.claude/commands/`, there could be conflicts or duplicate commands.
@@ -26,7 +26,7 @@
 - B: Skip if files already exist (marketplace plugin takes precedence)
 - C: Overwrite only if npm package version is newer
 
-**Answer**: *Pending*
+**Answer**: A — Always overwrite. Moving away from the marketplace plugin, so the npm package should be authoritative.
 
 ### Q4: Source of Truth for Command Files
 **Context**: FR-001 says to "copy or symlink" commands into `packages/agency-plugin-spec-kit/commands/`. Having two copies of the same files (in both `claude-plugin-agency-spec-kit` and `agency-plugin-spec-kit`) creates maintenance risk. Alternatively, one package could reference the other's files.
@@ -36,7 +36,7 @@
 - B: Symlink from agency-plugin-spec-kit to claude-plugin-agency-spec-kit (single source, workspace-only)
 - C: Build-time copy from claude-plugin to agency-plugin (single source, works in published package)
 
-**Answer**: *Pending*
+**Answer**: A — Move files into `agency-plugin-spec-kit`. Deprecating the marketplace plugin approach, so no need to maintain `claude-plugin-agency-spec-kit` as a source.
 
 ### Q5: Export Path for Programmatic Access
 **Context**: FR-004 (P2) mentions adding an export path so consumers can programmatically locate the commands directory. The exact export format matters for TypeScript consumers.
@@ -46,4 +46,4 @@
 - B: Named exports for each command file path
 - C: Skip FR-004 for now (P2, defer to follow-up)
 
-**Answer**: *Pending*
+**Answer**: A — Single export returning the directory path string. Lets `generacy setup build` resolve the commands directory programmatically and copy from there.

@@ -1,6 +1,10 @@
-# Feature Specification: Bundle speckit command files in agency-plugin-spec-kit npm package
+# Feature Specification: ## Summary
+
+The `@generacy-ai/agency-plugin-spec-kit` npm package needs to include the speckit command `
 
 **Branch**: `314-summary-generacy-ai-agency` | **Date**: 2026-03-07 | **Status**: Draft
+
+## Summary
 
 ## Summary
 
@@ -12,9 +16,11 @@ Currently, speckit commands (`specify.md`, `clarify.md`, `plan.md`, `tasks.md`, 
 
 ## Requirements
 
-- Add the `commands/*.md` files from `packages/claude-plugin-agency-spec-kit/commands/` to `packages/agency-plugin-spec-kit`
+- Move the `commands/*.md` files from `packages/claude-plugin-agency-spec-kit/commands/` into `packages/agency-plugin-spec-kit/commands/` (agency-plugin-spec-kit becomes the single source of truth)
 - Update the `files` field in `packages/agency-plugin-spec-kit/package.json` to include the command files
-- Provide a mechanism (postinstall script or exported utility) to copy commands to `~/.claude/commands/`
+- Provide an exported CLI utility (not postinstall) to copy commands to `~/.claude/commands/agency-spec-kit/` (preserving namespace)
+- The CLI utility always overwrites existing files (npm package is authoritative over marketplace plugin)
+- Add a single export path returning the commands directory path string for programmatic access
 - Ensure the command files are included in published npm artifacts
 
 ## Dependencies
@@ -29,56 +35,43 @@ Currently, speckit commands (`specify.md`, `clarify.md`, `plan.md`, `tasks.md`, 
 
 ## User Stories
 
-### US1: Devcontainer Developer
+### US1: Developer in External Container
 
 **As a** developer working in an external devcontainer,
-**I want** speckit commands installed via `npm install` (or `pnpm install`),
-**So that** I can use speckit slash commands without depending on the Claude Code marketplace plugin, which doesn't reliably work in containerized environments.
+**I want** speckit commands distributed via npm install,
+**So that** I can use speckit without relying on the Claude Code marketplace plugin (which fails in containers).
 
 **Acceptance Criteria**:
-- [ ] Running `pnpm install` in a project depending on `@generacy-ai/agency-plugin-spec-kit` makes all speckit command `.md` files available
-- [ ] Commands are copied to `~/.claude/commands/` automatically (via postinstall or explicit utility)
-- [ ] Worker containers no longer crash-loop due to missing command files
-
-### US2: Package Maintainer
-
-**As a** monorepo maintainer,
-**I want** the command `.md` files to live in (or be referenced from) `packages/agency-plugin-spec-kit`,
-**So that** there is a single npm-based distribution path for speckit commands, reducing the need for the marketplace plugin mechanism.
-
-**Acceptance Criteria**:
-- [ ] Command files are included in the published npm artifact (`npm pack` includes them)
-- [ ] The `files` field in `package.json` lists the commands directory
-- [ ] Existing command file content is not modified (only their distribution path changes)
+- [ ] `@generacy-ai/agency-plugin-spec-kit` includes all command `.md` files
+- [ ] Running the CLI utility copies commands to `~/.claude/commands/agency-spec-kit/`
+- [ ] Commands are accessible as `/agency-spec-kit:specify`, `/agency-spec-kit:clarify`, etc.
+- [ ] `generacy setup build` can resolve the commands directory programmatically
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | Copy or symlink the 9 command `.md` files (`analyze`, `checklist`, `clarify`, `constitution`, `implement`, `plan`, `specify`, `tasks`, `taskstoissues`) into `packages/agency-plugin-spec-kit/commands/` | P1 | May be copies or a shared source |
-| FR-002 | Add `"commands"` to the `files` array in `packages/agency-plugin-spec-kit/package.json` | P1 | Ensures inclusion in npm publish |
-| FR-003 | Provide a postinstall script or exported CLI utility that copies commands to `~/.claude/commands/` | P1 | Must be idempotent and handle directory creation |
-| FR-004 | Add an export path (e.g., `"./commands"`) so consumers can programmatically locate the commands directory | P2 | Useful for custom install workflows |
+| FR-001 | Move command `.md` files into `packages/agency-plugin-spec-kit/commands/` | P1 | Single source of truth; deprecates marketplace plugin copy |
+| FR-002 | Update `package.json` `files` field to include `commands/` | P1 | Ensures files are in published npm artifact |
+| FR-003 | Exported CLI utility to copy commands to `~/.claude/commands/agency-spec-kit/` | P1 | Explicit invocation (not postinstall); always overwrites |
+| FR-004 | Export path returning commands directory path string | P2 | e.g., `import { commandsDir } from '@generacy-ai/agency-plugin-spec-kit/commands'` |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | npm artifact includes command files | All 9 `.md` files present | Run `npm pack` and inspect tarball |
-| SC-002 | Postinstall copies commands to `~/.claude/commands/` | All 9 files copied | Install package in clean environment, verify files exist |
-| SC-003 | Devcontainer stability | No crash-loops from missing commands | Deploy to external devcontainer and run speckit commands |
+| SC-001 | Commands available after npm install + CLI | All speckit commands accessible | Run CLI, verify files in `~/.claude/commands/agency-spec-kit/` |
+| SC-002 | No container crash loops | Zero crashes related to missing commands | Deploy to external container, verify stability |
 
 ## Assumptions
 
-- The command `.md` file content is identical between the marketplace plugin and the npm package (no forking)
-- `~/.claude/commands/` is the correct target directory for all environments
-- Consumers will use `pnpm install` or `npm install` as part of their setup
+- `generacy setup build` will be updated to invoke the CLI utility
+- The marketplace plugin (`claude-plugin-agency-spec-kit`) will be deprecated after this migration
 
 ## Out of Scope
 
-- Removing the `claude-plugin-agency-spec-kit` marketplace plugin (separate downstream task)
-- Modifying command file content or behavior
-- Changes to the Claude Code marketplace plugin infrastructure itself
+- Removing the marketplace plugin package (handled in separate issues)
+- Updating `generacy setup build` (downstream dependency)
 
 ---
 
