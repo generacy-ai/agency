@@ -16,11 +16,9 @@ Currently, speckit commands (`specify.md`, `clarify.md`, `plan.md`, `tasks.md`, 
 
 ## Requirements
 
-- Move the `commands/*.md` files from `packages/claude-plugin-agency-spec-kit/commands/` into `packages/agency-plugin-spec-kit/commands/` (agency-plugin-spec-kit becomes the single source of truth)
+- Add the `commands/*.md` files from `packages/claude-plugin-agency-spec-kit/commands/` to `packages/agency-plugin-spec-kit`
 - Update the `files` field in `packages/agency-plugin-spec-kit/package.json` to include the command files
-- Provide an exported CLI utility (not postinstall) to copy commands to `~/.claude/commands/agency-spec-kit/` (preserving namespace)
-- The CLI utility always overwrites existing files (npm package is authoritative over marketplace plugin)
-- Add a single export path returning the commands directory path string for programmatic access
+- Provide a mechanism (postinstall script or exported utility) to copy commands to `~/.claude/commands/`
 - Ensure the command files are included in published npm artifacts
 
 ## Dependencies
@@ -35,43 +33,35 @@ Currently, speckit commands (`specify.md`, `clarify.md`, `plan.md`, `tasks.md`, 
 
 ## User Stories
 
-### US1: Developer in External Container
+### US1: [Primary User Story]
 
-**As a** developer working in an external devcontainer,
-**I want** speckit commands distributed via npm install,
-**So that** I can use speckit without relying on the Claude Code marketplace plugin (which fails in containers).
+**As a** [user type],
+**I want** [capability],
+**So that** [benefit].
 
 **Acceptance Criteria**:
-- [ ] `@generacy-ai/agency-plugin-spec-kit` includes all command `.md` files
-- [ ] Running the CLI utility copies commands to `~/.claude/commands/agency-spec-kit/`
-- [ ] Commands are accessible as `/agency-spec-kit:specify`, `/agency-spec-kit:clarify`, etc.
-- [ ] `generacy setup build` can resolve the commands directory programmatically
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | Move command `.md` files into `packages/agency-plugin-spec-kit/commands/` | P1 | Single source of truth; deprecates marketplace plugin copy |
-| FR-002 | Update `package.json` `files` field to include `commands/` | P1 | Ensures files are in published npm artifact |
-| FR-003 | Exported CLI utility to copy commands to `~/.claude/commands/agency-spec-kit/` | P1 | Explicit invocation (not postinstall); always overwrites |
-| FR-004 | Export path returning commands directory path string | P2 | e.g., `import { commandsDir } from '@generacy-ai/agency-plugin-spec-kit/commands'` |
+| FR-001 | [Description] | P1 | |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | Commands available after npm install + CLI | All speckit commands accessible | Run CLI, verify files in `~/.claude/commands/agency-spec-kit/` |
-| SC-002 | No container crash loops | Zero crashes related to missing commands | Deploy to external container, verify stability |
+| SC-001 | [Metric] | [Target] | [How to measure] |
 
 ## Assumptions
 
-- `generacy setup build` will be updated to invoke the CLI utility
-- The marketplace plugin (`claude-plugin-agency-spec-kit`) will be deprecated after this migration
+- [Assumption 1]
 
 ## Out of Scope
 
-- Removing the marketplace plugin package (handled in separate issues)
-- Updating `generacy setup build` (downstream dependency)
+- [Exclusion 1]
 
 ---
 
