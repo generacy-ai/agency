@@ -10,26 +10,26 @@
 
 ## Phase 1: Setup & File Migration
 
-- [ ] T001 [US1] Move command `.md` files from `packages/claude-plugin-agency-spec-kit/commands/` to `packages/agency-plugin-spec-kit/commands/` (all 9 files: analyze.md, checklist.md, clarify.md, constitution.md, implement.md, plan.md, specify.md, tasks.md, taskstoissues.md)
-- [ ] T002 [US1] Update `packages/agency-plugin-spec-kit/package.json`: add `"commands"` to `files` array, add `bin` entry for `agency-spec-kit` CLI, add `./commands` subpath export
+- [X] T001 [US1] Move command `.md` files from `packages/claude-plugin-agency-spec-kit/commands/` to `packages/agency-plugin-spec-kit/commands/` (all 9 files: analyze.md, checklist.md, clarify.md, constitution.md, implement.md, plan.md, specify.md, tasks.md, taskstoissues.md)
+- [X] T002 [US1] Update `packages/agency-plugin-spec-kit/package.json`: add `"commands"` to `files` array, add `bin` entry for `agency-spec-kit` CLI, add `./commands` subpath export
 
 ## Phase 2: Core Implementation
 
-- [ ] T003 [P] [US1] Create `packages/agency-plugin-spec-kit/src/commands.ts`: export `commandsDir` (resolved via `import.meta.url`) and `installCommands(targetDir?)` function that copies `.md` files to target directory (defaults to `~/.claude/commands/agency-spec-kit/`)
-- [ ] T004 [P] [US1] Create `packages/agency-plugin-spec-kit/src/cli.ts`: CLI entry point with `install-commands` subcommand that calls `installCommands()` and reports copied files; add `#!/usr/bin/env node` shebang
+- [X] T003 [P] [US1] Create `packages/agency-plugin-spec-kit/src/commands.ts`: export `commandsDir` (resolved via `import.meta.url`) and `installCommands(targetDir?)` function that copies `.md` files to target directory (defaults to `~/.claude/commands/agency-spec-kit/`)
+- [X] T004 [P] [US1] Create `packages/agency-plugin-spec-kit/src/cli.ts`: CLI entry point with `install-commands` subcommand that calls `installCommands()` and reports copied files; add `#!/usr/bin/env node` shebang
 
 ## Phase 3: Integration
 
-- [ ] T005 [US1] Update `packages/agency-plugin-spec-kit/src/index.ts`: re-export `commandsDir` and `installCommands` from `./commands.js`
+- [X] T005 [US1] Update `packages/agency-plugin-spec-kit/src/index.ts`: re-export `commandsDir` and `installCommands` from `./commands.js`
 
 ## Phase 4: Tests & Verification
 
-- [ ] T006 [US1] Create `packages/agency-plugin-spec-kit/tests/commands.test.ts`: test `commandsDir` resolves to existing directory with `.md` files, test `installCommands()` copies to temp dir, test overwrites existing files
-- [ ] T007 [US1] Build and verify: run `pnpm build` and `pnpm test` in `packages/agency-plugin-spec-kit/`, verify `dist/cli.js` and `dist/commands.js` are generated
+- [X] T006 [US1] Create `packages/agency-plugin-spec-kit/tests/commands.test.ts`: test `commandsDir` resolves to existing directory with `.md` files, test `installCommands()` copies to temp dir, test overwrites existing files
+- [X] T007 [US1] Build and verify: run `pnpm build` and `pnpm test` in `packages/agency-plugin-spec-kit/`, verify `dist/cli.js` and `dist/commands.js` are generated
 
 ## Phase 5: Cleanup
 
-- [ ] T008 Remove or deprecate `packages/claude-plugin-agency-spec-kit/commands/` directory (leave README noting deprecation or remove files)
+- [X] T008 Remove or deprecate `packages/claude-plugin-agency-spec-kit/commands/` directory (leave README noting deprecation or remove files)
 
 ## Dependencies & Execution Order
 

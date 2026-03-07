@@ -16,11 +16,19 @@
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
+    "./commands": {
+      "import": "./dist/commands.js",
+      "types": "./dist/commands.d.ts"
+    },
     "./package.json": "./package.json"
+  },
+  "bin": {
+    "agency-spec-kit": "./dist/cli.js"
   },
   "files": [
     "dist",
-    "workflows"
+    "workflows",
+    "commands"
   ],
   "scripts": {
     "build": "tsc",
