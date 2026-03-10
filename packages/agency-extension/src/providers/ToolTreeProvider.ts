@@ -20,7 +20,7 @@ const CONTEXT_VALUES = {
 /**
  * Tree item types for the tool browser.
  */
-type ToolTreeItemType = 'status' | 'namespace' | 'tool';
+type ToolTreeItemType = 'status' | 'namespace' | 'tool' | 'message';
 
 /**
  * Base data structure for tool tree items.
@@ -56,9 +56,18 @@ interface ToolItemData extends ToolTreeItemData {
 }
 
 /**
+ * Message item data (e.g., "Connect to MCP server to see tools").
+ */
+interface MessageItemData extends ToolTreeItemData {
+  type: 'message';
+  text: string;
+  command?: string;
+}
+
+/**
  * Union of all tree item data types.
  */
-type TreeItemData = StatusItemData | NamespaceItemData | ToolItemData;
+type TreeItemData = StatusItemData | NamespaceItemData | ToolItemData | MessageItemData;
 
 /**
  * Format a JSON Schema type for display.
@@ -304,6 +313,20 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<TreeItemData> {
         return createNamespaceItem(this._vscodeModule, element.namespace, element.toolCount);
       case 'tool':
         return createToolItem(this._vscodeModule, element.tool);
+      case 'message': {
+        const item = new this._vscodeModule.TreeItem(
+          element.text,
+          this._vscodeModule.TreeItemCollapsibleState.None
+        );
+        item.iconPath = new this._vscodeModule.ThemeIcon('plug');
+        if (element.command) {
+          item.command = {
+            command: element.command,
+            title: element.text,
+          };
+        }
+        return item;
+      }
       default:
         throw new Error(`Unknown tree item type`);
     }
@@ -324,8 +347,14 @@ export class ToolTreeProvider implements vscode.TreeDataProvider<TreeItemData> {
         connectionStatus: this._connectionStatus,
       });
 
-      // If not connected, return just the status
+      // If not connected, show a connect prompt message
       if (this._connectionStatus !== 'connected') {
+        children.push({
+          type: 'message',
+          id: 'connect-prompt',
+          text: 'Connect to MCP server to see tools',
+          command: COMMANDS.CONNECT_MCP,
+        });
         return children;
       }
 

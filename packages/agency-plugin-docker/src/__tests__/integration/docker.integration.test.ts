@@ -159,7 +159,8 @@ describe('Docker Plugin Integration', () => {
         expect((stopResult.content[0] as { text: string }).text).toBe(
           'Container stopped.'
         );
-      })
+      }),
+      30000
     );
 
     it(

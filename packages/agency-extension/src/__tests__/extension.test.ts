@@ -29,6 +29,9 @@ vi.mock('vscode', () => ({
         index: 0,
       },
     ],
+    getConfiguration: vi.fn(() => ({
+      get: vi.fn(),
+    })),
   },
   env: {
     openExternal: vi.fn(),
@@ -65,6 +68,7 @@ vi.mock('../services', () => ({
     getInstance: vi.fn(() => ({
       initialize: vi.fn().mockResolvedValue(undefined),
       getPlugins: vi.fn(() => []),
+      getContainers: vi.fn(() => []),
       getConfig: vi.fn(() => null),
       onConfigChange: vi.fn(() => ({ dispose: vi.fn() })),
     })),
@@ -75,6 +79,7 @@ vi.mock('../services', () => ({
       initialize: vi.fn().mockResolvedValue(undefined),
       getConnectionStatus: vi.fn(() => 'disconnected'),
       onConnectionStatusChange: vi.fn(() => ({ dispose: vi.fn() })),
+      connect: vi.fn().mockResolvedValue(undefined),
     })),
     reset: vi.fn(),
   },
@@ -98,12 +103,24 @@ vi.mock('../services', () => ({
     })),
     reset: vi.fn(),
   },
+  McpConnectionManager: {
+    getInstance: vi.fn(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+    })),
+    reset: vi.fn(),
+  },
 }));
 
 // Mock providers
 vi.mock('../providers', () => ({
   registerPluginTreeView: vi.fn().mockResolvedValue({ dispose: vi.fn() }),
   registerModeTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+  registerToolTreeView: vi.fn().mockResolvedValue({ dispose: vi.fn() }),
+  registerActivityTreeView: vi.fn().mockResolvedValue({ dispose: vi.fn() }),
+  ContainerTreeProvider: vi.fn().mockImplementation(() => ({
+    refresh: vi.fn(),
+    dispose: vi.fn(),
+  })),
 }));
 
 // Mock commands
@@ -112,7 +129,12 @@ vi.mock('../commands', () => ({
   initializePluginCommands: vi.fn(),
   registerToolCommands: vi.fn(() => [{ dispose: vi.fn() }]),
   initializeToolCommands: vi.fn(),
+  registerModeCommands: vi.fn(() => [{ dispose: vi.fn() }]),
   initializeModeCommands: vi.fn(),
+  registerContainerCommands: vi.fn(() => [{ dispose: vi.fn() }]),
+  initializeContainerCommands: vi.fn(),
+  registerSetupCommands: vi.fn(() => [{ dispose: vi.fn() }]),
+  initializeSetupCommands: vi.fn(),
   switchMode: vi.fn(),
   viewModeTools: vi.fn(),
 }));
@@ -124,11 +146,26 @@ vi.mock('../errors', () => ({
   },
 }));
 
+// Mock services/ContainerService
+vi.mock('../services/ContainerService', () => ({
+  ContainerService: {
+    getInstance: vi.fn(() => ({
+      initialize: vi.fn().mockResolvedValue(undefined),
+    })),
+    reset: vi.fn(),
+  },
+}));
+
 // Mock status
-vi.mock('../status', () => ({
+vi.mock('../status/StatusBarManager', () => ({
   StatusBarManager: {
+    initialize: vi.fn(() => ({
+      updateMcpStatus: vi.fn(),
+      dispose: vi.fn(),
+    })),
     getInstance: vi.fn(() => ({
       initialize: vi.fn(),
+      updateMcpStatus: vi.fn(),
       dispose: vi.fn(),
     })),
   },
@@ -209,35 +246,16 @@ describe('Extension', () => {
       expect(mockContext.subscriptions.length).toBeGreaterThan(0);
     });
 
-    it('should register commands', async () => {
+    it('should register commands via command modules', async () => {
+      const { registerPluginCommands, registerToolCommands, registerModeCommands, registerContainerCommands, registerSetupCommands } = await import('../commands');
       await activate(mockContext);
 
-      // Verify that registerCommand was called (at least for status bar and welcome commands)
-      expect(mockCommands.registerCommand).toHaveBeenCalled();
-
-      // Verify some key commands are registered
-      const calls = mockCommands.registerCommand.mock.calls.map((call: unknown[]) => call[0]);
-
-      // Status bar commands
-      expect(calls).toContain('agency.showMcpStatus');
-      expect(calls).toContain('agency.connectMcp');
-      expect(calls).toContain('agency.showMcpError');
-      expect(calls).toContain('agency.showContainerStatus');
-
-      // Welcome view commands
-      expect(calls).toContain('agency.initConfig');
-      expect(calls).toContain('agency.showPlugins');
-      expect(calls).toContain('agency.openDocs');
-
-      // Mode commands
-      expect(calls).toContain('agency.switchMode');
-      expect(calls).toContain('agency.viewModeTools');
-
-      // Container stub commands
-      expect(calls).toContain('agency.startContainer');
-      expect(calls).toContain('agency.stopContainer');
-      expect(calls).toContain('agency.rebuildContainer');
-      expect(calls).toContain('agency.viewContainerLogs');
+      // Verify all command modules were called to register their commands
+      expect(registerPluginCommands).toHaveBeenCalled();
+      expect(registerToolCommands).toHaveBeenCalled();
+      expect(registerModeCommands).toHaveBeenCalled();
+      expect(registerContainerCommands).toHaveBeenCalled();
+      expect(registerSetupCommands).toHaveBeenCalled();
     });
 
     it('should set extension state after activation', async () => {

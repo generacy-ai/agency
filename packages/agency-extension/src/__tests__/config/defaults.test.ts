@@ -53,6 +53,16 @@ describe('defaults', () => {
       expect(config.modes[0].name).toBe('Default');
     });
 
+    it('should have default mode with includedTools wildcard', () => {
+      const config = createDefaultConfig();
+      expect(config.modes[0].includedTools).toEqual(['*']);
+    });
+
+    it('should have default mode with empty excludedTools', () => {
+      const config = createDefaultConfig();
+      expect(config.modes[0].excludedTools).toEqual([]);
+    });
+
     it('should have empty containers array', () => {
       const config = createDefaultConfig();
       expect(config.containers).toEqual([]);

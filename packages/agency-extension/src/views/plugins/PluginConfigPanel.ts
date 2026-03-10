@@ -1,7 +1,7 @@
 import type * as vscode from 'vscode';
 import type { PluginConfig, JsonSchemaProperty, PluginManifest } from '../../types';
 import { WebviewBase, type WebviewMessage } from '../webview-base';
-import { ConfigService } from '../../services';
+import { ConfigService, McpClientService } from '../../services';
 import { createScopedLogger } from '../../utils';
 
 const log = createScopedLogger('PluginConfigPanel');
@@ -37,7 +37,11 @@ interface ToggleEnabledMessage {
   };
 }
 
-type IncomingMessage = SaveConfigMessage | LoadConfigMessage | ToggleEnabledMessage;
+interface ConfigEditedMessage {
+  type: 'configEdited';
+}
+
+type IncomingMessage = SaveConfigMessage | LoadConfigMessage | ToggleEnabledMessage | ConfigEditedMessage;
 
 /**
  * Message types sent from the extension to the webview.
@@ -102,6 +106,7 @@ export function _clearPanels(): void {
 export class PluginConfigPanel extends WebviewBase {
   private _plugin: PluginConfig;
   private _manifest?: PluginManifest;
+  private _metadataSource: 'mcp' | 'manifest' | 'none' = 'none';
   private readonly _configService: ConfigService;
 
   private constructor(
@@ -132,11 +137,22 @@ export class PluginConfigPanel extends WebviewBase {
         }
       })
     );
+
+    // Subscribe to config conflicts
+    this._disposables.add(
+      this._configService.onConfigConflict(() => {
+        this._handleConflict();
+      })
+    );
   }
 
   /**
    * Create or show a plugin configuration panel.
    * If a panel for this plugin already exists, reveal it.
+   *
+   * Queries the MCP server for plugin metadata on open. If the server
+   * provides a settings schema for this plugin, the panel renders typed
+   * form controls. Otherwise it falls back to a JSON editor.
    *
    * @param vscodeModule The VS Code module
    * @param extensionUri The extension's URI
@@ -156,7 +172,7 @@ export class PluginConfigPanel extends WebviewBase {
       existingPanel._plugin = plugin;
       existingPanel._manifest = manifest;
       existingPanel.show();
-      existingPanel.refresh();
+      existingPanel._fetchAndApplyMetadata();
       return existingPanel;
     }
 
@@ -164,9 +180,46 @@ export class PluginConfigPanel extends WebviewBase {
     const panel = new PluginConfigPanel(vscodeModule, extensionUri, plugin, manifest);
     panels.set(plugin.id, panel);
     panel.show();
+    panel._fetchAndApplyMetadata();
 
     log.info(`Created config panel for plugin: ${plugin.id}`);
     return panel;
+  }
+
+  /**
+   * Query the MCP server for plugin metadata and update the panel
+   * if a settings schema is discovered for this plugin.
+   */
+  private async _fetchAndApplyMetadata(): Promise<void> {
+    try {
+      const mcpService = McpClientService.getInstance();
+      const allMetadata = await mcpService.getPluginMetadata();
+      const metadata = allMetadata.find((m) => m.id === this._plugin.id);
+
+      if (metadata?.settingsSchema) {
+        // Merge MCP metadata into manifest, preferring server-provided schema
+        this._manifest = {
+          id: metadata.id,
+          name: metadata.name,
+          description: metadata.description ?? this._manifest?.description ?? '',
+          version: metadata.version ?? this._manifest?.version ?? '0.0.0',
+          tools: this._manifest?.tools ?? [],
+          ...this._manifest,
+          settingsSchema: metadata.settingsSchema,
+        };
+        this._metadataSource = 'mcp';
+        log.info(`Applied MCP metadata schema for plugin: ${this._plugin.id}`);
+      } else if (this._manifest?.settingsSchema) {
+        this._metadataSource = 'manifest';
+      } else {
+        this._metadataSource = 'none';
+      }
+    } catch (error) {
+      log.warn(`Failed to fetch plugin metadata for ${this._plugin.id}:`, error);
+      this._metadataSource = this._manifest?.settingsSchema ? 'manifest' : 'none';
+    }
+
+    this.refresh();
   }
 
   /**
@@ -214,6 +267,10 @@ export class PluginConfigPanel extends WebviewBase {
         this._handleToggleEnabled(msg.payload);
         break;
 
+      case 'configEdited':
+        this._configService.setWebviewDirty(true);
+        break;
+
       default:
         log.debug(`Ignoring unknown message type: ${(msg as { type: string }).type}`);
     }
@@ -224,6 +281,15 @@ export class PluginConfigPanel extends WebviewBase {
    */
   private async _handleSaveConfig(payload: SaveConfigMessage['payload']): Promise<void> {
     try {
+      // Validate settings is a proper object (guards against JSON editor misuse)
+      if (typeof payload.settings !== 'object' || payload.settings === null || Array.isArray(payload.settings)) {
+        await this.postMessage({
+          type: 'configSaved',
+          payload: { success: false, error: 'Settings must be a JSON object' },
+        } as ConfigSavedMessage);
+        return;
+      }
+
       // Validate settings if schema is available
       if (this._manifest?.settingsSchema) {
         const errors = this._validateSettings(payload.settings, this._manifest.settingsSchema.properties);
@@ -292,6 +358,29 @@ export class PluginConfigPanel extends WebviewBase {
       log.info(`Toggled plugin ${payload.pluginId} enabled: ${payload.enabled}`);
     } catch (error) {
       log.error(`Failed to toggle plugin enabled state: ${payload.pluginId}`, error);
+    }
+  }
+
+  /**
+   * Handle config conflict by showing a notification to the user.
+   */
+  private async _handleConflict(): Promise<void> {
+    const choice = await this._vscodeModule.window.showWarningMessage(
+      'Config file changed externally. Reload and lose your changes, or keep editing?',
+      'Reload',
+      'Keep'
+    );
+
+    if (choice === 'Reload') {
+      const updatedPlugin = this._configService.getPlugin(this._plugin.id);
+      if (updatedPlugin) {
+        this._plugin = updatedPlugin;
+      }
+      this._configService.setWebviewDirty(false);
+      this.refresh();
+      log.info('Reloaded config after external conflict');
+    } else {
+      log.info('User chose to keep editing despite external config change');
     }
   }
 
@@ -377,14 +466,43 @@ export class PluginConfigPanel extends WebviewBase {
   }
 
   /**
+   * Determine whether to use schema-driven form, settings-inferred form, or JSON editor.
+   */
+  private _getFormMode(
+    schema?: Record<string, JsonSchemaProperty>,
+    settings?: Record<string, unknown>
+  ): 'schema' | 'settings' | 'json-editor' {
+    if (schema && Object.keys(schema).length > 0) {
+      return 'schema';
+    }
+
+    // If we have a manifest (from MCP or passed in) but no schema properties,
+    // and settings exist, show inferred form fields
+    if (settings && Object.keys(settings).length > 0) {
+      return 'settings';
+    }
+
+    // No schema and no settings — use JSON editor for free-form editing
+    if (this._metadataSource === 'none') {
+      return 'json-editor';
+    }
+
+    return 'settings';
+  }
+
+  /**
    * Generate the HTML content for the webview.
    */
   protected getHtmlContent(webview: vscode.Webview): string {
     const plugin = this._plugin;
     const manifest = this._manifest;
+    const schema = manifest?.settingsSchema?.properties;
+    const formMode = this._getFormMode(schema, plugin.settings);
 
     // Generate form fields from settings or schema
-    const formFields = this._generateFormFields(plugin.settings, manifest?.settingsSchema?.properties);
+    const formFields = formMode === 'json-editor'
+      ? this._generateJsonEditor(plugin.settings)
+      : this._generateFormFields(plugin.settings, schema);
 
     const body = `
       <div class="container">
@@ -401,7 +519,7 @@ export class PluginConfigPanel extends WebviewBase {
         ${manifest?.description ? `<p class="text-muted">${manifest.description}</p>` : ''}
         ${manifest?.version ? `<p class="text-small text-muted">Version: ${manifest.version}</p>` : ''}
 
-        <form id="configForm" class="mt-md">
+        <form id="configForm" class="mt-md" data-mode="${formMode}">
           ${formFields}
 
           <div class="form-actions flex gap-sm mt-md">
@@ -451,6 +569,12 @@ export class PluginConfigPanel extends WebviewBase {
       function saveConfig() {
         const settings = collectFormData();
 
+        // JSON editor mode: handle parse errors
+        if (settings === null) {
+          showStatus('error', 'Invalid JSON: please check your syntax');
+          return;
+        }
+
         // Client-side validation
         const errors = validateForm(settings);
         if (errors.length > 0) {
@@ -469,6 +593,16 @@ export class PluginConfigPanel extends WebviewBase {
 
       // Collect form data into settings object
       function collectFormData() {
+        // JSON editor mode: parse the entire textarea as settings
+        const jsonEditor = document.getElementById('jsonEditor');
+        if (jsonEditor) {
+          try {
+            return JSON.parse(jsonEditor.value);
+          } catch {
+            return null; // Signal parse error
+          }
+        }
+
         const settings = {};
         const inputs = form.querySelectorAll('input, select, textarea');
 
@@ -521,6 +655,15 @@ export class PluginConfigPanel extends WebviewBase {
 
       // Reset form to original values
       function resetForm() {
+        // JSON editor mode: reset the textarea
+        const jsonEditor = document.getElementById('jsonEditor');
+        if (jsonEditor) {
+          jsonEditor.value = JSON.stringify(originalSettings, null, 2);
+          clearErrors();
+          showStatus('info', 'Form reset to original values');
+          return;
+        }
+
         for (const [key, value] of Object.entries(originalSettings)) {
           const input = form.querySelector('[name="' + key + '"], #' + key);
           if (!input) continue;
@@ -603,16 +746,22 @@ export class PluginConfigPanel extends WebviewBase {
 
       // Update form from loaded config
       function updateFormFromConfig() {
-        for (const [key, value] of Object.entries(currentPlugin.settings)) {
-          const input = form.querySelector('[name="' + key + '"], #' + key);
-          if (!input) continue;
+        // JSON editor mode: update the textarea
+        const jsonEditor = document.getElementById('jsonEditor');
+        if (jsonEditor) {
+          jsonEditor.value = JSON.stringify(currentPlugin.settings, null, 2);
+        } else {
+          for (const [key, value] of Object.entries(currentPlugin.settings)) {
+            const input = form.querySelector('[name="' + key + '"], #' + key);
+            if (!input) continue;
 
-          if (input.type === 'checkbox') {
-            input.checked = Boolean(value);
-          } else if (typeof value === 'object') {
-            input.value = JSON.stringify(value, null, 2);
-          } else {
-            input.value = value;
+            if (input.type === 'checkbox') {
+              input.checked = Boolean(value);
+            } else if (typeof value === 'object') {
+              input.value = JSON.stringify(value, null, 2);
+            } else {
+              input.value = value;
+            }
           }
         }
 
@@ -620,12 +769,15 @@ export class PluginConfigPanel extends WebviewBase {
         enabledToggle.nextElementSibling.textContent = currentPlugin.enabled ? 'Enabled' : 'Disabled';
       }
 
-      // Input change handler for real-time validation
+      // Input change handler for real-time validation and dirty tracking
       form.addEventListener('input', (e) => {
         const input = e.target;
         input.classList.remove('input-error');
         const errorMsg = input.parentElement.querySelector('.error-message');
         if (errorMsg) errorMsg.remove();
+
+        // Notify extension that webview has unsaved edits
+        postMessage('configEdited');
       });
 
       // Request initial config load
@@ -671,6 +823,18 @@ export class PluginConfigPanel extends WebviewBase {
 
         .form-group select {
           appearance: auto;
+        }
+
+        .json-editor-container .json-editor-hint {
+          margin-bottom: 8px;
+        }
+
+        .json-editor {
+          font-family: var(--vscode-editor-font-family, monospace);
+          font-size: var(--vscode-editor-font-size, 13px);
+          min-height: 200px;
+          resize: vertical;
+          tab-size: 2;
         }
       </style>
     `;
@@ -776,6 +940,25 @@ export class PluginConfigPanel extends WebviewBase {
         <label for="${key}">${key}</label>
         ${input}
         ${description}
+      </div>
+    `;
+  }
+
+  /**
+   * Generate a JSON editor textarea for free-form settings editing.
+   * Used when no schema is available (e.g., MCP server disconnected).
+   */
+  private _generateJsonEditor(settings: Record<string, unknown>): string {
+    const jsonValue = JSON.stringify(settings, null, 2);
+    return `
+      <div class="json-editor-container">
+        <p class="text-muted json-editor-hint">
+          No settings schema available. Edit settings as JSON.
+        </p>
+        <div class="form-group">
+          <label for="jsonEditor">Settings (JSON)</label>
+          <textarea id="jsonEditor" class="json-editor" data-type="json">${this._escapeHtml(jsonValue)}</textarea>
+        </div>
       </div>
     `;
   }

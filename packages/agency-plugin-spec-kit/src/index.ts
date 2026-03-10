@@ -225,6 +225,12 @@ export {
 
 export type { BuiltinWorkflowName } from './workflows.js';
 
+// ============================================================================
+// Commands - Command file distribution utilities
+// ============================================================================
+
+export { commandsDir, installCommands } from './commands.js';
+
 // Default export for plugin
 import { SpecKitPlugin } from './plugin.js';
 export default SpecKitPlugin;

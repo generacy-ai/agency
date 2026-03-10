@@ -7,8 +7,5 @@
   "access": "public",
   "baseBranch": "develop",
   "updateInternalDependencies": "patch",
-  "ignore": [
-    "@generacy-ai/agency-extension",
-    "claude-plugin-agency-spec-kit"
-  ]
+  "ignore": []
 }

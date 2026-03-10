@@ -353,18 +353,18 @@ describe('McpClientService', () => {
       const config = service.getReconnectConfig();
 
       expect(config.enabled).toBe(true);
-      expect(config.maxAttempts).toBe(5);
+      expect(config.maxAttempts).toBe(10);
       expect(config.initialDelay).toBe(1000);
       expect(config.maxDelay).toBe(30000);
       expect(config.backoffMultiplier).toBe(2);
     });
 
     it('should allow updating reconnect config', () => {
-      service.setReconnectConfig({ maxAttempts: 10, initialDelay: 500 });
+      service.setReconnectConfig({ maxAttempts: 15, initialDelay: 500 });
 
       const config = service.getReconnectConfig();
 
-      expect(config.maxAttempts).toBe(10);
+      expect(config.maxAttempts).toBe(15);
       expect(config.initialDelay).toBe(500);
       // Other values should remain default
       expect(config.enabled).toBe(true);
@@ -443,6 +443,136 @@ describe('McpClientService', () => {
     });
   });
 
+  describe('Reconnect with Default 10 Max Attempts', () => {
+    let service: McpClientService;
+
+    beforeEach(async () => {
+      service = McpClientService.getInstance();
+      await service.initialize(mockVscode);
+    });
+
+    it('should default to 10 max reconnect attempts', () => {
+      const config = service.getReconnectConfig();
+      expect(config.maxAttempts).toBe(10);
+    });
+
+    it('should exhaust all 10 default attempts before giving up', async () => {
+      mockClientConnect.mockRejectedValue(new Error('Connection failed'));
+
+      // Use default config (10 attempts)
+      await expect(
+        service.connect({ containerId: 'test-container' })
+      ).rejects.toThrow('Connection failed');
+
+      // Should have tried exactly 10 times (initial + 9 retries)
+      expect(mockClientConnect).toHaveBeenCalledTimes(10);
+      expect(service.getConnectionStatus()).toBe('error');
+    });
+
+    it('should succeed on the 10th attempt', async () => {
+      let callCount = 0;
+      mockClientConnect.mockImplementation(() => {
+        callCount++;
+        if (callCount < 10) {
+          return Promise.reject(new Error('Connection failed'));
+        }
+        return Promise.resolve();
+      });
+
+      await service.connect({ containerId: 'test-container' });
+
+      expect(service.isConnected()).toBe(true);
+      expect(callCount).toBe(10);
+    });
+
+    it('should apply exponential backoff across 10 attempts', async () => {
+      const { delay: mockDelay } = await import('../../utils');
+      mockClientConnect.mockRejectedValue(new Error('Connection failed'));
+
+      await expect(
+        service.connect({ containerId: 'test-container' })
+      ).rejects.toThrow('Connection failed');
+
+      // delay is called between retry attempts (9 times for 10 attempts)
+      // Delays: 1000, 2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000
+      // (capped at maxDelay=30000)
+      expect(mockDelay).toHaveBeenCalledTimes(9);
+
+      const delayCalls = (mockDelay as ReturnType<typeof vi.fn>).mock.calls.map(
+        (call: unknown[]) => call[0] as number
+      );
+
+      // Verify exponential backoff with cap at maxDelay (30000)
+      expect(delayCalls[0]).toBe(1000);   // 1000 * 2^0
+      expect(delayCalls[1]).toBe(2000);   // 1000 * 2^1
+      expect(delayCalls[2]).toBe(4000);   // 1000 * 2^2
+      expect(delayCalls[3]).toBe(8000);   // 1000 * 2^3
+      expect(delayCalls[4]).toBe(16000);  // 1000 * 2^4
+      expect(delayCalls[5]).toBe(30000);  // capped at maxDelay
+      expect(delayCalls[6]).toBe(30000);  // capped at maxDelay
+      expect(delayCalls[7]).toBe(30000);  // capped at maxDelay
+      expect(delayCalls[8]).toBe(30000);  // capped at maxDelay
+    });
+
+    it('should track reconnect attempts in connection info', async () => {
+      mockClientConnect.mockRejectedValue(new Error('Connection failed'));
+
+      await expect(
+        service.connect({ containerId: 'test-container' })
+      ).rejects.toThrow('Connection failed');
+
+      const info = service.getConnectionInfo();
+      expect(info.reconnectAttempts).toBe(10);
+      expect(info.status).toBe('error');
+      expect(info.errorMessage).toBeDefined();
+    });
+
+    it('should report error status after exhausting all reconnect attempts', async () => {
+      const events: McpConnectionStatusChangeEvent[] = [];
+      service.onConnectionStatusChange((event) => events.push(event));
+
+      mockClientConnect.mockRejectedValue(new Error('Connection failed'));
+
+      await expect(
+        service.connect({ containerId: 'test-container' })
+      ).rejects.toThrow('Connection failed');
+
+      // The final status should be 'error'
+      const lastEvent = events[events.length - 1];
+      expect(lastEvent.newStatus).toBe('error');
+      expect(lastEvent.error).toBeDefined();
+      expect(lastEvent.error?.message).toBe('Connection failed');
+
+      // Should have emitted 'reconnecting' events during retries
+      const reconnectingEvents = events.filter(e => e.newStatus === 'reconnecting');
+      expect(reconnectingEvents.length).toBeGreaterThan(0);
+    });
+
+    it('should set status to error allowing manual reconnect via status bar', async () => {
+      // When reconnect attempts are exhausted, the status should be 'error'.
+      // The StatusBarManager maps 'error' state to CONNECT_MCP command,
+      // providing a manual "Reconnect" action in the status bar.
+      mockClientConnect.mockRejectedValue(new Error('Server unreachable'));
+
+      await expect(
+        service.connect({ containerId: 'test-container' })
+      ).rejects.toThrow('Server unreachable');
+
+      // Verify the service is in error state (status bar reads this to show reconnect action)
+      expect(service.getConnectionStatus()).toBe('error');
+      expect(service.isConnected()).toBe(false);
+
+      // Verify the service can accept a new connect() call after error
+      // (simulating the user clicking the status bar "Reconnect" action)
+      mockClientConnect.mockResolvedValue(undefined);
+      McpClientService.reset();
+      const freshService = McpClientService.getInstance();
+      await freshService.initialize(mockVscode);
+      await freshService.connect({ containerId: 'test-container' });
+      expect(freshService.isConnected()).toBe(true);
+    });
+  });
+
   describe('Event Emitter', () => {
     let service: McpClientService;
 
@@ -515,6 +645,142 @@ describe('McpClientService', () => {
       service.dispose();
 
       expect(mockClientClose).toHaveBeenCalled();
+    });
+  });
+
+  describe('Plugin Metadata', () => {
+    let service: McpClientService;
+
+    beforeEach(async () => {
+      service = McpClientService.getInstance();
+      await service.initialize(mockVscode);
+      await service.connect({ containerId: 'test-container' });
+    });
+
+    it('should call executeTool with agency.plugins_describe', async () => {
+      mockClientCallTool.mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify([
+          { id: 'plugin-1', name: 'Plugin One', description: 'A plugin', version: '1.0.0' },
+        ]) }],
+        isError: false,
+      });
+
+      const metadata = await service.getPluginMetadata();
+
+      expect(mockClientCallTool).toHaveBeenCalledWith({
+        name: 'agency.plugins_describe',
+        arguments: {},
+      });
+      expect(metadata).toHaveLength(1);
+      expect(metadata[0].id).toBe('plugin-1');
+      expect(metadata[0].name).toBe('Plugin One');
+    });
+
+    it('should parse valid metadata response', async () => {
+      mockClientCallTool.mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify([
+          {
+            id: 'plugin-1',
+            name: 'Plugin One',
+            description: 'A test plugin',
+            version: '2.0.0',
+            settingsSchema: { type: 'object', properties: { key: { type: 'string' } } },
+          },
+          {
+            id: 'plugin-2',
+            name: 'Plugin Two',
+          },
+        ]) }],
+        isError: false,
+      });
+
+      const metadata = await service.getPluginMetadata();
+
+      expect(metadata).toHaveLength(2);
+      expect(metadata[0]).toEqual({
+        id: 'plugin-1',
+        name: 'Plugin One',
+        description: 'A test plugin',
+        version: '2.0.0',
+        settingsSchema: { type: 'object', properties: { key: { type: 'string' } } },
+      });
+      expect(metadata[1]).toEqual({
+        id: 'plugin-2',
+        name: 'Plugin Two',
+        description: undefined,
+        version: undefined,
+        settingsSchema: undefined,
+      });
+    });
+
+    it('should return empty array when disconnected', async () => {
+      await service.disconnect();
+      service.setReconnectConfig({ enabled: false });
+
+      // getPluginMetadata should handle disconnected state gracefully
+      const metadata = await service.getPluginMetadata();
+      expect(metadata).toEqual([]);
+    });
+
+    it('should return empty array when tool call fails', async () => {
+      mockClientCallTool.mockResolvedValue({
+        content: [{ type: 'text', text: 'Tool not found' }],
+        isError: true,
+      });
+
+      const metadata = await service.getPluginMetadata();
+      expect(metadata).toEqual([]);
+    });
+
+    it('should return empty array when tool call throws', async () => {
+      mockClientCallTool.mockRejectedValue(new Error('Network error'));
+
+      const metadata = await service.getPluginMetadata();
+      expect(metadata).toEqual([]);
+    });
+
+    it('should handle response with plugins wrapper object', async () => {
+      mockClientCallTool.mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify({
+          plugins: [
+            { id: 'wrapped-plugin', name: 'Wrapped Plugin' },
+          ],
+        }) }],
+        isError: false,
+      });
+
+      const metadata = await service.getPluginMetadata();
+
+      expect(metadata).toHaveLength(1);
+      expect(metadata[0].id).toBe('wrapped-plugin');
+    });
+
+    it('should filter out entries without id or name', async () => {
+      mockClientCallTool.mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify([
+          { id: 'valid', name: 'Valid Plugin' },
+          { id: 'no-name' },
+          { name: 'No ID' },
+          null,
+          42,
+        ]) }],
+        isError: false,
+      });
+
+      const metadata = await service.getPluginMetadata();
+
+      expect(metadata).toHaveLength(1);
+      expect(metadata[0].id).toBe('valid');
+    });
+
+    it('should return empty array for invalid JSON response', async () => {
+      mockClientCallTool.mockResolvedValue({
+        content: [{ type: 'text', text: 'not-valid-json{{{' }],
+        isError: false,
+      });
+
+      const metadata = await service.getPluginMetadata();
+      expect(metadata).toEqual([]);
     });
   });
 

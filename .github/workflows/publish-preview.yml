@@ -27,24 +27,45 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for changesets
-        id: changesets
+      - name: Ensure changesets for preview
         run: |
           CHANGESET_FILES=$(find .changeset -name '*.md' ! -name 'README.md' 2>/dev/null | head -1)
-          if [ -z "$CHANGESET_FILES" ]; then
-            echo "has_changesets=false" >> "$GITHUB_OUTPUT"
-            echo "No changeset files found, skipping preview publish"
-          else
-            echo "has_changesets=true" >> "$GITHUB_OUTPUT"
+          if [ -n "$CHANGESET_FILES" ]; then
             echo "Changeset files found, proceeding with preview publish"
+          else
+            echo "No changeset files found, generating synthetic changeset"
+            node -e "
+              const fs = require('fs'), path = require('path');
+              const config = JSON.parse(fs.readFileSync('.changeset/config.json', 'utf8'));
+              const ignore = new Set(config.ignore || []);
+              const pkgs = fs.readdirSync('packages')
+                .map(d => path.join('packages', d, 'package.json'))
+                .filter(p => fs.existsSync(p))
+                .map(p => JSON.parse(fs.readFileSync(p, 'utf8')))
+                .filter(p => !p.private && p.name && !ignore.has(p.name));
+              const lines = ['---', ...pkgs.map(p => '\"' + p.name + '\": patch'), '---', '', 'Preview publish (synthetic)', ''];
+              fs.writeFileSync('.changeset/preview-publish.md', lines.join('\n'));
+              console.log('Created synthetic changeset for ' + pkgs.length + ' packages');
+            "
+          fi
+
+      - name: Verify latency dependency
+        id: latency
+        run: |
+          if npm view @generacy-ai/latency@preview version 2>/dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "@generacy-ai/latency@preview is available on npm"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::@generacy-ai/latency@preview not found on npm — skipping preview publish"
           fi
 
       - name: Setup pnpm
-        if: steps.changesets.outputs.has_changesets == 'true'
+        if: steps.latency.outputs.found == 'true'
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        if: steps.changesets.outputs.has_changesets == 'true'
+        if: steps.latency.outputs.found == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -52,19 +73,19 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Update npm
-        if: steps.changesets.outputs.has_changesets == 'true'
+        if: steps.latency.outputs.found == 'true'
         run: npm install -g npm@latest
 
       - name: Install dependencies
-        if: steps.changesets.outputs.has_changesets == 'true'
+        if: steps.latency.outputs.found == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        if: steps.changesets.outputs.has_changesets == 'true'
+        if: steps.latency.outputs.found == 'true'
         run: pnpm build
 
       - name: Publish preview snapshots
-        if: steps.changesets.outputs.has_changesets == 'true'
+        if: steps.latency.outputs.found == 'true'
         run: |
           pnpm changeset version --snapshot preview
           pnpm changeset publish --tag preview --provenance

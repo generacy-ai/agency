@@ -148,6 +148,21 @@ export interface ContainerLogOptions {
 export type ContainerDiscoverySource = 'vscode-remote' | 'docker-api' | 'manual';
 
 /**
+ * MCP connection configuration for a container.
+ * Groups command, args, and environment for connecting to an MCP server.
+ */
+export interface ConnectionConfig {
+  /** MCP server command to execute */
+  command: string;
+
+  /** Arguments to pass to the MCP server command */
+  args?: string[];
+
+  /** Environment variables to set when connecting */
+  env?: Record<string, string>;
+}
+
+/**
  * Configuration for a specific container.
  */
 export interface ContainerConfig {
@@ -160,14 +175,8 @@ export interface ContainerConfig {
   /** Whether to auto-connect MCP when this container starts */
   autoConnect: boolean;
 
-  /** Custom MCP server command (if different from default) */
-  mcpCommand?: string;
-
-  /** Arguments to pass to the MCP server command */
-  mcpArgs?: string[];
-
-  /** Environment variables to set when connecting */
-  environment?: Record<string, string>;
+  /** MCP connection configuration (command, args, env) */
+  connection?: ConnectionConfig;
 }
 
 /**

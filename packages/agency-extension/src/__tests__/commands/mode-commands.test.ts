@@ -140,8 +140,8 @@ describe('Mode Commands', () => {
     describe('when called from command palette', () => {
       it('should show quick pick with available modes', async () => {
         const modes: ModeConfig[] = [
-          { id: 'default', name: 'Default', tools: ['tool1'] },
-          { id: 'debug', name: 'Debug', tools: ['tool2'] },
+          { id: 'default', name: 'Default', includedTools: ['tool1'], excludedTools: [] },
+          { id: 'debug', name: 'Debug', includedTools: ['tool2'], excludedTools: [] },
         ];
 
         const currentMode: ModeInfo = {
@@ -183,8 +183,8 @@ describe('Mode Commands', () => {
 
       it('should switch to selected mode from quick pick', async () => {
         const modes: ModeConfig[] = [
-          { id: 'default', name: 'Default', tools: ['tool1'] },
-          { id: 'debug', name: 'Debug', tools: ['tool2'] },
+          { id: 'default', name: 'Default', includedTools: ['tool1'], excludedTools: [] },
+          { id: 'debug', name: 'Debug', includedTools: ['tool2'], excludedTools: [] },
         ];
 
         const currentMode: ModeInfo = {
@@ -225,7 +225,7 @@ describe('Mode Commands', () => {
       });
 
       it('should do nothing when user cancels quick pick', async () => {
-        const modes: ModeConfig[] = [{ id: 'default', name: 'Default', tools: ['tool1'] }];
+        const modes: ModeConfig[] = [{ id: 'default', name: 'Default', includedTools: ['tool1'], excludedTools: [] }];
 
         mockGetModes.mockReturnValue(modes);
         mockGetCurrentMode.mockReturnValue({
@@ -631,8 +631,8 @@ describe('Mode Commands', () => {
     describe('when called without mode ID', () => {
       it('should show quick pick to select mode', async () => {
         const modes: ModeConfig[] = [
-          { id: 'default', name: 'Default', tools: ['tool1'] },
-          { id: 'debug', name: 'Debug', tools: ['tool2'] },
+          { id: 'default', name: 'Default', includedTools: ['tool1'], excludedTools: [] },
+          { id: 'debug', name: 'Debug', includedTools: ['tool2'], excludedTools: [] },
         ];
 
         mockGetModes.mockReturnValue(modes);
@@ -662,8 +662,8 @@ describe('Mode Commands', () => {
 
       it('should display tools for selected mode', async () => {
         const modes: ModeConfig[] = [
-          { id: 'default', name: 'Default', tools: ['tool1'] },
-          { id: 'debug', name: 'Debug', tools: ['tool2'] },
+          { id: 'default', name: 'Default', includedTools: ['tool1'], excludedTools: [] },
+          { id: 'debug', name: 'Debug', includedTools: ['tool2'], excludedTools: [] },
         ];
 
         const modeInfo: ModeInfo = {
@@ -706,7 +706,7 @@ describe('Mode Commands', () => {
       });
 
       it('should do nothing when user cancels mode selection', async () => {
-        const modes: ModeConfig[] = [{ id: 'default', name: 'Default', tools: ['tool1'] }];
+        const modes: ModeConfig[] = [{ id: 'default', name: 'Default', includedTools: ['tool1'], excludedTools: [] }];
 
         mockGetModes.mockReturnValue(modes);
         mockShowQuickPick.mockResolvedValue(undefined);

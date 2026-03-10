@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "generacy-marketplace",
+  "description": "Generacy development tools and spec-kit commands for Claude Code",
+  "owner": {
+    "name": "Generacy AI",
+    "email": "support@generacy.ai"
+  },
+  "plugins": [
+    {
+      "name": "agency-spec-kit",
+      "description": "Specification-driven development commands using Agency MCP tools",
+      "author": {
+        "name": "Generacy AI",
+        "email": "support@generacy.ai"
+      },
+      "source": "./packages/claude-plugin-agency-spec-kit",
+      "category": "development"
+    }
+  ]
+}
