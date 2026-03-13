@@ -2,11 +2,11 @@
 
 ## Technology Decisions
 
-### Decision: Replace `/autodev:*` with `/speckit:*` (not remove entirely)
+### Decision: Remove `/autodev:*` references entirely (per clarification Q1, answer B)
 
-**Rationale**: The "Post-Command Check" sections in command markdown files serve a real purpose — they instruct the AI agent to check for remaining workflow steps when a command is invoked as part of a larger pipeline. The `/autodev:start` and `/autodev:continue` commands were the predecessors of the current speckit workflow. Replacing with `/speckit:start` and `/speckit:continue` preserves the intended behavior while removing the stale references.
+**Rationale**: The `/autodev:start` and `/autodev:continue` commands don't exist in the codebase — they are stale references to a deprecated workflow system. Per clarification Q1 (option B), these references should be removed entirely rather than replaced with `/speckit:*` equivalents. The "Post-Command Check" sections themselves remain valid for detecting parent workflow context, but the specific autodev command examples are removed.
 
-**Alternative considered**: Removing the autodev references entirely without replacement. Rejected because the workflow integration instructions are still valuable for the speckit pipeline.
+**Alternative considered**: Replacing with `/speckit:start` and `/speckit:continue`. Not chosen because these specific commands also don't exist as registered commands — the workflow mechanism has been restructured.
 
 ### Decision: Keep historical spec markdown references
 
@@ -14,14 +14,14 @@
 
 ## Implementation Patterns
 
-### Pattern: Bulk string replacement in markdown files
+### Pattern: Targeted removal in markdown files
 
-Both plugin packages (`claude-plugin-agency-spec-kit` and `agency-plugin-spec-kit`) contain identical command markdown files. The same replacements apply to both sets. The consistent pattern across files enables systematic find-and-replace.
+Both plugin packages (`claude-plugin-agency-spec-kit` and `agency-plugin-spec-kit`) contain command markdown files with "Post-Command Check" sections. The stale `/autodev:*` command references and "autodev workflow" prose are removed from these sections across both packages.
 
-### Pattern: Two distinct replacement patterns
+### Pattern: Two categories of references to remove
 
-1. **Workflow example references**: `/autodev:start` → `/speckit:start`, `/autodev:continue` → `/speckit:continue`
-2. **Prose references**: "autodev workflow" → "speckit workflow" (only in `clarify.md`)
+1. **Command references**: `/autodev:start` and `/autodev:continue` examples in "Post-Command Check" sections
+2. **Prose references**: "autodev workflow" (only in `clarify.md`)
 
 ## Key Observations
 

@@ -10,7 +10,7 @@ Clean up all legacy `autodev` references across the codebase. The `autodev` syst
 
 1. **Source code** — Update JSDoc example in `plugin.ts`
 2. **Configuration** — Delete `.claude/autodev.json`
-3. **Command definitions** — Remove stale `/autodev:start` and `/autodev:continue` references from 18 command markdown files across two plugin packages
+3. **Command definitions** — Remove stale `/autodev:start`, `/autodev:continue`, and "autodev workflow" references from command markdown files across two plugin packages (per clarification Q1, option B: remove entirely since these commands don't exist)
 
 ## Technical Context
 
@@ -30,7 +30,7 @@ Changes by file:
 packages/agency-extension/src/types/plugin.ts        # FR-001: Update JSDoc
 .claude/autodev.json                                   # FR-002: Delete file
 
-# Command markdown files — remove /autodev:* workflow references
+# Command markdown files — remove /autodev:* workflow references entirely
 packages/claude-plugin-agency-spec-kit/commands/
   ├── analyze.md
   ├── checklist.md
@@ -60,28 +60,25 @@ packages/claude-plugin-agency-spec-kit/README.md       # Documentation reference
 
 ### Phase 1: Source Code & Config (FR-001, FR-002)
 
-1. **Update `plugin.ts` line 10** — Change JSDoc from `'autodev', 'speckit'` to `'speckit'`
+1. **Update `plugin.ts` line 10** — Change JSDoc example from `'autodev'` to `'speckit'`
 2. **Delete `.claude/autodev.json`** — Configuration is obsolete
 
-### Phase 2: Command Markdown Cleanup
+### Phase 2: Command Markdown Cleanup (FR-003)
 
-Each command `.md` file has a "Post-Command Check" section at the bottom containing stale references to `/autodev:start` and `/autodev:continue`. Since these commands don't exist, replace references with the actual current workflow commands (`/speckit:start`, `/speckit:continue`).
+Each command `.md` file has a "Post-Command Check" section at the bottom containing stale references to `/autodev:start` and `/autodev:continue`. Per clarification Q1 (answer B), these references should be **removed entirely** — no `/autodev:start` or `/autodev:continue` commands exist, and no direct replacement commands exist either.
 
 The pattern in most files is:
 ```markdown
 If this command was invoked as part of a larger workflow (e.g., `/autodev:start` or `/autodev:continue`):
 ```
 
-Replace with:
-```markdown
-If this command was invoked as part of a larger workflow (e.g., `/speckit:start` or `/speckit:continue`):
-```
+Remove the specific `/autodev:*` command examples. The "Post-Command Check" sections themselves remain valid (they detect parent workflow context), but the stale autodev command names must be removed.
 
-For `clarify.md` which has an additional "When running as part of an autodev workflow" reference, update to "speckit workflow".
+For `clarify.md` which has an additional "autodev workflow" prose reference, remove that reference as well.
 
 ### Phase 3: Documentation
 
-Update the README.md reference in `packages/claude-plugin-agency-spec-kit/README.md` if it refers to autodev in active documentation context.
+Update `packages/claude-plugin-agency-spec-kit/README.md` if it contains active `autodev` references.
 
 ### Phase 4: Verification
 
@@ -91,7 +88,7 @@ Update the README.md reference in `packages/claude-plugin-agency-spec-kit/README
 
 ## Risk Assessment
 
-- **Low risk**: All changes are string replacements in comments, documentation, and config deletion
+- **Low risk**: All changes are string removals in comments, documentation, and config deletion
 - **No runtime impact**: No executable code references `autodev`
 - **No migration needed**: `.generacy/` config files already exist
 
