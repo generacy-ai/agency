@@ -283,9 +283,9 @@ Each command orchestrates one or more MCP tools from the `@generacy-ai/agency-pl
 | `/speckit:specify` | `create_feature` |
 | `/speckit:clarify` | `check_prereqs`, `manage_clarifications` |
 | `/speckit:plan` | `get_paths`, `check_prereqs`, `update_agent` |
-| `/speckit:tasks` | `check_prereqs`, `preflight_check` (autodev) |
+| `/speckit:tasks` | `check_prereqs`, `preflight_check` (speckit) |
 | `/speckit:taskstoissues` | `check_prereqs`, `tasks_to_issues` |
-| `/speckit:implement` | `check_prereqs`, `merge_from_base`, `update_phase_labels` (autodev) |
+| `/speckit:implement` | `check_prereqs`, `merge_from_base`, `update_phase_labels` (speckit) |
 | `/speckit:checklist` | `get_paths`, `check_prereqs` |
 | `/speckit:analyze` | `check_prereqs` |
 
