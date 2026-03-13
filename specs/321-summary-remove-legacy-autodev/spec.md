@@ -1,56 +1,61 @@
-# Feature Specification: Remove Legacy Autodev References
+# Feature Specification: ## Summary
 
-**Branch**: `321-summary-remove-legacy-autodev` | **Date**: 2026-03-13 | **Status**: Complete
+Remove legacy `autodev` references from the agency codebase and delete `
+
+**Branch**: `321-summary-remove-legacy-autodev` | **Date**: 2026-03-13 | **Status**: Draft
 
 ## Summary
 
-Remove legacy `autodev` references from the agency codebase and delete `.claude/autodev.json`. The `autodev` system has been superseded by `speckit`, and remaining references are outdated. Configuration previously in `.claude/autodev.json` is now handled by `.generacy/config.yaml`.
+## Summary
+
+Remove legacy `autodev` references from the agency codebase and delete `.claude/autodev.json`.
+
+## Tasks
+
+### 1. Update plugin type comment
+
+**`packages/agency-extension/src/types/plugin.ts` (line 10):**
+- Change the JSDoc example from `'autodev'` to a current example like `'speckit'`
+
+### 2. Delete `.claude/autodev.json`
+
+The file contains only default configuration that is now handled by `.generacy/config.yaml`.
+
+## Notes
+
+- Markdown files under `specs/` are historical and should be left as-is
 
 ## User Stories
 
-### US1: Clean codebase references
+### US1: [Primary User Story]
 
-**As a** developer working on the agency codebase,
-**I want** legacy `autodev` references removed,
-**So that** the codebase accurately reflects current tooling and avoids confusion with deprecated systems.
+**As a** [user type],
+**I want** [capability],
+**So that** [benefit].
 
 **Acceptance Criteria**:
-- [ ] JSDoc example in `plugin.ts` references `'speckit'` instead of `'autodev'`
-- [ ] `.claude/autodev.json` is deleted
-- [ ] Stale `autodev` references removed from command markdown files (per Q1 clarification)
-- [ ] No functional regressions introduced
-- [ ] Historical markdown files under `specs/` are left untouched
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | Update JSDoc example in `packages/agency-extension/src/types/plugin.ts` line 10 from `'autodev'` to `'speckit'` | P1 | Comment-only change |
-| FR-002 | Delete `.claude/autodev.json` | P1 | Config now in `.generacy/config.yaml` |
-| FR-003 | Remove stale `/autodev:start`, `/autodev:continue`, and "autodev workflow" references from command markdown files in `packages/claude-plugin-agency-spec-kit/commands/` and `packages/agency-plugin-spec-kit/commands/` | P1 | Per clarification Q1 — these commands don't exist; remove references entirely |
+| FR-001 | [Description] | P1 | |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | No `autodev` references in source code | 0 remaining references (excluding specs/ history) | Grep for `autodev` in non-spec files |
-| SC-002 | Build passes | Clean build with no errors | `pnpm build` succeeds |
+| SC-001 | [Metric] | [Target] | [How to measure] |
 
 ## Assumptions
 
-- `.claude/autodev.json` contains only default configuration that has been migrated to `.generacy/config.yaml`
-- No runtime code depends on `.claude/autodev.json`
-- The `speckit` plugin name is the correct replacement example
+- [Assumption 1]
 
 ## Out of Scope
 
-- Modifying historical markdown files under `specs/`
-- Migrating any configuration values (already done)
-- Renaming or refactoring the speckit system itself
-
-## Notes
-
-- Markdown files under `specs/` are historical and should be left as-is
+- [Exclusion 1]
 
 ---
 
