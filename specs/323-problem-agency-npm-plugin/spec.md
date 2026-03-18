@@ -40,11 +40,9 @@ ValidateSchema = BaseParamsSchema.extend({
 
 **Behavior:**
 - Scripts that don't exist in package.json are silently skipped (not errors)
-- All discovered scripts run **sequentially** in discovery order (not parallel) — simpler, clearer non-interleaved output, matches existing tool patterns
 - All discovered scripts run regardless of individual failures (collect all results)
 - Output summarizes: which validations ran, which passed, which failed, with failure details
 - Exit as error if any validation failed
-- When an explicit `scripts` override is provided, it takes precedence over the `validate` short-circuit — explicit user intent overrides auto-discovery
 
 ### 2. Add `review` mode to `build.format`
 
@@ -63,7 +61,7 @@ Currently `build.format` has `modes: ['default', 'coding']` while `build.lint` i
 - `packages/agency-plugin-npm/src/tools/index.ts` — register new tool
 - `packages/agency-plugin-npm/src/manifest.ts` — add to tools list and mode affiliations
 - `packages/agency-plugin-npm/src/tools/build/format.ts` — add `'review'` to modes
-- `packages/agency-plugin-npm/src/config.ts` — add simple `validate: 'validate'` config entry (just the short-circuit script name; discovery candidates remain hardcoded defaults)
+- `packages/agency-plugin-npm/src/config.ts` — add `validate` script config entry
 - `packages/agency-plugin-npm/tests/tools/build.test.ts` — add tests
 
 ## Context
