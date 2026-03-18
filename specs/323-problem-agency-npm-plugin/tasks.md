@@ -10,13 +10,13 @@
 
 ## Phase 1: Schema & Config
 
-- [ ] T001 Add `ValidateSchema` to `packages/agency-plugin-npm/src/tools/schemas.ts` — extend `BaseParamsSchema` with optional `scripts: z.array(z.string())`
-- [ ] T002 [P] Add `ZodArray` support to `getJsonSchemaType()` in `packages/agency-plugin-npm/src/tools/schemas.ts` — handle `z.ZodArray` returning `{ type: 'array', items: ... }`
-- [ ] T003 [P] Add `validate?: string` to `ScriptConfig` interface in `packages/agency-plugin-npm/src/config.ts` — add default `validate: 'validate'` to `DEFAULT_CONFIG.scripts`
+- [X] T001 Add `ValidateSchema` to `packages/agency-plugin-npm/src/tools/schemas.ts` — extend `BaseParamsSchema` with optional `scripts: z.array(z.string())`
+- [X] T002 [P] Add `ZodArray` support to `getJsonSchemaType()` in `packages/agency-plugin-npm/src/tools/schemas.ts` — handle `z.ZodArray` returning `{ type: 'array', items: ... }`
+- [X] T003 [P] Add `validate?: string` to `ScriptConfig` interface in `packages/agency-plugin-npm/src/config.ts` — add default `validate: 'validate'` to `DEFAULT_CONFIG.scripts`
 
 ## Phase 2: Core Implementation
 
-- [ ] T004 Create `packages/agency-plugin-npm/src/tools/build/validate.ts` — implement `createValidateTool(config)` following existing factory pattern:
+- [X] T004 Create `packages/agency-plugin-npm/src/tools/build/validate.ts` — implement `createValidateTool(config)` following existing factory pattern:
   - Parse params with `ValidateSchema.safeParse()`
   - Implement discovery algorithm: explicit `scripts` param → `validate` short-circuit → auto-discover candidates (lint, format:check/format+--check, typecheck)
   - Detect package manager via existing `detectPackageManager()`
@@ -28,15 +28,15 @@
 
 ## Phase 3: Registration & Mode Fix
 
-- [ ] T005 Add `'review'` to `modes` array in `packages/agency-plugin-npm/src/tools/build/format.ts` — change `['default', 'coding']` to `['default', 'coding', 'review']`
-- [ ] T006 [P] Register `build.validate` in `packages/agency-plugin-npm/src/manifest.ts` — add to `tools[]` array, add to `modeAffiliations.coding[]`, add `build.validate` and `build.format` to `modeAffiliations.review[]`
-- [ ] T007 [P] Register `createValidateTool` in `packages/agency-plugin-npm/src/tools/index.ts` — import from `./build/validate.js` and add to returned array in `createTools()`
+- [X] T005 Add `'review'` to `modes` array in `packages/agency-plugin-npm/src/tools/build/format.ts` — change `['default', 'coding']` to `['default', 'coding', 'review']`
+- [X] T006 [P] Register `build.validate` in `packages/agency-plugin-npm/src/manifest.ts` — add to `tools[]` array, add to `modeAffiliations.coding[]`, add `build.validate` and `build.format` to `modeAffiliations.review[]`
+- [X] T007 [P] Register `createValidateTool` in `packages/agency-plugin-npm/src/tools/index.ts` — import from `./build/validate.js` and add to returned array in `createTools()`
 
 ## Phase 4: Test Fixtures & Tests
 
-- [ ] T008 Create test fixture `packages/agency-plugin-npm/tests/fixtures/validate-project/package.json` — include `lint`, `format`, `format:check`, and `typecheck` scripts with `pnpm-lock.yaml`
-- [ ] T009 [P] Create test fixture `packages/agency-plugin-npm/tests/fixtures/validate-shortcircuit/package.json` — include a `validate` script with `pnpm-lock.yaml`
-- [ ] T010 Add `build.validate` tests to `packages/agency-plugin-npm/tests/tools/build.test.ts`:
+- [X] T008 Create test fixture `packages/agency-plugin-npm/tests/fixtures/validate-project/package.json` — include `lint`, `format`, `format:check`, and `typecheck` scripts with `pnpm-lock.yaml`
+- [X] T009 [P] Create test fixture `packages/agency-plugin-npm/tests/fixtures/validate-shortcircuit/package.json` — include a `validate` script with `pnpm-lock.yaml`
+- [X] T010 Add `build.validate` tests to `packages/agency-plugin-npm/tests/tools/build.test.ts`:
   - Metadata test: verify name, namespace, modes (`['default', 'coding', 'review']`), outputPattern
   - Tool count: update assertion from 8 → 9 (5 build tools, 4 test tools)
   - Discovery: test auto-discovery with validate-project fixture (lint, format:check, typecheck found)
@@ -44,12 +44,12 @@
   - Override: test explicit `scripts` param bypasses discovery and short-circuit
   - Empty discovery: test returns success when no validation scripts exist
   - Format fallback: test that `format` gets `--check` appended when `format:check` is absent
-- [ ] T011 [P] Add `build.format` review mode test to `packages/agency-plugin-npm/tests/tools/build.test.ts` — verify `format.modes` includes `'review'`
+- [X] T011 [P] Add `build.format` review mode test to `packages/agency-plugin-npm/tests/tools/build.test.ts` — verify `format.modes` includes `'review'`
 
 ## Phase 5: Build & Verify
 
-- [ ] T012 Run `pnpm build` from repo root — verify TypeScript compilation succeeds with no errors
-- [ ] T013 Run `pnpm test` for `agency-plugin-npm` — verify all tests pass including new validate tests
+- [X] T012 Run `pnpm build` from repo root — verify TypeScript compilation succeeds with no errors
+- [X] T013 Run `pnpm test` for `agency-plugin-npm` — verify all tests pass including new validate tests
 
 ## Dependencies & Execution Order
 
