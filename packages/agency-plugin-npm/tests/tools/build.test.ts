@@ -27,6 +27,7 @@ describe('build tools', () => {
   const compile = tools.find((t) => t.name === 'build.compile')!;
   const lint = tools.find((t) => t.name === 'build.lint')!;
   const format = tools.find((t) => t.name === 'build.format')!;
+  const validate = tools.find((t) => t.name === 'build.validate')!;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -89,19 +90,115 @@ describe('build tools', () => {
       expect(format.name).toBe('build.format');
       expect(format.namespace).toBe('build');
     });
+
+    it('includes review mode', () => {
+      expect(format.modes).toContain('review');
+    });
+  });
+
+  describe('build.validate', () => {
+    it('has correct metadata', () => {
+      expect(validate.name).toBe('build.validate');
+      expect(validate.namespace).toBe('build');
+      expect(validate.outputPattern).toBe('terse');
+      expect(validate.modes).toEqual(['default', 'coding', 'review']);
+    });
+
+    it('discovers validation scripts from package.json', async () => {
+      const result = await validate.execute({
+        cwd: join(fixturesDir, 'validate-project'),
+      });
+
+      expect(result.isError).toBeFalsy();
+      const text = (result.content[0] as { type: 'text'; text: string }).text;
+      expect(text).toContain('lint');
+      expect(text).toContain('format:check');
+      expect(text).toContain('typecheck');
+    });
+
+    it('short-circuits when validate script exists', async () => {
+      const { exec } = await import('../../src/exec/runner.js');
+      const mockExec = vi.mocked(exec);
+
+      const result = await validate.execute({
+        cwd: join(fixturesDir, 'validate-shortcircuit'),
+      });
+
+      expect(result.isError).toBeFalsy();
+      // Should only run the 'validate' script, not lint/typecheck
+      expect(mockExec).toHaveBeenCalledTimes(1);
+      const callArgs = mockExec.mock.calls[0];
+      // The args should contain 'validate' as the script
+      expect(callArgs[1]).toEqual(expect.arrayContaining(['validate']));
+    });
+
+    it('uses explicit scripts param bypassing discovery', async () => {
+      const { exec } = await import('../../src/exec/runner.js');
+      const mockExec = vi.mocked(exec);
+
+      const result = await validate.execute({
+        cwd: join(fixturesDir, 'validate-shortcircuit'),
+        scripts: ['lint', 'typecheck'],
+      });
+
+      expect(result.isError).toBeFalsy();
+      // Should run exactly 2 scripts (lint and typecheck), not 'validate'
+      expect(mockExec).toHaveBeenCalledTimes(2);
+    });
+
+    it('appends --check to explicit format script (DD-4)', async () => {
+      const { exec } = await import('../../src/exec/runner.js');
+      const mockExec = vi.mocked(exec);
+
+      await validate.execute({
+        cwd: join(fixturesDir, 'pnpm-project'),
+        scripts: ['format'],
+      });
+
+      const formatCall = mockExec.mock.calls.find((call) =>
+        call[1].some((arg: string) => arg === '--check'),
+      );
+      expect(formatCall).toBeDefined();
+    });
+
+    it('returns success when no validation scripts exist', async () => {
+      const result = await validate.execute({
+        cwd: join(fixturesDir, 'npm-project'),
+      });
+
+      // npm-project has lint and format but no format:check or typecheck
+      // It does have lint, so it should find at least lint
+      expect(result.isError).toBeFalsy();
+    });
+
+    it('appends --check to format when format:check is absent', async () => {
+      const { exec } = await import('../../src/exec/runner.js');
+      const mockExec = vi.mocked(exec);
+
+      // pnpm-project has 'format' but no 'format:check'
+      await validate.execute({
+        cwd: join(fixturesDir, 'pnpm-project'),
+      });
+
+      // Should have called exec for lint and format (with --check)
+      const formatCall = mockExec.mock.calls.find((call) =>
+        call[1].some((arg: string) => arg === '--check'),
+      );
+      expect(formatCall).toBeDefined();
+    });
   });
 });
 
 describe('tool registration', () => {
-  it('creates all 8 tools', () => {
+  it('creates all 9 tools', () => {
     const tools = createTools(DEFAULT_CONFIG);
-    expect(tools).toHaveLength(8);
+    expect(tools).toHaveLength(9);
   });
 
-  it('creates 4 build tools', () => {
+  it('creates 5 build tools', () => {
     const tools = createTools(DEFAULT_CONFIG);
     const buildTools = tools.filter((t) => t.namespace === 'build');
-    expect(buildTools).toHaveLength(4);
+    expect(buildTools).toHaveLength(5);
   });
 
   it('creates 4 test tools', () => {

@@ -1,0 +1,9 @@
+{
+  "name": "validate-shortcircuit-fixture",
+  "version": "1.0.0",
+  "scripts": {
+    "validate": "echo 'Validating...'",
+    "lint": "echo 'Linting...'",
+    "typecheck": "echo 'Typechecking...'"
+  }
+}
