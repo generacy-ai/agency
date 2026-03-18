@@ -181,14 +181,10 @@ phases:
         continueOnError: true
 
   # Phase 7: Verification
+  # build.validate auto-detects the package manager and discovers available
+  # validation scripts (test, lint, format:check, typecheck, etc.).
   - name: verification
     steps:
-      - name: run-tests
-        uses: verification.check
-        with:
-          command: pnpm run test
-        continueOnError: true
-
       - name: run-validate
         uses: build.validate
         continueOnError: true
