@@ -189,8 +189,6 @@ phases:
           command: pnpm run test
         continueOnError: true
 
-      - name: run-lint
-        uses: verification.check
-        with:
-          command: pnpm run lint
+      - name: run-validate
+        uses: build.validate
         continueOnError: true

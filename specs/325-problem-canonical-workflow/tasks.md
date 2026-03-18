@@ -10,15 +10,15 @@
 
 ## Phase 1: Core Implementation
 
-- [ ] T001 [P] [US1] Replace `run-lint` step with `run-validate` using `build.validate` in `packages/agency-plugin-spec-kit/workflows/speckit-feature.yaml` (lines 192–196)
-- [ ] T002 [P] [US1] Replace `run-lint` step with `run-validate` using `build.validate` in `packages/agency-plugin-spec-kit/workflows/speckit-bugfix.yaml` (lines 162–166)
+- [X] T001 [P] [US1] Replace `run-lint` step with `run-validate` using `build.validate` in `packages/agency-plugin-spec-kit/workflows/speckit-feature.yaml` (lines 192–196)
+- [X] T002 [P] [US1] Replace `run-lint` step with `run-validate` using `build.validate` in `packages/agency-plugin-spec-kit/workflows/speckit-bugfix.yaml` (lines 162–166)
 
 ## Phase 2: Verification
 
-- [ ] T003 [US1] Grep both workflow files to confirm no remaining `pnpm` references in verification phases
-- [ ] T004 [US2] Confirm `build.validate` is present in both templates
-- [ ] T005 [US1] Confirm `run-tests` step is preserved separately in both templates
-- [ ] T006 Verify both templates were updated identically (FR-004)
+- [X] T003 [US1] Grep both workflow files to confirm no remaining `pnpm` references in verification phases
+- [X] T004 [US2] Confirm `build.validate` is present in both templates
+- [X] T005 [US1] Confirm `run-tests` step is preserved separately in both templates
+- [X] T006 Verify both templates were updated identically (FR-004)
 
 ## Dependencies & Execution Order
 
