@@ -146,6 +146,21 @@ describe('build tools', () => {
       expect(mockExec).toHaveBeenCalledTimes(2);
     });
 
+    it('appends --check to explicit format script (DD-4)', async () => {
+      const { exec } = await import('../../src/exec/runner.js');
+      const mockExec = vi.mocked(exec);
+
+      await validate.execute({
+        cwd: join(fixturesDir, 'pnpm-project'),
+        scripts: ['format'],
+      });
+
+      const formatCall = mockExec.mock.calls.find((call) =>
+        call[1].some((arg: string) => arg === '--check'),
+      );
+      expect(formatCall).toBeDefined();
+    });
+
     it('returns success when no validation scripts exist', async () => {
       const result = await validate.execute({
         cwd: join(fixturesDir, 'npm-project'),

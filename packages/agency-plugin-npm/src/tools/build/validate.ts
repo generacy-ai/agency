@@ -10,7 +10,7 @@ import { TerseOutput, terseToMcpToolResult } from '@generacy-ai/agency';
 import { ValidateSchema, zodToJsonSchema } from '../schemas.js';
 import { detectPackageManager, isDetectionSuccess, buildCommand } from '../../pm/index.js';
 import { getAvailableScripts } from '../../scripts/index.js';
-import { exec, formatCommand } from '../../exec/index.js';
+import { exec } from '../../exec/index.js';
 import type { NpmPluginConfig } from '../../config.js';
 
 /** A script candidate resolved for execution */
@@ -63,7 +63,11 @@ function discoverScripts(
 ): ValidationCandidate[] {
   // Explicit scripts param takes precedence (DD-2)
   if (explicitScripts && explicitScripts.length > 0) {
-    return explicitScripts.map((s) => ({ name: s, script: s }));
+    return explicitScripts.map((s) => ({
+      name: s,
+      script: s,
+      ...(s === 'format' ? { additionalArgs: ['--check'] } : {}),
+    }));
   }
 
   // Short-circuit: if 'validate' script exists, use only that
