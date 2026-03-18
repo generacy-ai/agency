@@ -1,10 +1,10 @@
-# Feature Specification: Add discovery-based build.validate tool to npm plugin
+# Feature Specification: ## Problem
+
+The Agency npm plugin provides individual `build
 
 **Branch**: `323-problem-agency-npm-plugin` | **Date**: 2026-03-18 | **Status**: Draft
 
 ## Summary
-
-Add a `build.validate` tool to `agency-plugin-npm` that automatically discovers and runs all configured validation scripts (lint, format check, typecheck) from a project's `package.json`. This replaces the current approach where consumers must manually enumerate validation steps, which leads to gaps — most notably, format checking is never run during verification, causing PRs to fail CI after the fact.
 
 ## Problem
 
@@ -40,9 +40,11 @@ ValidateSchema = BaseParamsSchema.extend({
 
 **Behavior:**
 - Scripts that don't exist in package.json are silently skipped (not errors)
+- All discovered scripts run **sequentially** in discovery order (not parallel) — simpler, clearer non-interleaved output, matches existing tool patterns
 - All discovered scripts run regardless of individual failures (collect all results)
 - Output summarizes: which validations ran, which passed, which failed, with failure details
 - Exit as error if any validation failed
+- When an explicit `scripts` override is provided, it takes precedence over the `validate` short-circuit — explicit user intent overrides auto-discovery
 
 ### 2. Add `review` mode to `build.format`
 
@@ -61,7 +63,7 @@ Currently `build.format` has `modes: ['default', 'coding']` while `build.lint` i
 - `packages/agency-plugin-npm/src/tools/index.ts` — register new tool
 - `packages/agency-plugin-npm/src/manifest.ts` — add to tools list and mode affiliations
 - `packages/agency-plugin-npm/src/tools/build/format.ts` — add `'review'` to modes
-- `packages/agency-plugin-npm/src/config.ts` — add `validate` script config entry
+- `packages/agency-plugin-npm/src/config.ts` — add simple `validate: 'validate'` config entry (just the short-circuit script name; discovery candidates remain hardcoded defaults)
 - `packages/agency-plugin-npm/tests/tools/build.test.ts` — add tests
 
 ## Context
@@ -70,79 +72,35 @@ The Generacy workflow verification phase (`speckit-feature.yaml`, `speckit-bugfi
 
 ## User Stories
 
-### US1: Unified project validation
+### US1: [Primary User Story]
 
-**As a** developer or automated workflow using Agency tools,
-**I want** a single `build.validate` tool that automatically discovers and runs all configured validation scripts,
-**So that** I don't have to manually enumerate each validation step and risk missing checks (like format verification) that cause CI failures.
-
-**Acceptance Criteria**:
-- [ ] `build.validate` reads `package.json` scripts to discover available validations
-- [ ] Auto-detects the package manager via existing lockfile detection
-- [ ] Runs all discovered scripts and reports aggregated pass/fail results
-- [ ] Scripts not present in `package.json` are silently skipped
-- [ ] If a `validate` script exists, it is used as the sole entry point (skips individual discovery)
-- [ ] Supports optional `scripts` parameter to override default discovery
-
-### US2: Format checking during review mode
-
-**As a** developer reviewing code through Agency's review mode,
-**I want** format checking to be available during review,
-**So that** formatting issues are caught at review time rather than failing CI later.
+**As a** [user type],
+**I want** [capability],
+**So that** [benefit].
 
 **Acceptance Criteria**:
-- [ ] `build.format` tool includes `'review'` in its modes array
-- [ ] Format tool is invocable during review mode workflows
-
-### US3: Validation tool registered in plugin manifest
-
-**As a** consumer of the Agency npm plugin,
-**I want** `build.validate` to be properly registered and available in `coding` and `review` modes,
-**So that** it is discoverable and usable through standard Agency tool interfaces.
-
-**Acceptance Criteria**:
-- [ ] `build.validate` appears in `manifest.tools`
-- [ ] `build.validate` is affiliated with `coding` and `review` modes in `modeAffiliations`
-- [ ] `createTools()` includes the validate tool
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | Discover validation scripts from `package.json` | P1 | Default candidates: validate, lint, format:check, format, typecheck |
-| FR-002 | Auto-detect package manager via lockfile | P1 | Reuse existing PM detection infrastructure |
-| FR-003 | Run all discovered scripts, collecting all results | P1 | Don't short-circuit on first failure |
-| FR-004 | Short-circuit on `validate` script if present | P1 | Skip individual discovery when unified script exists |
-| FR-005 | Append `--check` flag to `format` script when `format:check` is absent | P1 | Ensures format runs in read-only mode |
-| FR-006 | Accept optional `scripts` override parameter | P2 | Allows consumers to customize which scripts to run |
-| FR-007 | Report aggregated results with per-script pass/fail and failure details | P1 | Clear summary output |
-| FR-008 | Return error status if any validation failed | P1 | Enables workflow gating on validation results |
-| FR-009 | Add `'review'` mode to `build.format` tool | P1 | Parity with `build.lint` review mode |
-| FR-010 | Register `build.validate` in manifest for `coding` and `review` modes | P1 | Plugin discovery and mode affiliation |
+| FR-001 | [Description] | P1 | |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | All existing validation scripts discovered | 100% of configured scripts detected | Run against projects with various script combinations |
-| SC-002 | Format check no longer missed in verification | 0 CI format failures after validate pass | Run `build.validate` in verification workflow |
-| SC-003 | Graceful handling of missing scripts | No errors for unconfigured candidates | Test with minimal `package.json` |
-| SC-004 | All tests pass | 100% | `pnpm test` in agency-plugin-npm package |
+| SC-001 | [Metric] | [Target] | [How to measure] |
 
 ## Assumptions
 
-- Projects using Agency npm plugin have a `package.json` with standard script naming conventions
-- The existing package manager detection logic in the plugin is reliable and reusable
-- Validation scripts are idempotent and safe to run in read-only/check mode
-- The `--check` flag is a widely supported convention for format tools (Prettier, Biome, etc.)
+- [Assumption 1]
 
 ## Out of Scope
 
-- Running test suites (handled by existing `build.test` tool)
-- Auto-fixing lint or format issues (this tool is check-only)
-- Workspace/monorepo-aware validation (runs against the target project's `package.json` only)
-- Custom validation script configuration beyond the `scripts` override parameter
-- Updating Generacy workflow YAML files to use `build.validate` (separate task)
+- [Exclusion 1]
 
 ---
 
