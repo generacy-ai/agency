@@ -1,10 +1,10 @@
-# Feature Specification: Update canonical workflow templates to use build.validate
+# Feature Specification: ## Problem
+
+The canonical workflow templates bundled in `agency-plugin-spec-kit` (`workflows/speckit-feature
 
 **Branch**: `325-problem-canonical-workflow` | **Date**: 2026-03-18 | **Status**: Draft
 
 ## Summary
-
-Replace the hardcoded `pnpm run lint` step in canonical workflow templates with `build.validate` for discovery-based static validation, while keeping the test step separate.
 
 ## Problem
 
@@ -28,13 +28,7 @@ These templates are the fallback for any repo that doesn't have local `.generacy
 
 **Depends on:** #323 (`build.validate` tool)
 
-Update both workflow templates in `packages/agency-plugin-spec-kit/workflows/` to:
-1. **Keep the test step separate** — tests are fundamentally different from static validation (longer-running, may need specific environments like databases/emulators, different failure semantics)
-2. **Replace the hardcoded `pnpm run lint` step with `build.validate`** — which will auto-detect the package manager and discover available static quality scripts (lint, format:check, typecheck)
-
-The verification phase will have two steps:
-- The existing test step (using `verification.check` with package-manager-agnostic command or `build.validate` with explicit `scripts: ['test']`)
-- `build.validate` replacing the hardcoded lint step, with expanded discovery scope (lint, format:check, typecheck)
+Update both workflow templates in `packages/agency-plugin-spec-kit/workflows/` to replace the hardcoded `pnpm run lint` step with `build.validate`, which will auto-detect the package manager and discover available validation scripts.
 
 ## Files to modify
 
@@ -43,56 +37,35 @@ The verification phase will have two steps:
 
 ## User Stories
 
-### US1: Package-Manager-Agnostic Verification
+### US1: [Primary User Story]
 
-**As a** developer using the speckit workflow in a non-pnpm project,
-**I want** the verification phase to automatically detect my package manager and available quality scripts,
-**So that** I don't need to create local workflow overrides just to change `pnpm` to `npm` or `yarn`.
-
-**Acceptance Criteria**:
-- [ ] Verification phase no longer hardcodes `pnpm`
-- [ ] `build.validate` discovers and runs available static quality scripts (lint, format:check, typecheck)
-- [ ] Test execution remains as a separate step from static validation
-
-### US2: Expanded Quality Coverage
-
-**As a** project maintainer with `format:check` or `typecheck` scripts configured,
-**I want** these scripts to be automatically discovered and run during verification,
-**So that** all configured quality checks are enforced without manual workflow configuration.
+**As a** [user type],
+**I want** [capability],
+**So that** [benefit].
 
 **Acceptance Criteria**:
-- [ ] Projects with `format:check` scripts have them run during verification
-- [ ] Projects with `typecheck` scripts have them run during verification
-- [ ] Projects without these scripts are unaffected (no errors for missing scripts)
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | Replace `pnpm run lint` step with `build.validate` in both workflow templates | P1 | |
-| FR-002 | Keep test execution as a separate step from `build.validate` | P1 | Tests have different semantics (longer-running, env-dependent) |
-| FR-003 | `build.validate` should use default discovery (no explicit `scripts` parameter) for expanded scope | P1 | Discovers lint, format:check, typecheck |
-| FR-004 | Both speckit-feature.yaml and speckit-bugfix.yaml must be updated identically | P1 | |
+| FR-001 | [Description] | P1 | |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | No hardcoded `pnpm` in verification phase | 0 occurrences | Grep workflow files |
-| SC-002 | build.validate used for static validation | Present in both templates | File inspection |
-| SC-003 | Test step preserved separately | Present in both templates | File inspection |
+| SC-001 | [Metric] | [Target] | [How to measure] |
 
 ## Assumptions
 
-- `build.validate` from `agency-plugin-npm` (#323) is available and working
-- The workflow engine resolves tools from any loaded plugin — no explicit cross-plugin dependency declaration needed between spec-kit and npm plugin
-- Tool resolution at the engine level works across all loaded plugins transparently
+- [Assumption 1]
 
 ## Out of Scope
 
-- Modifying `build.validate`'s default candidate list (e.g., adding `test` to defaults)
-- Changes to the `agency-plugin-npm` package
-- Package manager detection logic (handled by `build.validate` internally)
+- [Exclusion 1]
 
 ---
 
