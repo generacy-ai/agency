@@ -6,28 +6,28 @@
 **Context**: The relay contract (`/workspaces/generacy/packages/orchestrator/src/types/relay.ts`) currently defines message types for API routing, SSE event forwarding, and metadata reporting, but has no message type for delivering tier limits from the cloud to the orchestrator. The spec says "fetch tier limit from cloud (via relay or cached subscription data)" but neither mechanism exists yet.
 **Question**: How should the orchestrator receive the tier limit? Should it be (A) a new relay message type sent during the initial WebSocket handshake, (B) a new relay request/response pair the orchestrator queries on-demand, or (C) included in an existing response (e.g., relay connection acknowledgement)?
 
-**Answer**: *Pending*
+**Answer**: C — Include tier limit in the relay connection acknowledgement (the handshake response). When the orchestrator connects to the relay, the cloud API already sends a handshake acknowledgement. Extend this to include `tierLimit: { maxWorkers: number, maxClusters: number, tier: string }`. This is the natural place — the orchestrator needs the limit before it starts dispatching, and the handshake happens exactly once at connection time. No need for a separate message type or on-demand query.
 
 ### Q2: Subscription change notification channel
 **Context**: Stripe webhooks in generacy-cloud (`webhooks.ts`) update Firestore when subscriptions change, but there is no existing push mechanism from the cloud to the orchestrator. The relay bridge currently only pushes metadata *from* the orchestrator *to* the cloud, not the other direction for subscription data.
 **Question**: When a subscription tier changes, how should the orchestrator be notified? Should the cloud push a new relay message type over the existing WebSocket connection, or should the orchestrator poll the cloud at intervals, or is there another mechanism planned?
 
-**Answer**: *Pending*
+**Answer**: Push via relay. When a Stripe webhook fires and updates the subscription in Firestore, the cloud API should send a `tier_update` relay message to all connected clusters for that org (using the `broadcastToOrg` method from generacy-cloud#235). The message includes the new `maxWorkers` value. The orchestrator's `RelayBridge` handles this message and updates the `WorkerDispatcher`'s effective worker count. Polling is wasteful and adds unnecessary latency — tier changes are infrequent but should take effect quickly.
 
 ### Q3: `cluster_rejected` contract definition
 **Context**: The spec requires handling `cluster_rejected` when the cluster limit is reached, but this type does not exist anywhere in the relay types or codebase. The relay bridge currently handles `connected`, `disconnected`, `error`, and `message` events.
 **Question**: What form does `cluster_rejected` take? Is it (A) a WebSocket close code/reason during connection, (B) a new relay message type received after connection, (C) an error payload in the existing relay error handler, or (D) something else? What fields does it include (e.g., current limit, current count)?
 
-**Answer**: *Pending*
+**Answer**: A — WebSocket close code/reason during connection. When the relay server determines the cluster limit is exceeded (during the handshake phase, before the connection is fully established), it sends a `cluster_rejected` message and then closes the WebSocket with a custom close code (e.g., `4003`). The close reason includes the limit info. Fields: `{ reason: 'cluster_limit_exceeded', currentCount: number, maxClusters: number, tier: string }`. The orchestrator's relay client should handle this close code specifically — log a clear error message and NOT auto-reconnect (unlike normal disconnects).
 
 ### Q4: Offline / no-relay fallback behavior
 **Context**: The orchestrator supports running without relay (local-only mode, when no `relay.apiKey` is configured). In this mode, there's no cloud connection to fetch tier limits from. The spec doesn't address this scenario.
 **Question**: When the orchestrator runs without a relay connection, what should the effective worker count be? Options: (A) unlimited — only `configuredWorkers` applies, (B) default to free tier limit (1 worker), (C) the orchestrator should refuse to start workers without a valid relay connection, or (D) use a last-known cached tier limit if available?
 
-**Answer**: *Pending*
+**Answer**: A — Unlimited, only `configuredWorkers` applies. Local-only mode is for development — developers running the orchestrator without a cloud connection should not be artificially limited. The configured `workers.count` in `cluster.yaml` is the only constraint. If there's no relay, there's no billing, no tier enforcement. This is consistent with how other tools work in offline mode.
 
 ### Q5: Worker count scope — containers vs internal concurrency
 **Context**: The `WorkerDispatcher` currently manages a dispatch loop where each container processes exactly one job at a time (per-container dispatch). The worker count in `cluster.yaml` (`workers.count: 3`) controls how many container replicas are created. The spec says "only `tierLimit` worker containers should be actively used."
 **Question**: Does "effective worker count" mean the number of Docker container replicas the orchestrator manages (i.e., the orchestrator should stop/not-start excess containers), or is it an internal concurrency limit where excess containers remain running but idle (not dispatched work)?
 
-**Answer**: *Pending*
+**Answer**: Internal concurrency limit. The orchestrator should NOT stop/start Docker containers based on tier limits — that's infrastructure management and adds significant complexity (Docker API calls, health checks, container lifecycle). Instead, the `WorkerDispatcher` should limit how many concurrent dispatch slots it uses. If `tierLimit` is 3 but `configuredWorkers` is 7, all 7 containers stay running but only 3 are actively dispatched work at any time. The other 4 sit idle. This is simpler, faster to enforce, and avoids container orchestration complexity. The effective worker count is `Math.min(configuredWorkers, tierLimit)`.
