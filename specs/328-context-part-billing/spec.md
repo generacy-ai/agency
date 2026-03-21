@@ -1,18 +1,22 @@
-# Feature Specification: Queue Priority for Resume/Retry vs New Workflows
+# Feature Specification: ## Context
+
+Part of the [Billing & Concurrent Workflow Enforcement](https://github
 
 **Branch**: `328-context-part-billing` | **Date**: 2026-03-21 | **Status**: Draft
 
 ## Summary
 
-Implement priority-based queue ordering in the orchestrator so that resumed and retried workflows are dispatched before new work. This ensures in-progress work completes before fresh work begins, improving throughput and reducing wasted compute.
-
 ## Context
 
 Part of the [Billing & Concurrent Workflow Enforcement](https://github.com/generacy-ai/tetrad-development/blob/develop/docs/billing-concurrent-workflow-enforcement.md) plan — **Phase 3: Orchestrator Integration**.
 
-The orchestrator's existing Redis sorted set queue uses numeric priority with `ZADD`/`ZPOPMIN` (lower score = higher priority). Currently all items use `Date.now()` as their score (pure FIFO).
+## Task
 
-## Priority Scheme
+Set queue priority scores when enqueuing items so that resumes and retries are dispatched before new work.
+
+### Priority Scheme
+
+The orchestrator's existing Redis sorted set queue uses numeric priority with `ZADD`/`ZPOPMIN` (lower score = higher priority). Currently all items use `Date.now()` as their score (pure FIFO).
 
 | Priority Score | Type | Rationale |
 |---------------|------|-----------|
@@ -22,69 +26,53 @@ The orchestrator's existing Redis sorted set queue uses numeric priority with `Z
 
 Since `0` and `1` are always lower than any `Date.now()` value, resumes and retries are always dequeued first. This is backwards-compatible with existing FIFO behavior for new items.
 
+### Changes
+
+- When enqueuing a **resumed** workflow: set priority score to `0`
+- When enqueuing a **retried** workflow: set priority score to `1`
+- When enqueuing a **new** workflow: continue using `Date.now()` as score (existing behavior)
+- Add a `queueReason` or similar field to queue items to distinguish resume/retry/new for priority assignment
+
+### Acceptance Criteria
+
+- [ ] Resume items enqueued with priority `0`
+- [ ] Retry items enqueued with priority `1`
+- [ ] New items continue using `Date.now()` (no behavior change)
+- [ ] Resumes dequeue before retries, retries before new items
+- [ ] Unit tests verifying priority ordering
+- [ ] Backwards-compatible with existing queue items
+
 ## User Stories
 
-### US1: Prioritize Resumed Workflows
+### US1: [Primary User Story]
 
-**As a** platform operator,
-**I want** resumed workflows to be dispatched before new work,
-**So that** in-progress work completes quickly and doesn't get starved by incoming requests.
-
-**Acceptance Criteria**:
-- [ ] Resume items enqueued with priority score `0`
-- [ ] Resumes always dequeue before retries and new items
-
-### US2: Prioritize Retried Workflows Over New Work
-
-**As a** platform operator,
-**I want** retried workflows to take precedence over new work,
-**So that** previously-failed work is re-attempted promptly rather than falling to the back of the queue.
+**As a** [user type],
+**I want** [capability],
+**So that** [benefit].
 
 **Acceptance Criteria**:
-- [ ] Retry items enqueued with priority score `1`
-- [ ] Retries dequeue before new items but after resumes
-
-### US3: Backwards-Compatible New Workflow Behavior
-
-**As a** developer,
-**I want** new workflow enqueueing to remain unchanged,
-**So that** existing behavior is preserved and no migration is needed.
-
-**Acceptance Criteria**:
-- [ ] New items continue using `Date.now()` as score
-- [ ] Existing queue items without a `queueReason` field still function correctly
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | When enqueuing a **resumed** workflow, set priority score to `0` | P1 | |
-| FR-002 | When enqueuing a **retried** workflow, set priority score to `1` | P1 | |
-| FR-003 | When enqueuing a **new** workflow, continue using `Date.now()` as score | P1 | No behavior change |
-| FR-004 | Add a `queueReason` field (or similar) to queue items to distinguish resume/retry/new | P1 | Used for priority assignment |
-| FR-005 | Ordering: resumes dequeue before retries, retries before new items | P1 | Follows from score values |
+| FR-001 | [Description] | P1 | |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | Resume priority ordering | Resumes always dequeue first | Unit test with mixed queue |
-| SC-002 | Retry priority ordering | Retries dequeue before new items | Unit test with mixed queue |
-| SC-003 | New item ordering | FIFO among new items | Unit test confirming `Date.now()` ordering |
-| SC-004 | Backwards compatibility | Existing items process without errors | Integration test with legacy queue items |
+| SC-001 | [Metric] | [Target] | [How to measure] |
 
 ## Assumptions
 
-- The orchestrator already uses Redis sorted sets with `ZADD`/`ZPOPMIN` for queue management
-- The enqueue call sites for resume, retry, and new workflows are identifiable and separable
-- Multiple resumes or retries at the same priority score will be dequeued in insertion order (Redis sorted set tie-breaking)
+- [Assumption 1]
 
 ## Out of Scope
 
-- Dynamic priority adjustment (e.g., aging/escalation of queued items)
-- Priority configuration via environment variables or admin UI
-- Multi-tenant priority isolation
-- Rate limiting or concurrency caps (handled by other billing phases)
+- [Exclusion 1]
 
 ---
 
