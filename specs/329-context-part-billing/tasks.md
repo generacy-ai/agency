@@ -40,10 +40,10 @@
 
 ## Phase 6: Orchestrator Wiring
 
-- [ ] T016 [AC5] Write tests for relay bridge tier wiring and cluster_rejected error surfacing in `packages/orchestrator/tests/unit/services/relay-bridge.test.ts`
-- [ ] T017 [P] [AC2] [AC3] In `RelayBridge` (`packages/orchestrator/src/services/relay-bridge.ts`), listen for `tier_limits` event from relay client and call `dispatcher.setTierLimit()`
-- [ ] T018 [P] [AC4] In `RelayBridge`, listen for `cluster_rejected` event — log clear error with limit info and upgrade suggestion
-- [ ] T019 [AC2] In `packages/orchestrator/src/server.ts`, pass dispatcher reference to RelayBridge constructor; on startup without relay, skip tier enforcement (default `Infinity`)
+- [X] T016 [AC5] Write tests for relay bridge tier wiring and cluster_rejected error surfacing in `packages/orchestrator/tests/unit/services/relay-bridge.test.ts`
+- [X] T017 [P] [AC2] [AC3] In `RelayBridge` (`packages/orchestrator/src/services/relay-bridge.ts`), listen for `tier_limits` event from relay client and call `dispatcher.setTierLimit()`
+- [X] T018 [P] [AC4] In `RelayBridge`, listen for `cluster_rejected` event — log clear error with limit info and upgrade suggestion
+- [X] T019 [AC2] In `packages/orchestrator/src/server.ts`, pass dispatcher reference to RelayBridge constructor; on startup without relay, skip tier enforcement (default `Infinity`)
 
 ## Dependencies & Execution Order
 
