@@ -13,17 +13,17 @@
 
 ## Phase 1: Types & Priority Helper
 
-- [ ] T001 [AC1-3] Add `QueueReason` type and `queueReason` field to `QueueItem` in `src/types/monitor.ts`
+- [X] T001 [AC1-3] Add `QueueReason` type and `queueReason` field to `QueueItem` in `src/types/monitor.ts`
   - Define `type QueueReason = 'new' | 'resume' | 'retry'`
   - Add optional `queueReason?: QueueReason` to `QueueItem` interface
   - `SerializedQueueItem` inherits it automatically
 
-- [ ] T002 [AC1-3] Create `src/services/queue-priority.ts` with `computePriorityScore(reason: QueueReason): number`
+- [X] T002 [AC1-3] Create `src/services/queue-priority.ts` with `computePriorityScore(reason: QueueReason): number`
   - Resume → `Number(\`0.${Date.now()}\`)` (score ~0.17...)
   - Retry → `Number(\`1.${Date.now()}\`)` (score ~1.17...)
   - New → `Date.now()` (score ~1711...)
 
-- [ ] T003 [P] [AC5] Create `tests/unit/services/queue-priority.test.ts`
+- [X] T003 [P] [AC5] Create `tests/unit/services/queue-priority.test.ts`
   - Test each reason returns correct score tier
   - Test ordering: `resume < retry < new` always holds
   - Test FIFO within tier (two sequential calls produce increasing scores)
@@ -31,36 +31,36 @@
 
 ## Phase 2: Adapter Updates
 
-- [ ] T004 [AC1-3,6] Update `src/services/redis-queue-adapter.ts`
+- [X] T004 [AC1-3,6] Update `src/services/redis-queue-adapter.ts`
   - In `enqueue()`: if `item.queueReason` is present, override score with `computePriorityScore(item.queueReason)`; otherwise fall back to `item.priority`
   - In `release()`: set `queueReason: 'retry'` and recompute priority before re-enqueue
 
-- [ ] T005 [P] [AC1-3,6] Update `src/services/in-memory-queue-adapter.ts`
+- [X] T005 [P] [AC1-3,6] Update `src/services/in-memory-queue-adapter.ts`
   - Same logic as T004: priority override in `enqueue()`, retry reason in `release()`
 
-- [ ] T006 [AC4-5] Add priority ordering tests to `tests/unit/services/redis-queue-adapter.test.ts`
+- [X] T006 [AC4-5] Add priority ordering tests to `tests/unit/services/redis-queue-adapter.test.ts`
   - Enqueue items with all three reasons, verify dequeue order: resume → retry → new
   - Test `release()` re-enqueues with retry priority
   - Test backwards compat: item without `queueReason` uses `priority` field as-is
 
-- [ ] T007 [P] [AC4-5] Add priority ordering tests to `tests/unit/services/in-memory-queue-adapter.test.ts`
+- [X] T007 [P] [AC4-5] Add priority ordering tests to `tests/unit/services/in-memory-queue-adapter.test.ts`
   - Same test cases as T006 for the in-memory adapter
 
 ## Phase 3: Enqueue Call Sites
 
-- [ ] T008 [AC1-3] Update `src/services/label-monitor-service.ts` enqueue calls
+- [X] T008 [AC1-3] Update `src/services/label-monitor-service.ts` enqueue calls
   - `command: 'process'` → add `queueReason: 'new'`
   - `command: 'continue'` → add `queueReason: 'resume'`
 
-- [ ] T009 [P] [AC1-3] Update `src/services/pr-feedback-monitor-service.ts` enqueue call
+- [X] T009 [P] [AC1-3] Update `src/services/pr-feedback-monitor-service.ts` enqueue call
   - `command: 'address-pr-feedback'` → add `queueReason: 'new'`
 
-- [ ] T010 [AC5] Update `tests/unit/services/label-monitor-service.test.ts`
+- [X] T010 [AC5] Update `tests/unit/services/label-monitor-service.test.ts`
   - Verify enqueue calls include correct `queueReason` for each command type
 
 ## Phase 4: Integration Verification
 
-- [ ] T011 [AC4-5] End-to-end priority ordering integration test
+- [X] T011 [AC4-5] End-to-end priority ordering integration test
   - Enqueue resume, retry, and new items in mixed order
   - Verify claim order matches: resume → retry → new
   - Verify FIFO within each tier
