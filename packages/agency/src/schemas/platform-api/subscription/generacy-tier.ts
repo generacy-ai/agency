@@ -27,11 +27,13 @@ export function generateGeneracySubscriptionId(): GeneracySubscriptionId {
 
 /**
  * Organization subscription tiers for Generacy platform.
- * Starter: Small teams, basic features
- * Team: Growing teams, advanced collaboration
+ * Free: Individual users, limited features
+ * Basic: Small teams, core features
+ * Standard: Growing teams, advanced collaboration
+ * Professional: Larger teams, premium features
  * Enterprise: Large organizations, full features, SLA
  */
-export const GeneracyTierSchema = z.enum(['starter', 'team', 'enterprise']);
+export const GeneracyTierSchema = z.enum(['free', 'basic', 'standard', 'professional', 'enterprise']);
 export type GeneracyTier = z.infer<typeof GeneracyTierSchema>;
 
 /**
@@ -44,7 +46,7 @@ export type GeneracyTier = z.infer<typeof GeneracyTierSchema>;
  * ```typescript
  * const subscription = GeneracySubscriptionTier.Latest.parse({
  *   id: '01HQVJ5KWXYZ1234567890ABCD',
- *   tier: 'team',
+ *   tier: 'standard',
  *   orgId: '01HQVJ5KWXYZ1234567890ORGG',
  *   status: 'active',
  *   seatCount: 50,
