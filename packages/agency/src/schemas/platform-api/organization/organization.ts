@@ -29,8 +29,10 @@ export type OrganizationSlug = z.infer<typeof OrganizationSlugSchema>;
  * Mirrors the Generacy subscription tiers from the subscription schemas.
  */
 export const OrganizationSubscriptionTierSchema = z.enum([
-  'starter',
-  'team',
+  'free',
+  'basic',
+  'standard',
+  'professional',
   'enterprise',
 ]);
 export type OrganizationSubscriptionTier = z.infer<typeof OrganizationSubscriptionTierSchema>;
@@ -48,7 +50,7 @@ export type OrganizationSubscriptionTier = z.infer<typeof OrganizationSubscripti
  *   name: 'Acme Corporation',
  *   slug: 'acme-corp',
  *   ownerId: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
- *   subscriptionTier: 'team',
+ *   subscriptionTier: 'standard',
  *   createdAt: '2024-01-15T10:30:00Z',
  *   updatedAt: '2024-01-15T10:30:00Z',
  * });
