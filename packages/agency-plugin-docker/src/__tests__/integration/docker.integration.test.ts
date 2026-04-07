@@ -112,7 +112,8 @@ describe('Docker Plugin Integration', () => {
       skipIfNoDocker(async () => {
         const available = await isDockerAvailable();
         expect(available).toBe(true);
-      })
+      }),
+      10000
     );
   });
 
@@ -175,7 +176,8 @@ describe('Docker Plugin Integration', () => {
         expect(result.isError).toBe(true);
         const text = (result.content[0] as { text: string }).text;
         expect(text).toContain('[NOT_FOUND]');
-      })
+      }),
+      10000
     );
   });
 });

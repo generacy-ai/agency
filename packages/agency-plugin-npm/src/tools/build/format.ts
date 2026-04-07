@@ -20,7 +20,7 @@ export function createFormatTool(config: NpmPluginConfig): AgencyTool {
     inputSchema: zodToJsonSchema(FormatSchema),
     namespace: 'build',
     outputPattern: 'terse',
-    modes: ['default', 'coding'],
+    modes: ['default', 'coding', 'review'],
 
     async execute(params: unknown): Promise<ToolResult> {
       const parsed = FormatSchema.safeParse(params);

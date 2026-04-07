@@ -18,6 +18,9 @@ export interface ScriptConfig {
   /** Format script name */
   format?: string;
 
+  /** Validate short-circuit script name */
+  validate?: string;
+
   /** Integration test script name */
   'test:integration'?: string;
 
@@ -45,6 +48,7 @@ export const DEFAULT_CONFIG: NpmPluginConfig = {
     test: 'test',
     lint: 'lint',
     format: 'format',
+    validate: 'validate',
     'test:integration': 'test:integration',
     'test:e2e': 'test:e2e',
     'test:coverage': 'test:coverage',

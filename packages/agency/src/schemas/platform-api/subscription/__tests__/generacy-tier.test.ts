@@ -36,20 +36,20 @@ describe('generateGeneracySubscriptionId', () => {
 
 describe('GeneracyTierSchema', () => {
   it('accepts valid tiers', () => {
-    for (const tier of ['starter', 'team', 'enterprise']) {
+    for (const tier of ['free', 'basic', 'standard', 'professional', 'enterprise']) {
       expect(GeneracyTierSchema.safeParse(tier).success).toBe(true);
     }
   });
 
   it('rejects invalid tier', () => {
-    expect(GeneracyTierSchema.safeParse('free').success).toBe(false);
+    expect(GeneracyTierSchema.safeParse('platinum').success).toBe(false);
   });
 });
 
 describe('GeneracySubscriptionTierSchema', () => {
   const validSubscription = {
     id: validUlid,
-    tier: 'team',
+    tier: 'standard',
     orgId: validUlid,
     status: 'active',
     seatCount: 50,
@@ -132,7 +132,7 @@ describe('GeneracySubscriptionTier namespace', () => {
 describe('parse helpers', () => {
   const valid = {
     id: validUlid,
-    tier: 'starter',
+    tier: 'basic',
     orgId: validUlid,
     status: 'active',
     seatCount: 5,

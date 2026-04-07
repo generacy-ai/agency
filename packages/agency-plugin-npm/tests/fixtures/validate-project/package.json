@@ -1,0 +1,10 @@
+{
+  "name": "validate-fixture",
+  "version": "1.0.0",
+  "scripts": {
+    "lint": "echo 'Linting...'",
+    "format": "echo 'Formatting...'",
+    "format:check": "echo 'Format checking...'",
+    "typecheck": "echo 'Typechecking...'"
+  }
+}

@@ -9,6 +9,7 @@ import { createInstallDependenciesTool } from './build/install-dependencies.js';
 import { createCompileTool } from './build/compile.js';
 import { createLintTool } from './build/lint.js';
 import { createFormatTool } from './build/format.js';
+import { createValidateTool } from './build/validate.js';
 import { createRunUnitTool } from './test/run-unit.js';
 import { createRunIntegrationTool } from './test/run-integration.js';
 import { createRunE2ETool } from './test/run-e2e.js';
@@ -24,6 +25,7 @@ export function createTools(config: NpmPluginConfig): AgencyTool[] {
     createCompileTool(config),
     createLintTool(config),
     createFormatTool(config),
+    createValidateTool(config),
 
     // Test tools
     createRunUnitTool(config),

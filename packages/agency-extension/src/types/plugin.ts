@@ -7,7 +7,7 @@
  * Represents user-configurable settings for a plugin.
  */
 export interface PluginConfig {
-  /** Unique plugin identifier (e.g., 'autodev', 'speckit') */
+  /** Unique plugin identifier (e.g., 'speckit') */
   id: string;
 
   /** Whether the plugin is enabled */

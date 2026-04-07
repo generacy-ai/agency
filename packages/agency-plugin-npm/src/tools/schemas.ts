@@ -57,6 +57,14 @@ export const FormatSchema = BaseParamsSchema.extend({
 
 export type FormatParams = z.infer<typeof FormatSchema>;
 
+/** build.validate parameters */
+export const ValidateSchema = BaseParamsSchema.extend({
+  /** Override which scripts to discover/run */
+  scripts: z.array(z.string()).optional(),
+});
+
+export type ValidateParams = z.infer<typeof ValidateSchema>;
+
 /** Common test parameters */
 const BaseTestSchema = BaseParamsSchema.extend({
   /** Test file pattern to run */
@@ -132,6 +140,9 @@ function getJsonSchemaType(zodType: z.ZodTypeAny): JsonSchema {
   }
   if (zodType instanceof z.ZodBoolean) {
     return { type: 'boolean', description: zodType.description };
+  }
+  if (zodType instanceof z.ZodArray) {
+    return { type: 'array', items: getJsonSchemaType(zodType.element), description: zodType.description };
   }
   return { type: 'string' }; // fallback
 }

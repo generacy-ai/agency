@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tier-Related Relay Messages",
+  "description": "JSON Schema for new relay message types added by context-part billing feature (#329)",
+  "definitions": {
+    "TierLimits": {
+      "type": "object",
+      "properties": {
+        "maxWorkers": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum concurrent dispatch slots per cluster"
+        },
+        "maxClusters": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum simultaneous cluster connections per org"
+        },
+        "tier": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Subscription tier identifier (e.g., 'free', 'pro', 'enterprise')"
+        }
+      },
+      "required": ["maxWorkers", "maxClusters", "tier"],
+      "additionalProperties": false
+    },
+    "HandshakeAckMessage": {
+      "type": "object",
+      "description": "Server response to client handshake, includes tier limits. Replaces the bare heartbeat ack for clients that understand it.",
+      "properties": {
+        "type": {
+          "const": "handshake_ack"
+        },
+        "tierLimits": {
+          "$ref": "#/definitions/TierLimits"
+        }
+      },
+      "required": ["type", "tierLimits"],
+      "additionalProperties": false
+    },
+    "TierUpdateMessage": {
+      "type": "object",
+      "description": "Pushed to all connected clusters for an org when the subscription tier changes.",
+      "properties": {
+        "type": {
+          "const": "tier_update"
+        },
+        "tierLimits": {
+          "$ref": "#/definitions/TierLimits"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of the tier change"
+        }
+      },
+      "required": ["type", "tierLimits", "timestamp"],
+      "additionalProperties": false
+    },
+    "ClusterRejectedPayload": {
+      "type": "object",
+      "description": "Sent as WebSocket close reason (JSON-encoded) when cluster connection is rejected due to cluster limit. Close code: 4003.",
+      "properties": {
+        "reason": {
+          "const": "cluster_limit_exceeded"
+        },
+        "currentCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of clusters currently connected for the org"
+        },
+        "maxClusters": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum clusters allowed for the org's tier"
+        },
+        "tier": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Subscription tier name"
+        }
+      },
+      "required": ["reason", "currentCount", "maxClusters", "tier"],
+      "additionalProperties": false
+    }
+  }
+}

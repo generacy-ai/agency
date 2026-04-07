@@ -190,7 +190,7 @@ Execute the implementation plan by processing tasks defined in tasks.md.
       - **IMPORTANT - Signal workflow completion**:
         - This is a terminal state - all implementation work is done
         - Do NOT suggest running `/speckit:implement` again
-        - The parent workflow (`/autodev:continue`) will detect this completion state
+        - The parent workflow (`/speckit:continue`) will detect this completion state
     - **If automated tasks remain**:
       - This indicates an error - report which automated tasks are incomplete
 
@@ -219,7 +219,7 @@ Execute the implementation plan by processing tasks defined in tasks.md.
 
 ## Post-Command Check
 
-**IMPORTANT**: If this command was invoked as part of a larger workflow (e.g., `/autodev:start` or `/autodev:continue`):
+**IMPORTANT**: If this command was invoked as part of a larger workflow (e.g., `/speckit:start` or `/speckit:continue`):
 1. This command's completion is NOT the end of the workflow
 2. Check your todo list - there WILL be remaining tasks
 3. You MUST immediately proceed to the next task in your todo list

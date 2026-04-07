@@ -70,13 +70,13 @@ describe('OrganizationSlugSchema', () => {
 
 describe('OrganizationSubscriptionTierSchema', () => {
   it('accepts valid tiers', () => {
-    for (const tier of ['starter', 'team', 'enterprise']) {
+    for (const tier of ['free', 'basic', 'standard', 'professional', 'enterprise']) {
       expect(OrganizationSubscriptionTierSchema.safeParse(tier).success).toBe(true);
     }
   });
 
   it('rejects invalid tier', () => {
-    expect(OrganizationSubscriptionTierSchema.safeParse('free').success).toBe(false);
+    expect(OrganizationSubscriptionTierSchema.safeParse('platinum').success).toBe(false);
   });
 });
 
@@ -86,7 +86,7 @@ describe('OrganizationSchema', () => {
     name: 'Acme Corporation',
     slug: 'acme-corp',
     ownerId: validUlid,
-    subscriptionTier: 'team',
+    subscriptionTier: 'standard',
     createdAt: ts,
     updatedAt: ts,
   };
@@ -137,7 +137,7 @@ describe('Organization parse helpers', () => {
     name: 'Test',
     slug: 'test-org',
     ownerId: validUlid,
-    subscriptionTier: 'starter',
+    subscriptionTier: 'basic',
     createdAt: ts,
     updatedAt: ts,
   };
