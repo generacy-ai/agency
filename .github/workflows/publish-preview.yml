@@ -72,10 +72,6 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
 
-      - name: Update npm
-        if: steps.latency.outputs.found == 'true'
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         if: steps.latency.outputs.found == 'true'
         run: pnpm install --frozen-lockfile
