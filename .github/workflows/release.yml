@@ -49,7 +49,7 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
-          publish: pnpm changeset publish --provenance
+          publish: pnpm changeset publish --tag stable --provenance
           title: "chore: version packages"
           commit: "chore: version packages"
         env:
