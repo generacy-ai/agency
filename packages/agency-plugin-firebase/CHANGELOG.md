@@ -1,5 +1,12 @@
 # @generacy-ai/agency-plugin-firebase
 
+## 1.0.1
+
+### Patch Changes
+
+- Updated dependencies [1603962]
+  - @generacy-ai/agency@0.1.1
+
 ## 1.0.0
 
 ### Minor Changes

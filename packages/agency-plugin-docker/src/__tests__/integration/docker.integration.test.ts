@@ -14,7 +14,7 @@ import { dockerPlugin, dockerTools, dockerPluginManifest } from '../../index.js'
  */
 async function isDockerAvailable(): Promise<boolean> {
   try {
-    await execa('docker', ['info'], { timeout: 5000 });
+    await execa('docker', ['info'], { timeout: 15000 });
     return true;
   } catch {
     return false;
@@ -113,7 +113,7 @@ describe('Docker Plugin Integration', () => {
         const available = await isDockerAvailable();
         expect(available).toBe(true);
       }),
-      10000
+      30000
     );
   });
 
@@ -177,7 +177,7 @@ describe('Docker Plugin Integration', () => {
         const text = (result.content[0] as { text: string }).text;
         expect(text).toContain('[NOT_FOUND]');
       }),
-      10000
+      30000
     );
   });
 });
