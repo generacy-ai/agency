@@ -49,12 +49,73 @@ jobs:
         id: changesets
         uses: changesets/action@v1
         with:
-          publish: pnpm changeset publish --provenance
+          publish: pnpm changeset publish --tag stable --provenance
           title: "chore: version packages"
           commit: "chore: version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Validate latest peer-dep consistency
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          node - <<'EOF'
+          const { execSync } = require('child_process');
+          const semver = require('semver');
+
+          const PACKAGES = [
+            '@generacy-ai/agency',
+            '@generacy-ai/agency-plugin-spec-kit',
+            '@generacy-ai/agency-plugin-humancy',
+            '@generacy-ai/agency-plugin-docker',
+            '@generacy-ai/agency-plugin-firebase',
+            '@generacy-ai/agency-plugin-git',
+            '@generacy-ai/agency-plugin-npm',
+            '@generacy-ai/agency-extension',
+          ];
+
+          function npmInfo(pkg) {
+            try {
+              return JSON.parse(execSync(`npm info ${pkg}@latest --json 2>/dev/null`, { encoding: 'utf8' }));
+            } catch {
+              return null;
+            }
+          }
+
+          const infos = {};
+          for (const pkg of PACKAGES) {
+            infos[pkg] = npmInfo(pkg);
+            if (infos[pkg]) {
+              console.log(`  ${pkg}@latest = ${infos[pkg].version}`);
+            } else {
+              console.log(`  ${pkg}@latest = (not on npm)`);
+            }
+          }
+
+          let failed = false;
+          for (const pkg of PACKAGES) {
+            const info = infos[pkg];
+            if (!info || !info.peerDependencies) continue;
+            for (const [peer, range] of Object.entries(info.peerDependencies)) {
+              if (!infos[peer]) continue;
+              const peerVersion = infos[peer]?.version;
+              if (!peerVersion) continue;
+              // workspace:* becomes a concrete range after publish; skip if not semver
+              if (!semver.validRange(range)) continue;
+              if (!semver.satisfies(peerVersion, range)) {
+                console.error(`::error::Peer dep conflict: ${pkg}@${info.version} requires ${peer}@${range} but @latest is ${peerVersion}`);
+                failed = true;
+              }
+            }
+          }
+
+          if (failed) {
+            console.error('One or more @latest packages have unresolvable peer dependencies.');
+            console.error('Re-run the release after bumping all affected packages together in a single changeset.');
+            process.exit(1);
+          }
+          console.log('All @latest peer dependencies are consistent.');
+          EOF
 
       - name: Publish extension to Marketplace
         if: steps.changesets.outputs.published == 'true' && env.VSCE_PAT != ''
