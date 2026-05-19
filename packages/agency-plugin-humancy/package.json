@@ -1,6 +1,6 @@
 {
   "name": "@generacy-ai/agency-plugin-humancy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Humancy integration plugin for Agency - enables agents to request human input",
   "repository": {
     "type": "git",
