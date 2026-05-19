@@ -1,6 +1,6 @@
 {
   "name": "@generacy-ai/agency-plugin-humancy",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Humancy integration plugin for Agency - enables agents to request human input",
   "repository": {
     "type": "git",
@@ -17,7 +17,9 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "echo 'Tests temporarily disabled - see issue #295' && exit 0",
@@ -25,7 +27,13 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
-  "keywords": ["mcp", "agent", "generacy", "humancy", "human-in-the-loop"],
+  "keywords": [
+    "mcp",
+    "agent",
+    "generacy",
+    "humancy",
+    "human-in-the-loop"
+  ],
   "author": "Generacy AI",
   "license": "Apache-2.0",
   "publishConfig": {
