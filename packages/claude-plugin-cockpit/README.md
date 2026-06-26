@@ -23,7 +23,7 @@ This plugin is the home for the `/cockpit:*` namespace — developer-side workfl
 
 | Command | Description |
 |---------|-------------|
-| `/cockpit:watch` | Watch an epic and surface status changes (coming in #351–#360) |
+| `/cockpit:watch` | Watch an epic and apply the autonomy policy to each transition |
 | `/cockpit:status` | Report the current status of an epic and its children (coming in #351–#360) |
 | `/cockpit:clarify` | Drive clarification flow against an epic's open questions (coming in #351–#360) |
 | `/cockpit:review` | Coordinate review of child PRs against the parent epic (coming in #351–#360) |
