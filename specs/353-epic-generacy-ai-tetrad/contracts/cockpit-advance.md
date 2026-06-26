@@ -1,19 +1,19 @@
 # Contract: `generacy cockpit advance --gate clarification`
 
 **Consumer**: `/cockpit:clarify` Step 6 (conditional)
-**Producer**: G1.2 / #788 (already implemented per epic plan)
-**Status**: Reconcile flag name (`--gate clarification` vs. alternatives) against G1.2's shipped surface before Phase 2 validation.
+**Producer**: G1.2 / #788 (shipped — `packages/generacy/src/cli/commands/cockpit/advance.ts`)
+**Status**: Reconciled against the shipped surface on 2026-06-26.
 
 ## Invocation
 
 ```bash
-generacy cockpit advance --gate clarification --issue <n>
+generacy cockpit advance --gate clarification <issue-ref>
 ```
 
-| Flag | Required | Notes |
-|------|----------|-------|
-| `--gate clarification` | yes | Names the gate to advance. Reconcile against G1.2 — if the canonical form is `--gate=clarify` or `--clarification`, update both this contract and the verb. |
-| `--issue <n>` | yes | Same positive integer used in Step 2. |
+| Argument / Flag | Required | Notes |
+|------------------|----------|-------|
+| `<issue-ref>` (positional) | yes | Same `<owner>/<repo>#<n>` form the verb computes for Step 2. There is NO `--issue` flag. |
+| `--gate <name>` | yes | Pass `clarification` literal. The CLI exposes `--help-gates` for the full list; reconcile with G1.2 if the name changes. |
 
 ## Preconditions Asserted by the Verb
 
@@ -28,7 +28,7 @@ If either precondition fails, the verb skips this step entirely.
 
 | Condition | Exit code | Verb behavior |
 |-----------|-----------|---------------|
-| Gate advanced successfully | 0 | Verb reports `clarification gate advanced for issue #<n>` and exits 0. |
+| Gate advanced successfully | 0 | Verb reports `clarification gate advanced for issue <ref>` and exits 0. |
 | Gate already advanced (idempotent re-run) | 0 (or G1.2's documented no-op exit) | Verb treats as success; same report. |
 | Gate cannot advance (upstream condition not met, e.g., label missing) | non-zero | Surface stderr verbatim; exit non-zero. The marker comment remains on the issue — it is not retracted. |
 | `generacy` binary missing | non-zero (shell ENOENT) | Surface error; exit non-zero. |
