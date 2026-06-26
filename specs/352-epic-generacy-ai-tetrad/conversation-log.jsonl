@@ -1,2 +1,5 @@
 {"timestamp":"2026-06-26T18:19:46.888Z","phase":"specify","session_id":"","event_type":"phase_start"}
 {"timestamp":"2026-06-26T18:21:24.280Z","phase":"specify","session_id":"","event_type":"phase_complete"}
+{"timestamp":"2026-06-26T18:21:36.103Z","phase":"clarify","session_id":"","event_type":"phase_start"}
+{"timestamp":"2026-06-26T18:23:55.191Z","phase":"clarify","session_id":"","event_type":"questions_posted","question_count":5}
+{"timestamp":"2026-06-26T18:24:02.154Z","phase":"clarify","session_id":"","event_type":"phase_complete"}
