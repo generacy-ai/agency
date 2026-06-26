@@ -10,7 +10,7 @@
 - B: Post the approved subset but do not advance the gate; gate advance only fires when all open questions are answered in this run.
 - C: Block posting entirely on partial approval (all-or-nothing); require either full approval or rejection.
 
-**Answer**: *Pending*
+**Answer**: B — Post the approved subset, but advance the gate (`completed:clarification`) only when every open question has an approved answer in this run; no premature resume with gaps. (The common "approve all" case posts + advances in one go.)
 
 ### Q2: Canonical HTML marker string
 **Context**: FR-005 and the Assumptions section both reference the marker `<!-- generacy-cockpit:clarification-answers -->` but Assumptions also says "the exact marker string is finalized at implementation time against the cockpit engine." Resume tooling must locate the comment deterministically, so the marker must be settled before implementation can land or be tested.
@@ -19,7 +19,7 @@
 - A: Use `<!-- generacy-cockpit:clarification-answers -->` exactly as written in FR-005.
 - B: Use a different exact string (please specify in the answer).
 
-**Answer**: *Pending*
+**Answer**: A — Use `<!-- generacy-cockpit:clarification-answers -->` as the cockpit-comment marker. Note: the **`completed:clarification` label** is what triggers the orchestrator's resume, not the marker — the marker just identifies cockpit-authored answers (consistent with the plan's comment-marker convention).
 
 ### Q3: Branch-resolution failure behavior
 **Context**: FR-002 resolves the target issue from the current git branch using the `###-*` convention and notes that an `--issue <n>` argument "may be supported for off-branch use." The spec does not state what happens if the developer runs `/cockpit:clarify` on a branch that does not match `###-*` and no explicit issue is provided. This affects whether the command must implement an `--issue` argument in v1 or can defer it.
@@ -29,7 +29,7 @@
 - B: Hard error without `--issue` support in v1: developer must check out a `###-*` branch to use the command; `--issue` deferred to a later iteration.
 - C: Soft prompt: interactively ask the developer for an issue number.
 
-**Answer**: *Pending*
+**Answer**: A — Accept an explicit issue argument in v1 (`/cockpit:watch` invokes `/cockpit:clarify <issue>`); branch inference (`###-*`) is a fallback. Hard error with guidance if neither resolves.
 
 ### Q4: Drafting fallback when context is insufficient
 **Context**: FR-004 requires drafts to cite a spec section, plan section, or file path as provenance. The spec is silent on what to do when the local artifacts do not give the agent enough evidence to draft a confident answer for a specific question (e.g., the question concerns a design decision not yet captured in `spec.md` or `plan.md`). This drives whether a low-confidence draft blocks the whole batch or is rendered as a clearly-marked stub.
@@ -39,7 +39,7 @@
 - B: Omit that question from the draft entirely so only confidently-drafted questions are presented; un-drafted questions remain pending.
 - C: Block the entire batch with an error until the developer supplies additional context or files; nothing is presented.
 
-**Answer**: *Pending*
+**Answer**: A — For a question the agent can't ground, render a marked stub (`_no draft — insufficient context_`) so the developer can fill/edit/skip it; the rest of the batch proceeds.
 
 ### Q5: Comment-posting transport
 **Context**: FR-005/FR-006 require posting a single marked comment on the issue, and the Assumptions section says "GitHub authentication is handled by the developer's existing `gh` / cockpit CLI configuration." The spec does not state which executable the verb shells out to for the post. This matters because it determines whether the verb depends on `gh` being installed, or whether posting is a third subcommand of `generacy cockpit` (alongside `clarify-context` and `advance`), which would be a scope addition for G1.2.
@@ -49,4 +49,4 @@
 - B: A `generacy cockpit` subcommand (e.g., `generacy cockpit post-clarification-answers`) — pushes the GitHub mechanics into the cockpit engine and adds scope to G1.2.
 - C: Either is acceptable; the verb auto-detects (`generacy cockpit` first, fall back to `gh`).
 
-**Answer**: *Pending*
+**Answer**: A — Post via `gh issue comment` from the command, then advance via the existing `generacy cockpit advance` verb. (#788 is already implemented, so we don't add a posting verb to it retroactively; the slash layer using `gh` for the comment is fine.)
