@@ -26,7 +26,7 @@ This plugin is the home for the `/cockpit:*` namespace — developer-side workfl
 | `/cockpit:watch` | Watch an epic and surface status changes (coming in #351–#360) |
 | `/cockpit:status` | Report the current status of an epic and its children (coming in #351–#360) |
 | `/cockpit:clarify` | Drive clarification flow against an epic's open questions (coming in #351–#360) |
-| `/cockpit:review` | Coordinate review of child PRs against the parent epic (coming in #351–#360) |
+| `/cockpit:review` | Coordinate review of a speckit gate — artifact (spec/clarifications/plan/tasks) or impl PR diff — and optionally advance the gate label. |
 | `/cockpit:merge` | Merge a completed epic's branches in dependency order (coming in #351–#360) |
 
 ## Related
