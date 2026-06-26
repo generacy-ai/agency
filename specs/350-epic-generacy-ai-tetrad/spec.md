@@ -54,10 +54,10 @@ Scaffold the `claude-plugin-cockpit` Claude Code plugin package within the agenc
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | Create `packages/claude-plugin-cockpit/.claude-plugin/plugin.json` declaring `name: cockpit` with a description and author block matching the generacy convention. | P1 | Mirrors `claude-plugin-agency-spec-kit/.claude-plugin/plugin.json`. |
-| FR-002 | Create an empty `packages/claude-plugin-cockpit/commands/` directory (committed via `.gitkeep` if necessary). | P1 | Verbs added in later issues. |
-| FR-003 | Create `packages/claude-plugin-cockpit/README.md` documenting the plugin purpose and marketplace install via `extraKnownMarketplaces`. | P1 | Structure mirrors `claude-plugin-agency-spec-kit/README.md`. |
-| FR-004 | Add a new entry for `cockpit` to the `plugins` array in `.claude-plugin/marketplace.json`, with `source: ./packages/claude-plugin-cockpit` and an appropriate category. | P1 | Single entry; do not modify the existing `agency-spec-kit` entry. |
+| FR-001 | Create `packages/claude-plugin-cockpit/.claude-plugin/plugin.json` declaring `name: cockpit`, `description: "Developer-side workflow automation commands for speckit epics"`, and an author block matching the generacy convention. | P1 | Mirrors `claude-plugin-agency-spec-kit/.claude-plugin/plugin.json`. Description per clarification Q1. |
+| FR-002 | Create `packages/claude-plugin-cockpit/commands/` and commit it via `commands/.gitkeep`. Do not add a `README.md` or stub `.md` file inside `commands/` — the plugin loader globs `commands/*.md` and would register junk verbs. | P1 | Verbs added in later issues. Placeholder per clarification Q3. |
+| FR-003 | Create `packages/claude-plugin-cockpit/README.md` documenting the plugin purpose and marketplace install. The install section must instruct users to add `generacy-ai/agency` (GitHub repo shorthand) to `extraKnownMarketplaces`. The README must include an "Available Commands" table populated with the planned `/cockpit:*` verbs (e.g. `watch`, `status`, `clarify`, `review`, `merge`), each marked "(coming in #351–#360)". | P1 | Structure mirrors `claude-plugin-agency-spec-kit/README.md`. Marketplace identifier per Q4; commands-table content per Q5. |
+| FR-004 | Add a new entry for `cockpit` to the `plugins` array in `.claude-plugin/marketplace.json` with `source: ./packages/claude-plugin-cockpit`, `category: "development"`, and the same `description` string used in `plugin.json`. | P1 | Single entry; do not modify the existing `agency-spec-kit` entry. Category per Q2. |
 | FR-005 | Plugin manifest must not declare any `commands` or MCP `requires` block — the namespace registers empty. | P1 | Avoids coupling to verbs not yet implemented. |
 | FR-006 | Package must follow the monorepo's existing `packages/*` conventions (location, naming) so it is picked up by pnpm workspaces if/when a `package.json` is added later. | P2 | No `package.json` is required by this issue. |
 
@@ -73,10 +73,12 @@ Scaffold the `claude-plugin-cockpit` Claude Code plugin package within the agenc
 
 ## Assumptions
 
-- The generacy marketplace at `.claude-plugin/marketplace.json` is the canonical source registered by users via `extraKnownMarketplaces`.
+- The generacy marketplace at `.claude-plugin/marketplace.json` is the canonical source registered by users via `extraKnownMarketplaces`, addressed by the GitHub repo shorthand `generacy-ai/agency` (matching the identifier already in `.claude/settings.json`).
 - Claude Code allows a plugin to register a namespace with zero commands without erroring.
+- The plugin loader globs `commands/*.md` and would surface any `.md` file there as a verb — placeholders inside `commands/` must therefore be invisible to the loader (`.gitkeep`).
 - No build step (TypeScript compile, bundling, etc.) is required for a commands-only plugin — `.md` files in `commands/` are the runtime artifact.
 - The `cockpit` plugin will not require an MCP server in its scaffold; any future MCP coupling will be added by a subsequent issue.
+- The planned `/cockpit:*` verbs (`watch`, `status`, `clarify`, `review`, `merge`, …) land in Epic Cockpit issues #351–#360 and can be referenced as forthcoming in the README.
 
 ## Out of Scope
 
