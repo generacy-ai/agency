@@ -16,6 +16,16 @@
       },
       "source": "./packages/claude-plugin-agency-spec-kit",
       "category": "development"
+    },
+    {
+      "name": "cockpit",
+      "description": "Developer-side workflow automation commands for speckit epics",
+      "author": {
+        "name": "Generacy AI",
+        "email": "support@generacy.ai"
+      },
+      "source": "./packages/claude-plugin-cockpit",
+      "category": "development"
     }
   ]
 }
