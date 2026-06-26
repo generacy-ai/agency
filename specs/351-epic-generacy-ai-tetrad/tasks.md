@@ -12,19 +12,19 @@
 
 These confirm the upstream surfaces the playbook depends on exist before authoring against them. They are read-only and parallelizable.
 
-- [ ] T001 [P] [US1] Verify `generacy cockpit watch <ref>` exists and emits one JSON line per transition (per contracts/transition.schema.md). If not yet shipped (#787 not landed), proceed against the contract and add a dependency block to the issue.
-- [ ] T002 [P] [US1] Verify the autonomy policy lookup surface from G1.1–G1.3 / A1.4 (CLI subcommand, MCP tool, or static file) returns the shape documented in contracts/autonomy-policy.schema.md. If not yet shipped, proceed against the contract and add a dependency block.
-- [ ] T003 [P] [US1] Verify the engine ref resolver (#788) accepts the same `<epic-ref>` strings the slash command will pass through (bare number resolves via `MONITORED_REPOS`; `owner/repo#N` passes through). If not yet shipped, proceed against the contract.
-- [ ] T004 [P] [US1] Confirm `packages/claude-plugin-cockpit/commands/.gitkeep` is currently the only file in `commands/` (it is, as of branch start). If a sibling verb has landed, skip the `.gitkeep` cleanup in T013.
-- [ ] T005 [P] [US1] Read `packages/claude-plugin-agency-spec-kit/commands/plan.md` and `clarify.md` as the structural reference for the playbook shape (YAML frontmatter, H1 title, `## Arguments`, `## Instructions`, numbered steps, literal `$ARGUMENTS`).
+- [X] T001 [P] [US1] Verify `generacy cockpit watch <ref>` exists and emits one JSON line per transition (per contracts/transition.schema.md). If not yet shipped (#787 not landed), proceed against the contract and add a dependency block to the issue.
+- [X] T002 [P] [US1] Verify the autonomy policy lookup surface from G1.1–G1.3 / A1.4 (CLI subcommand, MCP tool, or static file) returns the shape documented in contracts/autonomy-policy.schema.md. If not yet shipped, proceed against the contract and add a dependency block.
+- [X] T003 [P] [US1] Verify the engine ref resolver (#788) accepts the same `<epic-ref>` strings the slash command will pass through (bare number resolves via `MONITORED_REPOS`; `owner/repo#N` passes through). If not yet shipped, proceed against the contract.
+- [X] T004 [P] [US1] Confirm `packages/claude-plugin-cockpit/commands/.gitkeep` is currently the only file in `commands/` (it is, as of branch start). If a sibling verb has landed, skip the `.gitkeep` cleanup in T013.
+- [X] T005 [P] [US1] Read `packages/claude-plugin-agency-spec-kit/commands/plan.md` and `clarify.md` as the structural reference for the playbook shape (YAML frontmatter, H1 title, `## Arguments`, `## Instructions`, numbered steps, literal `$ARGUMENTS`).
 
 ## Phase 2: Author the playbook
 
 All tasks in this phase edit the same file (`packages/claude-plugin-cockpit/commands/watch.md`), so they MUST run sequentially.
 
-- [ ] T010 [US1] Create `packages/claude-plugin-cockpit/commands/watch.md` with YAML frontmatter (`description: Watch an epic and apply the autonomy policy to each transition` — must match the entry in `packages/claude-plugin-cockpit/README.md`'s commands table exactly) and the H1 title `# Watch Command`.
-- [ ] T011 [US1] Add the `## Arguments` section to `packages/claude-plugin-cockpit/commands/watch.md`: document `$ARGUMENTS` as one positional `<epic-ref>` (bare number OR `owner/repo#N`), passed verbatim to `generacy cockpit watch`. Explicitly state the slash command does NOT resolve refs (delegated to engine resolver #788, per Q5).
-- [ ] T012 [US1] Add the `## Instructions` numbered steps to `packages/claude-plugin-cockpit/commands/watch.md`, in this exact order (covers plan.md Phase 1 step 3 a–g and the data-model E1→E5 flow):
+- [X] T010 [US1] Create `packages/claude-plugin-cockpit/commands/watch.md` with YAML frontmatter (`description: Watch an epic and apply the autonomy policy to each transition` — must match the entry in `packages/claude-plugin-cockpit/README.md`'s commands table exactly) and the H1 title `# Watch Command`.
+- [X] T011 [US1] Add the `## Arguments` section to `packages/claude-plugin-cockpit/commands/watch.md`: document `$ARGUMENTS` as one positional `<epic-ref>` (bare number OR `owner/repo#N`), passed verbatim to `generacy cockpit watch`. Explicitly state the slash command does NOT resolve refs (delegated to engine resolver #788, per Q5).
+- [X] T012 [US1] Add the `## Instructions` numbered steps to `packages/claude-plugin-cockpit/commands/watch.md`, in this exact order (covers plan.md Phase 1 step 3 a–g and the data-model E1→E5 flow):
   1. If `$ARGUMENTS` is empty, print usage and stop.
   2. Spawn `generacy cockpit watch $ARGUMENTS` via the `Monitor` tool — no extra flags.
   3. For each notification (one per stdout line):
@@ -41,11 +41,11 @@ All tasks in this phase edit the same file (`packages/claude-plugin-cockpit/comm
         - Unknown `mode` value: degrade to notify-only with `policy-error:` marker (contract versioning rule).
   4. Inline notification format (research.md P3): single line `[cockpit:watch] <repo>#<number> <kind> <from> → <to> · policy: <policy> · suggested: /cockpit:<verb> <ref>` (`suggested` optional). For auto-dispatched transitions, the dispatch itself is the user-visible signal — do NOT also print the notification line.
   5. Permanent-failure handling: if the `Monitor` tool reports the spawned process EXITED (not a disconnect, not a stream blip — actually gone), surface that inline and prompt the user to re-run `/cockpit:watch`. Do NOT retry, do NOT reconnect — `generacy cockpit watch` owns retry per #787 FR-009 (Q3-D).
-- [ ] T013 [US1] If T004 confirmed `.gitkeep` is still the only file in `commands/` (now joined by `watch.md`), `git rm packages/claude-plugin-cockpit/commands/.gitkeep` in the same commit. If a sibling verb has already landed, skip.
+- [X] T013 [US1] If T004 confirmed `.gitkeep` is still the only file in `commands/` (now joined by `watch.md`), `git rm packages/claude-plugin-cockpit/commands/.gitkeep` in the same commit. If a sibling verb has already landed, skip.
 
 ## Phase 3: Validation
 
-- [ ] T020 [US1] Static checks: `ls packages/claude-plugin-cockpit/commands/watch.md` exists; `grep -n 'cockpit:watch' packages/claude-plugin-cockpit/README.md` still resolves (the README commands table entry); the YAML frontmatter `description:` string matches that table entry verbatim.
+- [X] T020 [US1] Static checks: `ls packages/claude-plugin-cockpit/commands/watch.md` exists; `grep -n 'cockpit:watch' packages/claude-plugin-cockpit/README.md` still resolves (the README commands table entry); the YAML frontmatter `description:` string matches that table entry verbatim.
 - [ ] T021 [US1] Acceptance test (manual, blocked on #787, #788, G1.1–G1.3, A1.4 landing — see quickstart.md §4):
   1. Install the cockpit plugin in a Claude Code session.
   2. Run `/cockpit:watch <epic-ref>` against a low-traffic test epic.
