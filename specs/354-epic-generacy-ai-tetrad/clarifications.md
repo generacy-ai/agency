@@ -14,7 +14,7 @@
 - C: Same as A, but `clarify` summarizes `spec.md` (post-merge) rather than `clarifications.md`
 - D: Other (please specify the exact mapping)
 
-**Answer**: *Pending*
+**Answer**: **A.** Gate → artifact mapping: `specify → spec.md`, `clarify → clarifications.md`, `plan → plan.md`, `tasks → tasks.md` (no GitHub child-issue fetch in v1).
 
 ### Q2: Approval signal mechanism
 **Context**: FR-005/FR-006 say the command "prompts the developer for approve / changes-requested / abort" and on approval calls `/cockpit:advance`. But Claude Code slash commands are stateless markdown templates that emit instructions for the agent — they don't have a built-in interactive prompt primitive. The implementation needs a concrete approval-capture mechanism.
@@ -26,7 +26,7 @@
 - C: The developer signals approval out-of-band by adding a label on the GitHub issue (e.g. `approved:impl`); the command only emits the summary
 - D: Other (please specify)
 
-**Answer**: *Pending*
+**Answer**: **B (with a mode flag).** The command emits the summary, then uses `AskUserQuestion` (or equivalent) to capture approve / request-changes / abort; on approve it invokes `/cockpit:advance` in the same run. This is the default **assist** mode. A `--mode auto` skips the prompt and advances if no blockers; `--mode manual` emits only the summary and never advances.
 
 ### Q3: Open-PR resolution for the `impl` gate
 **Context**: US1 / FR-003 require the command to "locate the open PR for the child issue". Multiple lookup strategies are viable, and the failure modes differ (draft PRs, multiple PRs, no linked PR but matching branch name).
@@ -38,7 +38,7 @@
 - C: Look up by branch-name pattern `<issue#>-*` and pick the single open PR on that branch; treat draft PRs the same as ready PRs
 - D: Other (please specify; include behavior for draft and multi-PR cases)
 
-**Answer**: *Pending*
+**Answer**: **A.** Delegate open-PR resolution entirely to `/cockpit:review-context` (G1.3 / #789), which resolves the PR via the shared engine helper. `/cockpit:review` does not reimplement PR lookup; it surfaces whatever error `review-context` returns when resolution fails (zero, multiple, draft cases are owned by G1.3).
 
 ### Q4: Gate label convention
 **Context**: The spec (Assumptions) says "Gate labels follow the `gate:<name>` convention used elsewhere in the cockpit epic," but the labels actually present on issue #354 use `phase:<name>` (e.g. `phase:clarify`) and `completed:<name>` (e.g. `completed:specify`). The cockpit:review command needs to report "the resulting label transition" (FR-006), so it must know which label namespace `/cockpit:advance` actually mutates.
@@ -50,7 +50,7 @@
 - C: Add `completed:<gate>` and remove `phase:<gate>`; the `gate:` prefix in the spec text is a typo/shorthand for `phase:`/`completed:`
 - D: Other (please specify the exact label transition)
 
-**Answer**: *Pending*
+**Answer**: **D (correction).** The spec's `gate:<name>` assumption is wrong — there is no `gate:` namespace. `/cockpit:advance --gate <name>` (per G1.2 / #788) **adds `completed:<name>`** and **removes `waiting-for:<name>`**; it does NOT touch the orchestrator-owned `phase:*` labels. `/cockpit:review` reports the `waiting-for:<name>` → `completed:<name>` transition.
 
 ### Q5: Structured-summary output schema
 **Context**: FR-005 says the command must produce a "structured summary (severity-grouped findings, blockers, suggested decision)" with format "identical across gates to keep the UX consistent". The severity vocabulary and the level of structure (free-form markdown vs. machine-parseable fields) aren't specified, which affects both the command's prompt and any future tooling that consumes the output.
@@ -62,4 +62,4 @@
 - C: Reuse whatever schema `/code-review` already emits for `impl`; for non-`impl` gates emit only `Blockers` / `Open questions` / `Suggested decision` (no severity grouping since there are no code findings)
 - D: Other (please specify the schema and severity vocabulary)
 
-**Answer**: *Pending*
+**Answer**: **C.** For `impl`, reuse `/code-review`'s existing output schema verbatim. For non-`impl` gates, emit three sections: `Blockers`, `Open questions`, `Suggested decision` (no code-severity vocabulary, since there are no code findings). Every gate's summary ends with a consistent final line: `Suggested decision: approve | request-changes | abort`.
