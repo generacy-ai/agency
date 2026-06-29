@@ -17,14 +17,6 @@ Depends on: G3.2, A1.4 (see the epic checklist for issue numbers)
 ---
 Part of the Epic Cockpit. Plan: docs/epic-cockpit-plan.md in tetrad-development (P4 / A4.4).
 
-## Clarifications
-
-### Session 2026-06-29 — Batch 1
-
-- **Confirmation primitive (Q1)**: Use `AskUserQuestion` with two options labelled `Confirm` and `Cancel`. Affirmative = the `Confirm` option selected; any other selection (including `Cancel` or "Other") aborts. Consistent with the cockpit's other gated commands.
-- **Success header format (Q2)**: Emit `**Queued:** <phase>` as the single header line before the fenced CLI output, mirroring `/cockpit:status`'s `**Status:** <epic-ref>` convention.
-- **Extra positional arguments (Q3)**: When `$ARGUMENTS` contains more than one whitespace-separated token, reject with `Usage: /cockpit:queue <phase>` and exit non-zero without prompting. Symmetric with the zero-arg behaviour (FR-010); a phase is a single token.
-- **Confirmation prompt copy (Q4)**: Pass ``Run `generacy cockpit queue <phase>`?`` as the `question` field of `AskUserQuestion`. Single-line, echoes the resolved command (FR-003).
 
 ## User Stories
 
