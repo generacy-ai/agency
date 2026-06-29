@@ -17,16 +17,6 @@ Depends on: G3.1, A1.4 (see the epic checklist for issue numbers)
 ---
 Part of the Epic Cockpit. Plan: docs/epic-cockpit-plan.md in tetrad-development (P4 / A4.2).
 
-## Clarifications
-
-Resolved in Batch 1 (2026-06-29). Full Q&A in `clarifications.md`.
-
-- **Engine invocation contract**: The decomposition travels through the epic doc, not as a direct CLI argument. `breakdown` writes the approved decomposition into the bounded section of the epic doc, then calls `generacy cockpit manifest init/sync <epic-ref>`; the engine parses the section using tetrad-development#790's grammar. One source of truth — no separate JSON schema for the slash command to maintain.
-- **Doc section markers**: The phase-decomposition section is bounded by `<!-- cockpit:phase-decomposition:start -->` … `<!-- cockpit:phase-decomposition:end -->`. Section-scoped and verb-agnostic so any tool (manifest, future verbs) can find and replace it.
-- **Edit affordance during review**: Free-form chat. On "edit", the assistant re-drafts from the developer's natural-language feedback and re-presents approve/edit/reject. No temp file or structured re-prompt.
-- **First-run section placement**: Append at end of file on the first run. Stable markers make subsequent in-place replacement deterministic wherever the section lands.
-- **Phase ID convention**: Sequential `P1`/`P2`/… short codes, matching parent epic docs and the `P<n>` phase identity used by tetrad-development#790.
-
 
 ## User Stories
 
