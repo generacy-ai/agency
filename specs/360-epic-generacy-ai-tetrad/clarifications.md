@@ -10,7 +10,7 @@
 - B: **First line = title, remaining lines = body** — split on the first `\n`; before the newline becomes the title, after becomes the body. Single-line input gives an empty body.
 - C: **Opaque pass-through, engine decides** — the slash command passes `$ARGUMENTS` verbatim to the engine in a single field (e.g. `--description`); the engine derives title/body internally. Slash command performs no parsing whatsoever.
 
-**Answer**: *Pending*
+**Answer**: A. The whole `$ARGUMENTS` (trimmed, multi-token allowed) is the issue title; the engine templates a minimal body. Simplest for quick bug capture during testing.
 
 ### Q2: `process:speckit-bugfix` marker mechanism
 **Context**: FR-001 says the engine files the issue "using the `process:speckit-bugfix` convention" and the AC says "tagged as a bugfix (label or process marker per `process:speckit-bugfix` convention from playbook steps 10-11)." The `or` leaves the actual mechanism ambiguous: it could be a literal GitHub label, an HTML marker baked into the issue body, an issue template, or some combination. The choice is implementation-visible because (a) the autonomy policy / `generacy cockpit watch` stream has to detect the marker to route the bug through the bugfix loop (US1 AC2), and (b) the marker is what the engine-side dedup will likely key off (Q5). Without pinning this, two different engines could implement two incompatible conventions.
@@ -20,7 +20,7 @@
 - B: **Hidden HTML marker in the issue body** (e.g. `<!-- generacy-process: speckit-bugfix -->`) — engine writes the marker into the body; watch stream parses it. No GitHub label is involved.
 - C: **Both** — engine applies the label *and* writes the HTML marker. Label is the primary signal for the watch stream; the HTML marker is a backup/anchor for dedup and recovery (mirrors the `/cockpit:file` Q5 hidden-marker precedent).
 
-**Answer**: *Pending*
+**Answer**: C. Both: the literal `process:speckit-bugfix` label is the primary trigger the orchestrator / `watch` stream routes on, plus a hidden HTML marker as the dedup/recovery anchor (feeds Q5).
 
 ### Q3: Confirmation gate before filing
 **Context**: Filing a GitHub issue is a non-trivial side effect that creates a permanent artifact and immediately enters the autonomy loop (US1 AC2). Sibling `/cockpit:queue` (#359 Q1) adopted an `AskUserQuestion` confirm gate before invoking its engine for the same reason. The `/cockpit:bug` spec does not mention any confirmation step — FR-001/FR-003/FR-005 describe the flow as if the verb fires the engine on every invocation. The choice affects both UX (one extra click vs. fire-and-forget) and idempotency in practice (a confirm gate makes the engine-side dedup in Q5 a secondary defense rather than the primary one).
@@ -30,7 +30,7 @@
 - B: **No — fire immediately, no gate**. The verb calls the engine on first invocation; engine-side title/marker dedup (Q5) is the only safety net against accidental duplicate filings. Matches a "filing is cheap, dedup catches mistakes" model.
 - C: **Conditional — gate only when stdin/TTY is attached**; skip the gate in non-interactive runs (e.g. from a parent playbook step like the bugfix loop re-entering itself). Lets the verb be both safely typed interactively and safely chained from other automation.
 
-**Answer**: *Pending*
+**Answer**: A. `AskUserQuestion` confirm gate (`Confirm` / `Cancel`), mirroring `/cockpit:queue` (#359 Q1). Filing auto-enters the billable bugfix loop, so it's a "go" action and gets the same gate; any non-`Confirm` aborts.
 
 ### Q4: `PushNotification` message format
 **Context**: The Claude Code `PushNotification` tool accepts a single `message` field capped at 200 characters; it has no separate title field. FR-009 specifies the payload must include `<repo>#<number>`, `<kind>`, `<from> → <to>`, and `policy: <class>` "on a single line," and FR-010 says the push is a "re-encoding of the same record" as inline chat. But the exact string format (delimiters, ordering, whether the push line equals the inline-chat line verbatim, what happens if the composed line exceeds 200 chars) is not specified. This is what an operator actually sees on their lock screen, and inconsistency between sessions would make pushes hard to scan.
@@ -40,7 +40,7 @@
 - B: **Compact dedicated push format**: `<repo>#<number> <kind> <from>→<to> [<class>]` (e.g. `generacy-ai/agency#360 issue ready→in-progress [auto]`). Distinct from but parallel to inline chat; always ≤200 chars by construction (no truncation logic needed). Inline chat retains its existing richer format from A5.1.
 - C: **Same fields, different ordering optimized for notification surfaces**: lead with class then ref (e.g. `[notify-only] generacy-ai/agency#360 issue ready→in-progress`) so the most actionable signal is visible in truncated previews on iOS/Android lockscreens.
 
-**Answer**: *Pending*
+**Answer**: B. Compact dedicated push format `<repo>#<number> <kind> <from>→<to> [<class>]` (e.g. `generacy-ai/agency#360 issue ready→in-progress [auto]`), always ≤200 chars by construction (no truncation logic). Inline chat keeps its richer A5.1 format. Purpose-built for the lockscreen.
 
 ### Q5: Engine dedup identity for "same in-flight bug"
 **Context**: FR-003 AC says re-running `/cockpit:bug` with "the same description is idempotent in the sense that the playbook does not file duplicate issues for the same in-flight bug (engine-owned dedup, mirrors `/cockpit:file` Q5 precedent)." `/cockpit:file` Q5 was answered as "title-based dedup or hidden HTML marker." But the bug verb's input is freeform prose, not a stable task title — so what counts as "same" needs pinning. This determines real-world behavior: a typo-fix re-invocation, a re-paste with extra whitespace, or two operators filing the same observation should converge correctly. It also interacts with Q1 (what part of `$ARGUMENTS` becomes "title") and Q3 (whether a confirm gate has already caught most accidental re-runs).
@@ -50,4 +50,4 @@
 - B: **Hidden HTML marker keyed by a hash of the full input** (e.g. `<!-- generacy-bug: <sha256-of-trimmed-arguments> -->`) written into the issue body at filing time. On re-invocation, the engine searches open `process:speckit-bugfix` issues for the matching marker and reuses the existing issue. Survives title edits made on GitHub; sensitive to whitespace differences in input.
 - C: **Either match wins (title OR marker)** — combine A and B: dedup if *either* an exact-title match or a hash-marker match exists. Most forgiving; lowest duplicate rate; engine implements both checks. Matches the `/cockpit:file` Q5 "by title or hidden HTML marker" wording most literally.
 
-**Answer**: *Pending*
+**Answer**: B. Dedup by a hidden HTML marker keyed on `sha256(trimmed input)` (`<!-- generacy-bug: <hash> -->`), searched among open `process:speckit-bugfix` issues. Deterministic and survives GitHub-side title edits — better than title-match for freeform bug prose. (The Q3 confirm gate is the primary guard; this is the secondary net.)
