@@ -17,7 +17,7 @@ Spec: [spec.md](./spec.md)
 - C: Bare → current repo; qualified cross-repo → clone-or-fetch the target repo and write into **its** `docs/` (matches the "in tetrad-development" wording).
 - D: Bare → **always** resolve against the epic's canonical repo (e.g. `generacy-ai/tetrad-development`); doc always lives in the current working tree.
 
-**Answer**: *Pending*
+**Answer**: **A.** The planning doc is written to the current working tree's `docs/`; bare numeric refs resolve against the current repo. Convention: run `/cockpit:plan` from the epic's primary/orchestration repo (where the plan + manifest live) — which is how this epic's `docs/epic-cockpit-plan.md` landed in tetrad-development. Avoids clone/fetch complexity.
 
 ### Q2: Slug derivation from epic title
 
@@ -31,7 +31,7 @@ Spec: [spec.md](./spec.md)
 - C: Option B **plus** cap slug at 60 chars (truncate at last `-` boundary).
 - D: Use a `slug:` field from the epic body's metadata if present, otherwise fall back to Option B.
 
-**Answer**: *Pending*
+**Answer**: **D.** Honor an explicit `slug:` from the epic metadata if present; otherwise strip a leading `Epic:` / `[…]` bracket prefix, lowercase, collapse runs of `-`, trim, and cap at ~60 chars (truncate at a `-` boundary). This yields `Epic: Cockpit` → `cockpit` → `docs/epic-cockpit-plan.md`.
 
 ### Q3: US2 append-confirmation mechanism
 
@@ -44,7 +44,7 @@ Spec: [spec.md](./spec.md)
 - B: The slash command **asks Claude to prompt the developer in-conversation** ("append these sections? y/n") and only writes on `y`. One-step, conversational.
 - C: The command appends **automatically** when sections are missing (no prompt) but emits the `<!-- generacy-cockpit:appended -->` marker so the developer can `git diff` / revert. Confirmation = git review after the fact.
 
-**Answer**: *Pending*
+**Answer**: **B.** Prompt in-conversation (`AskUserQuestion`) and append the missing sections only on confirm. Matches the cockpit's assist UX (no separate `--apply` round-trip).
 
 ### Q4: "Missing section" detection semantics
 
@@ -58,7 +58,7 @@ Spec: [spec.md](./spec.md)
 - C: **Case-insensitive + small alias table** maintained inside the command file (e.g. `Goals ↔ Objectives`, `Non-Goals ↔ Out of Scope`). Anything not aliased counts as missing.
 - D: **Any** H2 in the doc counts as "present enough" — append only if the doc has zero H2 sections.
 
-**Answer**: *Pending*
+**Answer**: **C.** Case-insensitive match plus a small alias table maintained in the command (`Goals ↔ Objectives`, `Non-Goals ↔ Out of Scope`). Real planning docs rename headings; exact/case-only matching would re-append noisily.
 
 ### Q5: Front-matter format for FR-010 metadata
 
@@ -71,4 +71,4 @@ Spec: [spec.md](./spec.md)
 - B: **A markdown metadata block** under the H1 (e.g. `**Epic**: …  ·  **Phase**: …  ·  **Tier**: …`), matching the style already used in `spec.md` lines 3–7.
 - C: **HTML comment block** (`<!-- epic: … | phase: … | tier: … -->`), invisible when rendered but machine-readable.
 
-**Answer**: *Pending*
+**Answer**: **B.** A markdown metadata block under the H1 (`**Epic**: … · **Phase**: … · **Tier**: …`), matching `spec.md`'s style — and it is already what #790's parser reads (it parses `**Epic**:` / `Plan:` lines, not YAML front-matter).
