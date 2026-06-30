@@ -63,7 +63,60 @@ The slash command does NOT resolve refs. `$ARGUMENTS` is passed verbatim to `gen
 
    For **auto-dispatched** transitions, do NOT emit this line. The slash-command invocation itself is the user-visible signal.
 
-5. **Permanent failure.** If the `Monitor` tool reports the spawned `generacy cockpit watch` process EXITED (i.e. actually gone, not a transient stream blip and not a reconnect):
+   The inline chat line and the AFK push (step 5 below) are two parallel surfaces of the same transition record. Step 4 owns the on-screen surface; step 5 owns the OS lockscreen / banner surface. Both surfaces fire from the same fire-condition predicate (parity invariant: inline emitted ⇔ push fired).
+
+5. **AFK push notification.** For every transition that produces an inline chat line in step 4 (notify-only, unmapped, `policy-error:` degraded auto, unknown-`mode` degraded auto), call the `PushNotification` host primitive immediately after the inline emission. The push is the OS-level surface paired one-to-one with the inline chat line.
+
+   **Push notification format.** Pass a single `message` field with the literal compact string:
+
+   ```
+   <repo>#<number> <kind> <from>→<to> [<class>]
+   ```
+
+   Where:
+   - `<repo>#<number>` is the GitHub ref (e.g. `generacy-ai/agency#360`).
+   - `<kind>` is the transition's `kind` field (e.g. `issue`, `pr`).
+   - `<from>→<to>` uses a single Unicode right-arrow `→` (U+2192) between the from and to state names. **No surrounding whitespace inside the arrow.**
+   - `<class>` is one of `notify-only`, `unmapped`, `policy-error: missing command`, or `policy-error: unknown mode '<value>'`. Class derivation:
+
+     | `PolicyEntry` | `<class>` token |
+     |---------------|-----------------|
+     | `mode: "notify-only"` | `notify-only` |
+     | no mapping (lookup returned `undefined`) | `unmapped` |
+     | `mode: "auto"` with missing `command` | `policy-error: missing command` |
+     | `mode: <unknown future value>` | `policy-error: unknown mode '<value>'` |
+
+   Format invariants: single line (no embedded `\n`); square brackets around the class token with exactly one space before `[`; field order is fixed (`<repo>#<number>` first — most-actionable on lockscreen previews that truncate from the right); ≤200 chars by construction; **no truncation logic**; **no per-platform reformatting** — the same string is sent regardless of iOS / Android / desktop / wearable.
+
+   Examples:
+   ```
+   generacy-ai/agency#360 issue review-requested→approved [notify-only]
+   generacy-ai/agency#42 pr open→closed [unmapped]
+   generacy-ai/tetrad-development#85 issue blocked→ready [policy-error: missing command]
+   ```
+
+   **Fire conditions.** The push MUST fire for every transition that produces an inline chat line (`notify-only`, `unmapped`, `policy-error:` degraded auto, unknown-`mode` degraded auto). The push MUST NOT fire for:
+   - Auto-dispatched transitions (`mode === "auto"` with a valid `command`, successfully dispatched) — the slash-command invocation itself is the user-visible signal (A5.1 invariant).
+   - Baseline lines (`from === null`) — dropped in step 3b before any user-visible emission.
+   - Echo lines (`from === to`) — dropped in step 3c.
+   - Already-`seen` transitions — dropped in step 3d.
+
+   Parity invariant: **inline emitted ⇔ push fired**, with the single documented exception of the malformed-record diagnostic line (step 3a) which has no transition record to format a push payload from.
+
+   **AFK semantics.** The playbook does NOT detect operator presence. "AFK push" is the colloquial name for the OS-level surface — NOT a conditional fire. There is no timer, no idle threshold, no per-platform gating; every inline chat line is unconditionally paired with one `PushNotification` call. When the operator is at the keyboard they see both surfaces; when they are away the OS lockscreen / banner is the surface that reaches them.
+
+   **Ordering.** For every fired transition: emit the inline chat line FIRST (per step 4), THEN call `PushNotification`, THEN process the push result per push failure handling below. Inline-first ordering ensures the chat surface (always-on backup) is never blocked or delayed by the push primitive.
+
+   **Push failure handling.** If `PushNotification` returns an error (OS revoked permission, host primitive unavailable, network error inside the primitive):
+   - Emit exactly one inline line: `[cockpit:watch] push failed: <reason>` where `<reason>` is the host primitive's error message verbatim.
+   - Continue processing the stream — a push failure MUST NOT terminate the watch loop.
+   - Do NOT roll back the inline chat line that was already emitted in step 4.
+   - Do NOT remove the transition from `seen` — it was added in step 3e BEFORE dispatch and a push failure does not change that.
+   - The `[cockpit:watch] push failed:` diagnostic does NOT itself trigger a second push (no recursive attempt).
+
+   **No retry.** The playbook is fire-and-forget per `PushNotification` call. The host primitive owns its own delivery semantics; the playbook does not retry.
+
+6. **Permanent failure.** If the `Monitor` tool reports the spawned `generacy cockpit watch` process EXITED (i.e. actually gone, not a transient stream blip and not a reconnect):
 
    - Surface inline: `[cockpit:watch] watcher exited — re-run /cockpit:watch <epic-ref> to resume.`
    - Do NOT retry. Do NOT reconnect. Do NOT spawn a fresh `generacy cockpit watch`.
@@ -72,5 +125,5 @@ The slash command does NOT resolve refs. `$ARGUMENTS` is passed verbatim to `gen
 ## Notes
 
 - **Dedupe scope is per-invocation.** The `seen` set is in-memory in the agent's conversation context. There is no on-disk persistence. A `/cockpit:watch` restart re-syncs state via baseline (`from: null`) lines, then resumes on real transitions.
-- **Notification surface is inline chat only.** This playbook does not invoke `PushNotification`; OS-level notifications are out of scope.
+- **Notification surfaces.** Every transition that produces an inline chat line in step 4 also fires one `PushNotification` per step 5 (parity: inline emitted ⇔ push fired). Auto-dispatched transitions emit neither.
 - **Schema evolution.** Unknown extra fields on a transition record or policy entry MUST be ignored — both contracts are forward-compatible by design.
