@@ -1,0 +1,27 @@
+{
+  "name": "@generacy-ai/claude-plugin-cockpit",
+  "version": "0.0.0",
+  "description": "Claude Code plugin providing /cockpit:* commands for Tetrad workflows",
+  "keywords": [
+    "claude-plugin",
+    "cockpit",
+    "generacy",
+    "tetrad",
+    "workflow"
+  ],
+  "author": "Generacy AI",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/generacy-ai/agency.git",
+    "directory": "packages/claude-plugin-cockpit"
+  },
+  "files": [
+    "commands",
+    ".claude-plugin",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

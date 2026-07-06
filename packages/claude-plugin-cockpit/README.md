@@ -8,16 +8,19 @@ This plugin is the home for the `/cockpit:*` namespace — developer-side workfl
 
 ## Installation
 
-1. Add the generacy marketplace to your Claude Code settings by appending `generacy-ai/agency` to `extraKnownMarketplaces`:
+The plugin is published to npm as `@generacy-ai/claude-plugin-cockpit` and delivered automatically by Generacy cluster setup — no manual `extraKnownMarketplaces` configuration required.
 
-   ```json
-   {
-     "extraKnownMarketplaces": ["generacy-ai/agency"]
-   }
-   ```
+For manual installation:
 
-2. Install this plugin in your Claude Code environment.
-3. The slash commands will be available with the `cockpit:` prefix.
+```bash
+# Using pnpm
+pnpm add @generacy-ai/claude-plugin-cockpit
+
+# Using npm
+npm install @generacy-ai/claude-plugin-cockpit
+```
+
+The slash commands will be available with the `cockpit:` prefix.
 
 Runtime dependencies (must be on `$PATH` in the session that runs any command):
 
