@@ -31,8 +31,8 @@
 ## Phase 4: Deliver
 
 - [X] T030 [US1] Stage exactly the allowed files (FR-006): `packages/claude-plugin-cockpit/package.json`, `packages/claude-plugin-cockpit/README.md`, `.changeset/publish-cockpit-plugin.md`. Run `git status` and confirm no other files are modified (especially none under `packages/claude-plugin-cockpit/commands/` or `.claude-plugin/`, and no changes to `.github/workflows/publish-preview.yml` or `.changeset/config.json`).
-- [ ] T031 [US1] Commit and push branch `375-publish-cockpit-plugin`, then open a PR against `develop` with a summary linking issue #374 and referencing the epic (`generacy-ai/tetrad-development#85`, Phase S6 / A-S2).
-- [ ] T032 [US1, US2] Post-merge verification (documented on the PR, executed by the merge author after CI publishes): `npm view @generacy-ai/claude-plugin-cockpit dist-tags` shows a `preview` tag pointing at `0.1.0-preview-<snapshot>`. This closes SC-002.
+- [X] T031 [US1] Commit and push branch `375-publish-cockpit-plugin`, then open a PR against `develop` with a summary linking issue #374 and referencing the epic (`generacy-ai/tetrad-development#85`, Phase S6 / A-S2). (Existing draft PR #375 was updated with the delivery summary; commit 7da00b5 pushed to origin.)
+- [ ] T032 [manual] [US1, US2] Post-merge verification (documented on the PR, executed by the merge author after CI publishes): `npm view @generacy-ai/claude-plugin-cockpit dist-tags` shows a `preview` tag pointing at `0.1.0-preview-<snapshot>`. This closes SC-002.
 
 ## Dependencies & Execution Order
 
