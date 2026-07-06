@@ -1,0 +1,77 @@
+# Feature Specification: Publish claude-plugin-cockpit as @generacy-ai/claude-plugin-cockpit
+
+**Branch**: `375-publish-cockpit-plugin` | **Date**: 2026-07-06 | **Status**: Draft
+
+## Parent Epic
+Part of branch: `374-epic-generacy-ai-tetrad` (Epic Cockpit — Phase S6 / Tier v1-delivery / Issue A-S2)
+Parent issue: [#374](https://github.com/generacy-ai/agency/issues/374)
+Epic tracker: generacy-ai/tetrad-development#85
+
+## Summary
+
+Make `packages/claude-plugin-cockpit` npm-publishable as `@generacy-ai/claude-plugin-cockpit` so cluster setup can deliver the `/cockpit:*` commands (clarify, merge, queue, review, status, watch) through the same automated publish rail already used by `@generacy-ai/agency-plugin-spec-kit`. Today, delivery requires a manual `extraKnownMarketplaces` step. After this change, merging to `develop` will automatically publish the plugin at the `preview` dist-tag via the existing `publish-preview.yml` workflow.
+
+## User Stories
+
+### US1: Cluster operator receives cockpit commands automatically
+
+**As a** cluster operator setting up a new Tetrad workspace,
+**I want** the `/cockpit:*` commands to be delivered through the standard npm publish rail (with `preview` dist-tag),
+**So that** I don't have to add a manual `extraKnownMarketplaces` entry to enable them.
+
+**Acceptance Criteria**:
+- [ ] `pnpm pack` in `packages/claude-plugin-cockpit` produces a tarball whose contents include:
+  - All 6 files under `commands/` (`clarify.md`, `merge.md`, `queue.md`, `review.md`, `status.md`, `watch.md`)
+  - `.claude-plugin/plugin.json`
+  - `README.md`
+- [ ] The package is not marked `private` in `package.json`.
+- [ ] After merging this branch to `develop`, the package appears on npm as `@generacy-ai/claude-plugin-cockpit` with the `preview` dist-tag.
+
+### US2: Publish-preview workflow picks up the new package
+
+**As a** release automation (the existing `publish-preview.yml` GitHub Action),
+**I want** the new package to be discoverable as a non-private workspace package,
+**So that** it is published on every merge to `develop` without any workflow modification.
+
+**Acceptance Criteria**:
+- [ ] The Changesets file added in this feature is consumed by the existing publish workflow.
+- [ ] No modifications to `publish-preview.yml` are required.
+
+## Functional Requirements
+
+| ID | Requirement | Priority | Notes |
+|----|-------------|----------|-------|
+| FR-001 | Add `packages/claude-plugin-cockpit/package.json` with `name: "@generacy-ai/claude-plugin-cockpit"` | P1 | Must NOT set `"private": true` |
+| FR-002 | The `files` field of `package.json` MUST be `["commands", ".claude-plugin", "README.md"]` | P1 | Controls tarball contents |
+| FR-003 | Package MUST have no build step (no `build` script that must run before pack) | P1 | Commands ship as-is |
+| FR-004 | Package MUST set `"publishConfig": { "access": "public" }` | P1 | Required for scoped package publish |
+| FR-005 | Add a Changesets file describing the initial release of the package | P1 | Consumed by `publish-preview.yml` |
+| FR-006 | Isolation: only files under `packages/claude-plugin-cockpit/` and the single new changeset file may be edited | P1 | No `commands/*.md` edits |
+| FR-007 | Packed tarball MUST contain the 6 command markdown files, `plugin.json`, and `README.md` — verified against the tarball, not source | P1 | pnpm rewrites at pack time |
+
+## Success Criteria
+
+| ID | Metric | Target | Measurement |
+|----|--------|--------|-------------|
+| SC-001 | Tarball contents from `pnpm pack` | Contains 6 command `.md` files + `plugin.json` + `README.md` | Run `pnpm pack --dry-run` and inspect listed files, or extract the produced tarball with `tar tzf` |
+| SC-002 | npm registry entry | `@generacy-ai/claude-plugin-cockpit` visible with `preview` dist-tag | `npm view @generacy-ai/claude-plugin-cockpit dist-tags` after the next develop merge |
+| SC-003 | No manual marketplace step | Cluster setup no longer needs `extraKnownMarketplaces` for cockpit | Documented in README + confirmed by cluster setup dry-run |
+
+## Assumptions
+
+- The `publish-preview.yml` workflow already publishes every non-private workspace package on merge to `develop` and requires no modification.
+- The Changesets tool is already configured in the repo (as it is for `@generacy-ai/agency-plugin-spec-kit`).
+- The `.claude-plugin/plugin.json` and existing `commands/*.md` files are already valid — no schema/content changes required in this feature.
+- Version 0.1.0 (or as decided by Changesets) is the acceptable initial preview version.
+
+## Out of Scope
+
+- Editing any files under `packages/claude-plugin-cockpit/commands/` or `.claude-plugin/`.
+- Changes to the `publish-preview.yml` workflow.
+- Publishing to a stable/production dist-tag (only `preview` is in scope for this feature).
+- Cluster setup script changes to consume the new npm package (tracked separately in the epic).
+- Adding tests, TypeScript build, or a `dist/` output — this package ships markdown + JSON only.
+
+---
+
+*Generated by speckit*
