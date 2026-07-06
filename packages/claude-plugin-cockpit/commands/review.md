@@ -1,212 +1,63 @@
 ---
-description: Coordinate review of a speckit gate — artifact (spec/clarifications/plan/tasks) or impl PR diff — and optionally advance the gate label.
+description: Review a speckit gate — artifact (specify/clarify/plan/tasks) or impl PR diff — and advance on approval
+arguments:
+  - name: --gate
+    description: "Gate name: specify, clarify, plan, tasks, or impl"
+    required: true
 ---
 
 # Review Command
 
-Review the current child issue's progress at a specific gate, surface a summary with a suggested decision, and (in `assist` / `auto` mode) drive `/cockpit:advance` to flip `waiting-for:<gate>` → `completed:<gate>`.
+Review the current epic's progress at one gate. For `--gate impl`, invoke Claude Code's built-in `/code-review` (the single documented cross-slash-command exception). For every other gate, read the corresponding artifact and produce a terse review summary. On approval, advance the gate by calling `generacy cockpit advance --gate <gate>` directly through the Bash tool.
 
-This command is a thin orchestrator. It never resolves PRs itself, never runs `/code-review`'s logic itself, and never mutates labels itself. Every responsibility is delegated to an existing primitive:
+## User Input
 
-- `/cockpit:review-context` (G1.3) — PR resolution for `--gate impl`.
-- `/code-review` — host skill that produces the diff summary for `--gate impl`.
-- `/cockpit:advance` (G1.2) — sole owner of the `waiting-for:<name>` → `completed:<name>` label transition.
-- `AskUserQuestion` — host primitive for the `assist`-mode approval prompt.
-
-## Arguments
-
-```
-/cockpit:review --gate <name> [--mode <assist|auto|manual>]
-/cockpit:review                         # bare → help
-/cockpit:review --help                  # explicit help
+```text
+$ARGUMENTS
 ```
 
-| Arg | Type | Required | Default | Valid values |
-|-----|------|----------|---------|--------------|
-| `--gate` | string | yes (except for help) | — | `specify`, `clarify`, `plan`, `tasks`, `impl` |
-| `--mode` | string | no | `assist` | `assist`, `auto`, `manual` |
+## Instructions
 
-### Parsing rules
-
-1. Parse the argument string. Recognise `--gate <name>` and `--mode <value>`.
-2. If the invocation is bare (no arguments) or contains `--help`, branch to **Help / discovery** below.
-3. If `--gate` is missing (and `--help` is not set), emit a `ReviewError` of kind `unknown-gate` with the message `Error: missing required argument '--gate'. Valid: specify, clarify, plan, tasks, impl.` and stop.
-4. If `--gate <name>` is not in the valid set, emit a `ReviewError` of kind `unknown-gate` with the message `Error: unknown gate '<value>'. Valid: specify, clarify, plan, tasks, impl.` and stop.
-5. If `--mode <value>` is provided but not in `{assist, auto, manual}`, emit a `ReviewError` of kind `unknown-mode` with the message `Error: unknown mode '<value>'. Valid: assist, auto, manual.` and stop.
-6. If `--mode` is omitted, default to `assist`.
-
-## Help / discovery
-
-When the command is invoked bare or with `--help`, emit a short overview, the gate table, and the mode table. No file reads, no slash invocations, no label mutations.
-
-Output (verbatim shape — fill in current gate/mode tables):
-
-```
-/cockpit:review — review a speckit gate and optionally advance its label.
-
-Usage:
-  /cockpit:review --gate <name> [--mode <assist|auto|manual>]
-
-Gates:
-  specify   reads specs/<feature>/spec.md
-  clarify   reads specs/<feature>/clarifications.md
-  plan      reads specs/<feature>/plan.md
-  tasks     reads specs/<feature>/tasks.md
-  impl      reviews the open PR via /cockpit:review-context + /code-review
-
-Modes:
-  assist    (default) emit summary, prompt via AskUserQuestion, advance on approve
-  auto      emit summary; if "Suggested decision: approve", advance without prompting
-  manual    emit summary only; never prompt and never advance
-```
-
-Then stop.
-
-## Feature-context resolution
-
-Required for every non-help invocation. Compute the `FeatureContext` (data-model E4):
-
-1. Read the current git branch: `git rev-parse --abbrev-ref HEAD`.
-2. Parse the leading `<digits>-` prefix as `issueNumber`. If the branch does not start with `<digits>-`, emit a `ReviewError` of kind `feature-resolution-failed` with `Error: cannot resolve specs/ directory for branch '<branch>'. Branch must start with '<issue#>-'.` and stop.
-3. List `specs/` directories whose name starts with `<issueNumber>-`.
-4. If exactly one directory matches, that is `specsDir`.
-5. If zero or multiple directories match, emit a `ReviewError` of kind `feature-resolution-failed` with `Error: cannot resolve specs/ directory for branch '<branch>'. Candidates: <list or "none">.` and stop.
-
-The resolved `FeatureContext` is `{ branch, issueNumber, specsDir }`. Use `specsDir` for all subsequent file reads.
-
-## Behaviour — `impl` gate
-
-Run when `--gate impl`.
-
-1. **Call `/cockpit:review-context`** to resolve the open PR for the active child issue.
-   - On failure (no PR, multiple PRs, draft PR, dependency missing), surface its message **verbatim** as `Error: <verbatim message>` and stop. No labels touched. This is a `ReviewError` of kind `review-context-failed`.
-   - On success, capture the returned PR ref and diff payload.
-2. **Call `/code-review`** on the returned diff. Capture its output verbatim — this is the body of the summary.
-3. **Final-line invariant**: inspect the captured `/code-review` output.
-   - If it already ends with a line matching `Suggested decision: <approve|request-changes|abort>`, leave it untouched.
-   - Otherwise, append a blank line and `Suggested decision: <verb>` where `<verb>` is derived from the apparent severity of `/code-review`'s output:
-     - blockers / critical findings present → `request-changes`
-     - non-blocking findings only → `request-changes`
-     - no findings → `approve`
-4. Emit the summary block in full (verbatim `/code-review` body + the final line, whichever path was taken).
-5. Dispatch on `--mode` (see **Mode dispatch** below) with `--gate impl`.
-
-## Behaviour — non-`impl` gates (`specify`, `clarify`, `plan`, `tasks`)
-
-Run when `--gate` is one of `specify`, `clarify`, `plan`, `tasks`.
-
-1. **Resolve the artifact path** via the locked Q1 mapping:
-
-   | Gate | File |
-   |------|------|
-   | `specify` | `<specsDir>/spec.md` |
-   | `clarify` | `<specsDir>/clarifications.md` |
-   | `plan`    | `<specsDir>/plan.md` |
-   | `tasks`   | `<specsDir>/tasks.md` |
-
-2. **Read the artifact**. If the file does not exist, emit a `ReviewError` of kind `artifact-missing` with `Error: artifact not found at <expected absolute path>.` and stop. No labels touched.
-
-3. **Build the `ReviewSummary`** (data-model E6):
-   - `blockers`: items in the artifact that block advancing — unanswered required questions, unresolved `[NEEDS CLARIFICATION]` / `TBD` / `TODO` markers blocking the gate's intent, contradictions, missing required sections.
-   - `openQuestions`: non-blocking but worth flagging — minor ambiguities, follow-ups, optional sections worth confirming.
-   - `suggestedDecision`: apply the **default decision rule** below.
-
-4. **Default decision rule** (data-model E6):
-   - `blockers` non-empty → `request-changes`.
-   - `blockers` empty, `openQuestions` non-empty → `request-changes` (developer can still override in `assist`).
-   - Both empty → `approve`.
-
-5. **Render** exactly three H2 sections in this order, followed by the standard final line. Empty sections render as `- (none)`.
-
-   ```markdown
-   ## Blockers
-   - <bullet> | (none)
-
-   ## Open questions
-   - <bullet> | (none)
-
-   ## Suggested decision
-   <short rationale paragraph>
-
-   Suggested decision: <approve|request-changes|abort>
-   ```
-
-6. Dispatch on `--mode` (see **Mode dispatch** below) with `--gate <name>`.
-
-## Mode dispatch
-
-After the summary is emitted, the mode controls whether the developer is prompted and whether `/cockpit:advance` is invoked.
-
-### `assist` (default)
-
-1. Invoke `AskUserQuestion` with one question and three options:
-   - **approve** — Advance the gate. Calls `/cockpit:advance --gate <name>`.
-   - **request-changes** — Stop without advancing. No label changes.
-   - **abort** — Stop without advancing. No label changes.
-2. If the prompt primitive is unavailable (rare; non-interactive environment), fall back to `manual` semantics and append a hint: `Re-run with --mode auto to advance automatically when the suggested decision is approve.`
-3. On `approve`, call `/cockpit:advance --gate <name>` (see **Advance + label-transition reporting** below).
-4. On `request-changes` or `abort`, stop with no label changes. Do not emit a `Labels:` line.
-
-### `auto`
-
-1. Do not prompt.
-2. Inspect the final line of the summary.
-   - If it is `Suggested decision: approve`, call `/cockpit:advance --gate <name>`.
-   - Otherwise, stop with the summary already emitted. No label changes, no extra output beyond `(stopped — suggested decision was <verb>)`.
-
-### `manual`
-
-1. Do not prompt.
-2. Never call `/cockpit:advance`, regardless of the suggested decision.
-3. Stop after the summary.
-
-## Advance + label-transition reporting
-
-When (and only when) the mode dispatch decides to advance:
-
-1. Call `/cockpit:advance --gate <name>`.
-2. If the dependency is not installed, surface a `ReviewError` of kind `advance-not-installed` with `Error: dependency '/cockpit:advance' is not available; install the cockpit plugin's G1.2 verb.` and stop. No labels touched.
-3. If `/cockpit:advance` returns an error of its own, surface its message verbatim and stop. Do not synthesise a `Labels:` line — the transition did not happen.
-4. On success, emit exactly one line using the transition reported by `/cockpit:advance`:
+1. **Parse arguments** — Require `--gate <name>` where `<name>` ∈ `{ specify, clarify, plan, tasks, impl }`. If `--gate` is missing or the value is not in the set, print:
 
    ```
-   Labels: waiting-for:<gate> → completed:<gate> on #<issue>
+   Usage: /cockpit:review --gate <specify|clarify|plan|tasks|impl>
    ```
 
-   `<gate>` is the gate just reviewed; `<issue>` is the `issueNumber` from `FeatureContext`.
+   Exit non-zero. Do not read files, do not call any CLI.
 
-## Failure modes
+2. **Pre-flight** — `command -v generacy >/dev/null 2>&1`. If the pre-flight returns non-zero, apply the **Error handling** block below with class `MISSING_BINARY` and stop.
 
-Every error path emits exactly one `Error: <sentence>` line and mutates no labels. The six `ReviewError` kinds (data-model E9):
+3. **`--gate impl` branch** — Only when `--gate impl` is selected:
+   - Invoke Claude Code's built-in `/code-review` slash command. This is the sole exception to the "no cross-slash-command invocation" rule; `/code-review` ships with Claude Code, so it is always present in any session where this plugin is installed.
+   - Capture `/code-review`'s output verbatim as the review summary body.
+   - Append (if not already present) a final line matching `Suggested decision: <approve|request-changes|abort>`. Derive: any blockers → `request-changes`; non-blocking findings only → `request-changes`; no findings → `approve`.
 
-| Kind | Message |
-|------|---------|
-| `unknown-gate` | `Error: unknown gate '<value>'. Valid: specify, clarify, plan, tasks, impl.` (or `Error: missing required argument '--gate'. Valid: specify, clarify, plan, tasks, impl.` when `--gate` is absent) |
-| `unknown-mode` | `Error: unknown mode '<value>'. Valid: assist, auto, manual.` |
-| `feature-resolution-failed` | `Error: cannot resolve specs/ directory for branch '<branch>'. Candidates: <list or "none">.` |
-| `review-context-failed` | `Error: <verbatim message from /cockpit:review-context>` |
-| `artifact-missing` | `Error: artifact not found at <expected absolute path>.` |
-| `advance-not-installed` | `Error: dependency '/cockpit:advance' is not available; install the cockpit plugin's G1.2 verb.` |
+4. **Non-`impl` gate branch** — Only when `--gate` is one of `specify`, `clarify`, `plan`, `tasks`:
+   - Read the corresponding artifact from the epic's spec directory (resolved by the CLI, not by this playbook): `spec.md`, `clarifications.md`, `plan.md`, or `tasks.md`.
+   - Produce a terse three-section summary (`## Blockers`, `## Open questions`, `## Suggested decision`). Empty sections render as `- (none)`. End with a single `Suggested decision: <approve|request-changes|abort>` line. Do NOT invoke any other slash command.
 
-In every failure case:
-- Emit the `Error:` line.
-- Emit no `Suggested decision:` line (the error path replaces the summary entirely).
-- Emit no `Labels:` line.
-- Make no `gh` or other label-mutating calls.
+5. **Approval prompt** — Invoke `AskUserQuestion` with one question and three options in this order:
+   - `approve` — Advance the gate.
+   - `request-changes` — Stop without advancing.
+   - `abort` — Stop without advancing.
 
-## Side-effect contract (summary)
+6. **Advance on approval** — Only when the user selects `approve`, run `generacy cockpit advance --gate <name>` via the Bash tool. On exit `0`, print one line `Labels: waiting-for:<name> → completed:<name>`. On non-zero CLI exit, apply the **Error handling** block below.
 
-| Side effect | When |
-|-------------|------|
-| Reads `<specsDir>/<artifact>.md` | non-`impl` gates only |
-| Invokes `/cockpit:review-context` | `impl` gate only |
-| Invokes `/code-review` | `impl` gate only |
-| Invokes `AskUserQuestion` | `assist` mode only |
-| Invokes `/cockpit:advance --gate <name>` | `assist` mode after explicit `approve`; `auto` mode when suggested decision is `approve` |
-| Mutates GitHub labels | **never directly** — only via `/cockpit:advance` |
-| Posts PR comments | never (out of scope) |
-| Mutates `phase:*` labels | never (orchestrator-owned) |
+7. **No-op on non-approval** — On `request-changes` or `abort`, emit no `Labels:` line, mutate no state, and exit zero.
 
-## Help
+8. On any non-zero CLI exit, apply the **Error handling** block below.
 
-For the full external contract (arguments, output schema, error message table), see `specs/354-epic-generacy-ai-tetrad/contracts/command.md`. For installation and usage examples, see `specs/354-epic-generacy-ai-tetrad/quickstart.md`.
+<!-- BEGIN error-conv -->
+**Error handling** — When the CLI exit code is non-zero (or the pre-flight failed), classify the failure into exactly one of three classes (first match wins, all matches case-insensitive) and emit the matching response. Every class MUST print something — never silently no-op. Exit non-zero on every class.
+<!-- Canonical source of truth: packages/claude-plugin-cockpit/README.md § Error Handling -->
+- **MISSING_BINARY** — pre-flight `command -v generacy` returned non-zero. Print: `The generacy CLI is required but is not on $PATH. Install it with npm install -g @generacy-ai/cli (or the prevailing install command) and retry.`
+- **AUTH_FAILURE** — exit ≠ 0 AND captured stderr matches `/auth|unauthorized|401|gh auth/i`. Print: `Authentication failed. The generacy CLI uses gh for GitHub access — run gh auth login and retry.`
+- **OTHER** — anything else. Print `CLI failed with exit code <N>.` on one line, followed by captured stderr inside a triple-backtick fenced code block.
+<!-- END error-conv -->
+
+## Examples
+
+`/cockpit:review --gate impl` — invokes `/code-review` on the current epic's open PR, appends the `Suggested decision:` line, prompts for approval, and on `approve` runs `generacy cockpit advance --gate impl` via Bash.
+
+`/cockpit:review --gate plan` — reads `plan.md`, produces a Blockers / Open questions / Suggested decision summary, prompts for approval, and on `approve` runs `generacy cockpit advance --gate plan` via Bash.
