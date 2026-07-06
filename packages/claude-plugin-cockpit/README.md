@@ -24,6 +24,18 @@ Runtime dependencies (must be on `$PATH` in the session that runs any command):
 - `generacy` CLI (`npm install -g @generacy-ai/cli` or the prevailing install command).
 - `gh` CLI, authenticated with `gh auth login`.
 
+## Distribution
+
+The plugin ships on two rails:
+
+- **Generacy clusters (npm, zero-step).** Cluster setup installs
+  [`@generacy-ai/claude-plugin-cockpit`](https://www.npmjs.com/package/@generacy-ai/claude-plugin-cockpit)
+  from npm — channel-aware (`@preview` / `@stable`, matching the cluster's `GENERACY_CHANNEL`) —
+  and `generacy setup build` copies `commands/` into `~/.claude/commands/cockpit/`, so
+  `/cockpit:*` resolves in a fresh Claude Code session with no manual steps.
+- **Marketplace (standalone).** Outside a cluster, install via the Claude Code marketplace using
+  the steps in [Installation](#installation) above.
+
 ## Available Commands
 
 | Command | Description |
@@ -62,4 +74,4 @@ When the CLI exit code is non-zero (or the pre-flight failed), the command class
 
 ## License
 
-MIT
+Apache-2.0
