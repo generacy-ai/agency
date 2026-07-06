@@ -22,122 +22,105 @@ Part of the Epic Cockpit. Plan: docs/epic-cockpit-plan.md in tetrad-development 
 
 ## User Stories
 
-### US1: Simplified assist-mode cockpit for epic operators
+### US1: Watch epic transitions
 
-**As an** epic operator using claude-plugin-cockpit,
-**I want** exactly six self-contained assist-mode commands (watch, status, queue, clarify, review, merge),
-**So that** I can drive an epic end-to-end using only the plugin, `gh` auth, and the `generacy` CLI in a fresh session — with no hidden dependencies on other slash commands or specs/** contracts.
-
-**Acceptance Criteria**:
-- [ ] `packages/claude-plugin-cockpit/commands/` contains exactly six files: `watch.md`, `status.md`, `queue.md`, `clarify.md`, `review.md`, `merge.md`.
-- [ ] `plan.md`, `breakdown.md`, `file.md`, and `bug.md` are removed.
-- [ ] No command references autonomy policy, transition/policy schemas, `specs/**` feature-branch contracts, or unshipped verbs (e.g., `/cockpit:advance`).
-- [ ] Each command's contract is limited to the corresponding `generacy cockpit <verb> --help` output + the `@generacy-ai/cockpit` README.
-- [ ] No command invokes another `/cockpit:*` slash command; commands compose only via the `generacy` CLI.
-- [ ] Every command runs successfully in a fresh Claude session with only the plugin + `gh auth` + `generacy` CLI installed.
-
-### US2: Watch surfaces suggested next command per transition
-
-**As an** operator running `/cockpit:watch <epic-ref>`,
-**I want** each transition line from `generacy cockpit watch` printed as a single notification suggesting the next `/cockpit:*` command,
-**So that** I always know what to run next without policy lookup, dedupe/baseline logic, or push notifications.
+**As a** cockpit operator driving an epic,
+**I want** `/cockpit:watch <epic-ref>` to stream transition lines and suggest the next `/cockpit:*` command per transition,
+**So that** I always know the next assist step without reading policy schemas.
 
 **Acceptance Criteria**:
-- [ ] `watch.md` uses `Monitor` to stream `generacy cockpit watch <epic-ref>`.
-- [ ] For each transition line emitted by the CLI, exactly one notification is printed that suggests the next `/cockpit:*` command.
-- [ ] No policy lookup, no dedupe/baseline handling, no `PushNotification` calls.
-- [ ] When the watcher process exits, the command reports the exit and stops.
-- [ ] Command body is approximately 20 lines.
+- [ ] Runs `generacy cockpit watch <epic-ref>` and renders its output.
+- [ ] For each transition line, prints one notification with the suggested next `/cockpit:*` command via a small static mapping table in `watch.md` (`waiting-for:clarification` → `/cockpit:clarify` · `waiting-for:<gate>-review` → `/cockpit:review --gate <gate>` · `completed:validate` / green checks → `/cockpit:merge` · error states → no suggestion).
+- [ ] No policy lookup, no dedupe/baseline handling, no `PushNotification`.
+- [ ] On watcher exit, reports and stops.
+- [ ] `watch.md` fits in ~20 lines.
 
-### US3: Review runs code-review for impl gate and advances directly on approval
+### US2: Terse status/queue renders
 
-**As an** operator running `/cockpit:review --gate <g>`,
-**I want** the command to invoke `/code-review` for the `impl` gate (and summarize the artifact for other gates), then call `generacy cockpit advance --gate <g>` directly on my approval,
-**So that** review→advance flows without touching the unshipped `/cockpit:advance` verb.
-
-**Acceptance Criteria**:
-- [ ] For `--gate impl`, `review.md` runs `/code-review` against the current branch.
-- [ ] For all other gates, `review.md` summarizes the gate artifact.
-- [ ] On operator approval, the command calls `generacy cockpit advance --gate <g>` directly (no `/cockpit:advance` reference).
-
-### US4: Merge keeps a bounded fixer subagent and never merges on red
-
-**As an** operator running `/cockpit:merge`,
-**I want** a bounded fixer subagent with `--max-fix-attempts` defaulting to 1 that never merges when CI is red,
-**So that** merge is safe by default and does not spin indefinitely on failures.
+**As a** cockpit operator,
+**I want** `/cockpit:status` and `/cockpit:queue` to render CLI output with the shared error convention,
+**So that** I get consistent, terse output without slash commands duplicating engine logic.
 
 **Acceptance Criteria**:
-- [ ] `merge.md` supports `--max-fix-attempts` with default `1`.
-- [ ] The command never merges while CI status is red.
-- [ ] The fixer subagent runs at most `--max-fix-attempts` times before giving up and reporting.
+- [ ] `status.md` renders `generacy cockpit status <args>` output; with no argument, prints the usage line (no `.generacy/epics/` resolution chain).
+- [ ] `queue.md` renders `generacy cockpit queue <args>` output and keeps its `AskUserQuestion` Confirm/Cancel gate as the playbook's mutating "go" trigger.
+- [ ] Neither command references `specs/**` contracts.
 
-### US5: Shared error convention across all six commands
+### US3: Review gates
 
-**As an** operator hitting a missing-binary, `gh` auth, or other prerequisite failure,
-**I want** every command to surface the same short error convention,
-**So that** the failure mode is predictable and the fix is obvious across the plugin.
-
-**Acceptance Criteria**:
-- [ ] All six commands share one short error convention covering: missing `generacy` binary, missing/expired `gh` auth, other prerequisite failures.
-- [ ] The convention is documented once (README or shared snippet) and referenced consistently.
-
-### US6: README reflects current command table and marketplace install
-
-**As a** new user installing `@generacy-ai/cockpit`,
-**I want** the README to show the six-command table and the marketplace install via `extraKnownMarketplaces`,
-**So that** I can install and use the plugin without hitting stale copy about unshipped commands.
+**As a** cockpit operator,
+**I want** `/cockpit:review --gate <g>` to run `/code-review` for the `impl` gate, summarize the artifact for other gates, and on approval call `generacy cockpit advance --gate <g>`,
+**So that** review + advancement is a single command instead of an English state-machine spread across files.
 
 **Acceptance Criteria**:
-- [ ] README lists the six commands (watch, status, queue, clarify, review, merge) with one-line descriptions.
-- [ ] README documents marketplace install via `extraKnownMarketplaces`.
-- [ ] All "coming in #351–#360" copy is removed.
+- [ ] For `--gate impl`, invokes the Claude-Code-native `/code-review` slash command (the single documented cross-slash-command exception).
+- [ ] For other gates, summarizes the review artifact.
+- [ ] On approval, calls `generacy cockpit advance --gate <g>` directly (replaces the unshipped `/cockpit:advance` reference).
+
+### US4: Clarify assist loop
+
+**As a** cockpit operator answering clarification questions,
+**I want** `/cockpit:clarify` to run the full assist loop (context → draft grounded answers → per-question approval → post marked comment → `generacy cockpit advance`),
+**So that** the answer flow is a bounded assist step, not a bag of per-repo shell.
+
+**Acceptance Criteria**:
+- [ ] Calls `generacy cockpit context` (the renamed successor to `clarify-context`) for grounded context.
+- [ ] Drafts answers per question, gets per-question approval, posts a marked comment, then calls `generacy cockpit advance`.
+- [ ] Contains no `specs/**` (feature-branch) contract references.
+
+### US5: Shared error convention
+
+**As a** cockpit operator,
+**I want** every command to classify failures the same way (missing binary / `gh` auth / other),
+**So that** identical error paths render identically across commands.
+
+**Acceptance Criteria**:
+- [ ] The three-class convention (missing binary / `gh` auth / other, with install+auth one-liners) is inlined verbatim into each of the six command files.
+- [ ] Each command marks its inlined block with a comment naming the plugin README as canonical source of truth.
+- [ ] The canonical copy lives in this plugin's README (not the `generacy` repo/npm package).
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | `packages/claude-plugin-cockpit/commands/` contains exactly six command files: `watch.md`, `status.md`, `queue.md`, `clarify.md`, `review.md`, `merge.md`. | P1 | |
-| FR-002 | Delete `plan.md`, `breakdown.md`, `file.md`, `bug.md` from `packages/claude-plugin-cockpit/commands/`. | P1 | |
-| FR-003 | All six commands are assist-mode and each is self-contained. | P1 | Contract = CLI verb `--help` + README only. |
-| FR-004 | No command references `specs/**` contracts, autonomy policy, transition/policy schemas, or feature-branch specs. | P1 | |
-| FR-005 | No command invokes another `/cockpit:*` slash command. | P1 | Composition happens via `generacy` CLI only. |
-| FR-006 | `watch.md` runs `Monitor generacy cockpit watch <epic-ref>` and prints one notification per transition line with the suggested next `/cockpit:*` command. | P1 | ~20 lines. |
-| FR-007 | `watch.md` performs no policy lookup, no dedupe/baseline handling, no `PushNotification`. | P1 | |
-| FR-008 | `watch.md` reports and stops when the watcher process exits. | P1 | |
-| FR-009 | `review.md` runs `/code-review` when `--gate impl`, otherwise summarizes the gate artifact. | P1 | |
-| FR-010 | `review.md` calls `generacy cockpit advance --gate <g>` directly on operator approval. | P1 | No reference to unshipped `/cockpit:advance`. |
-| FR-011 | `merge.md` supports `--max-fix-attempts` with default `1` and never merges on red CI. | P1 | Bounded fixer subagent. |
-| FR-012 | All six commands share one short error convention (missing binary, `gh` auth, other). | P2 | |
-| FR-013 | README shows the current six-command table and documents marketplace install via `extraKnownMarketplaces`. | P1 | |
-| FR-014 | README removes all "coming in #351–#360" copy. | P1 | |
-| FR-015 | Every command is runnable in a fresh Claude session with only the plugin + `gh` auth + `generacy` CLI installed. | P1 | Acceptance gate. |
+| FR-001 | Exactly six command files exist after the rewrite: `watch.md`, `status.md`, `queue.md`, `clarify.md`, `review.md`, `merge.md`. | P1 | Delete `plan.md`, `breakdown.md`, `file.md`, `bug.md`. |
+| FR-002 | Every command is assist-mode and self-contained: its contract is the CLI verb's `--help` plus the `@generacy-ai/cockpit` README. | P1 | No `specs/**` references. |
+| FR-003 | No command references autonomy policy, transition/policy schemas, feature-branch specs, or unshipped verbs. | P1 | |
+| FR-004 | Each command is runnable in a fresh Claude Code session with only the plugin + `gh` auth + `generacy` CLI installed. | P1 | |
+| FR-005 | No command invokes another `/cockpit:*` slash command; commands compose only via the `generacy` CLI. | P1 | `/code-review` (Claude-Code-native) is the single documented exception, permitted only in `review.md --gate impl`. |
+| FR-006 | `watch.md` runs `generacy cockpit watch <epic-ref>`, and for each transition line prints one notification with the suggested next `/cockpit:*` command derived from a small static mapping table in the command body. | P1 | See US1 AC for the mapping. |
+| FR-007 | `watch.md` performs no policy lookup, no dedupe/baseline handling, no `PushNotification`. On watcher exit, reports and stops. | P1 | |
+| FR-008 | `status.md` renders `generacy cockpit status`; with no argument, prints the usage line (no `.generacy/epics/` resolution chain). | P1 | |
+| FR-009 | `queue.md` renders `generacy cockpit queue` and keeps its `AskUserQuestion` Confirm/Cancel gate. | P1 | |
+| FR-010 | `clarify.md` runs the full assist loop: `generacy cockpit context` → draft grounded answers → per-question approval → post marked comment → `generacy cockpit advance`. | P1 | Uses renamed `context` verb (`clarify-context` no longer exists). |
+| FR-011 | `merge.md` never merges on red CI, supports `--max-fix-attempts` (default 1), and uses a bounded fixer subagent that attempts any red check owned by this repo's CI (tests, lint, typecheck, build). | P1 | Infrastructure/runner failures are reported and merge aborts without burning an attempt. One "attempt" = one fixer invocation that pushes and triggers a re-check. |
+| FR-012 | Every command inlines the shared error convention (missing binary / `gh` auth / other) verbatim, with a comment naming the plugin README section as canonical. | P1 | Canonical copy in this plugin's README. |
+| FR-013 | Plugin README documents the current command table and the marketplace install via `extraKnownMarketplaces`; the stale "coming in #351–#360" copy is removed. | P1 | |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | Command file count under `packages/claude-plugin-cockpit/commands/` | Exactly 6 | `ls packages/claude-plugin-cockpit/commands/*.md \| wc -l` |
-| SC-002 | Occurrences of `specs/`, autonomy-policy terms, or `/cockpit:advance` in command files | 0 | `grep` sweep across the six command files |
-| SC-003 | Fresh-session runnability | 100% of six commands run without error | Manual walk-through in a clean environment with only plugin + `gh` + `generacy` CLI |
-| SC-004 | `watch.md` line count | ≈20 lines | `wc -l packages/claude-plugin-cockpit/commands/watch.md` |
-| SC-005 | `merge.md` never merges when CI is red | 0 red-CI merges | Verified by CI-red scenario walk-through |
-| SC-006 | README references to unshipped `#351–#360` copy | 0 | `grep -c` against README |
+| SC-001 | Command file count | Exactly 6 files in `packages/claude-plugin-cockpit/commands/`. | `ls packages/claude-plugin-cockpit/commands/*.md \| wc -l` returns 6. |
+| SC-002 | No forbidden references | Zero occurrences of `specs/`, autonomy-policy, transition/policy schemas, or unshipped verbs (`/cockpit:advance`) inside command files. | `grep -r` against the six files finds none. |
+| SC-003 | Fresh-session runnability | Each of the six commands executes successfully in a fresh Claude Code session with only the plugin + `gh` auth + `generacy` CLI. | Manual smoke test on a clean session. |
+| SC-004 | `watch.md` size | ~20 lines. | Line count of `watch.md`. |
+| SC-005 | Shared error convention consistency | The three-class inlined block is byte-identical across all six commands. | Diff each pair of inlined blocks; expect no differences. |
+| SC-006 | Plugin README currency | README shows the current 6-command table and marketplace install; contains no "coming in #351–#360" copy. | Read + grep the README. |
 
 ## Assumptions
 
-- The `generacy` CLI already provides `cockpit watch`, `cockpit advance --gate <g>`, and the other verbs the commands depend on (per dependencies G-S2, G-S3).
-- The `@generacy-ai/cockpit` README is the canonical operator reference; command bodies do not duplicate its content.
-- `Monitor` is the sanctioned tool for streaming long-running CLI output inside a slash command.
-- Operators run these commands from within a Claude session with `gh` authenticated and the `generacy` CLI on `PATH`.
+- The `generacy` CLI exposes `cockpit watch`, `cockpit status`, `cockpit queue`, `cockpit context`, `cockpit advance`, and the epic-body discovery + queue signature verbs that G-S2 / G-S3 ship.
+- The Claude-Code-native `/code-review` slash command is always available in any session where this plugin is installed.
+- Transition lines emitted by `generacy cockpit watch` are sufficient to key the static next-command mapping in `watch.md` without additional decoration.
 
 ## Out of Scope
 
-- Autonomy policy, transition schemas, or any policy-lookup logic in `/cockpit:watch`.
-- `PushNotification` / AFK push behavior in `watch` (previously in scope for issue #360; explicitly removed in this rewrite).
-- Any new `/cockpit:*` command beyond the six listed.
-- Any reference to or reintroduction of `plan.md`, `breakdown.md`, `file.md`, `bug.md`.
-- Dedupe/baseline handling in `watch`.
-- Cross-command invocation via `/cockpit:*` (composition is via the `generacy` CLI only).
+- Modifying `generacy cockpit watch` to emit a `next: /cockpit:<verb>` field inline (the long-term-preferred design, deferred per the one-repo-per-issue rule; would live in the `generacy` repo).
+- Reintroducing `/cockpit:advance`, `/cockpit:plan`, `/cockpit:breakdown`, `/cockpit:file`, `/cockpit:bug`, or any other verb outside the six-command set.
+- Cross-slash-command invocation beyond the single `/code-review` exception in `review.md --gate impl`.
+- Extracting the shared error convention to a standalone snippet file (`commands/_errors.md`) or referencing a README that is not readable at execution time.
+- Fixer-subagent handling of infrastructure/runner failures in `merge.md`.
 
 ---
 
