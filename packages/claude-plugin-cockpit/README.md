@@ -21,7 +21,7 @@ This plugin is the home for the `/cockpit:*` namespace — developer-side workfl
 
 Runtime dependencies (must be on `$PATH` in the session that runs any command):
 
-- `generacy` CLI (`npm install -g @generacy-ai/cli` or the prevailing install command).
+- `generacy` CLI (`npm install -g @generacy-ai/generacy` or the prevailing install command). See § Error Handling / `MISSING_BINARY` for the cluster-session PATH remedy.
 - `gh` CLI, authenticated with `gh auth login`.
 
 ## Distribution
@@ -56,7 +56,7 @@ When the CLI exit code is non-zero (or the pre-flight failed), the command class
 - **MISSING_BINARY** — pre-flight `command -v generacy` returned non-zero. Print:
 
   ```
-  The generacy CLI is required but is not on $PATH. Install it with npm install -g @generacy-ai/cli (or the prevailing install command) and retry.
+  The generacy CLI is required but is not on $PATH. In a Generacy cluster session it is already installed — add it to your PATH: `export PATH="/shared-packages/node_modules/.bin:$PATH"` (persist it in ~/.bashrc). Standalone: install it with `npm install -g @generacy-ai/generacy`.
   ```
 
 - **AUTH_FAILURE** — exit ≠ 0 AND captured stderr matches `/auth|unauthorized|401|gh auth/i`. Print:
