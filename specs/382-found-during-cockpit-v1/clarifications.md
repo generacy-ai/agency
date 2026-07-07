@@ -19,7 +19,7 @@
 - C: Accept every token `--help-gates` emits and let the CLI reject any it doesn't support; the playbook doesn't gatekeep the list.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — exactly the five review tokens verbatim (`spec-review`, `clarification-review`, `plan-review`, `tasks-review`, `implementation-review`); anything else prints usage listing those five and exits non-zero, with one special case in the usage text: `clarification` → "use `/cockpit:clarify`". `manual-validation` is not a review (it's a human exercising the deployed environment; v1 maps it to notify-only), and `children-complete`/`epic-approval` are epic-lifecycle gates — neither has artifact-or-PR review semantics.
 
 ---
 
@@ -35,7 +35,7 @@
 - C: Both — summary in the approval body AND inline COMMENT-review threads (redundant but discoverable both ways).
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — approval body only, and this is load-bearing, not stylistic: inline COMMENT threads are precisely what `PrFeedbackMonitorService` watches, so options B/C would post an approval and simultaneously trip the feedback monitor into applying `waiting-for:address-pr-feedback` and enqueuing fix work on the PR we just approved — the machinery racing the merge. The clean semantic this establishes: inline threads = actionable, monitored feedback; review-body text = information. Non-blocking findings on approve are information.
 
 ---
 
@@ -51,7 +51,7 @@
 - C: Full recap — reproduce the `/code-review` output verbatim in the body AND post each finding as an inline comment (redundant but self-contained).
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: B — one summary line (e.g. `N finding(s) requiring changes; see inline comments.`). Empty (A) is hostile to humans scanning the PR conversation view; a full recap (C) duplicates every inline comment into a second surface that can drift from it.
 
 ---
 
@@ -68,7 +68,7 @@
 - D: `/code-review`'s existing convention is documented elsewhere — please point to the schema so the playbook can spec its parser to match.
 - E: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: E — the playbook's Claude classifies each finding by judgment at review time (correctness/security/data-integrity failure scenarios ⇒ blocking; style/simplification/nit ⇒ non-blocking), and MUST show the per-finding classification in the summary table it presents at the `AskUserQuestion` gate. The Assumptions line overstated things: `/code-review` emits severity-ranked findings with failure scenarios but no stable machine-readable blocking marker, so A/B parse structure that isn't guaranteed and C's keyword rule is fragile in exactly the way the question suspects. Judgment is acceptable here because the classification only feeds a suggestion — the human approves or overrides at the gate; assist-mode means Claude drafts, human decides.
 
 ---
 
@@ -84,6 +84,6 @@
 - C: A + also add rows for `manual-validation` (and any other reviewer-driven gate identified in Q1).
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — one explicit row per review token, and keep `waiting-for:clarification → /cockpit:clarify` unchanged. A substitution-pattern row (B) is a tiny parsing DSL embedded in markdown — the English-state-machine smell this rewrite exists to eliminate — and it breaks anyway on tokens whose "root" isn't a single word. `manual-validation` gets no suggestion row in v1 (notify-only, no verb); five explicit rows cost five lines and are greppable, diffable, and wrong-proof.
 
 ---
