@@ -4,7 +4,7 @@ A Claude Code plugin providing developer-side workflow automation commands for s
 
 ## Overview
 
-This plugin is the home for the `/cockpit:*` namespace — developer-side workflow automation verbs that orchestrate epics, reviews, and merges around the spec-kit workflow. It ships exactly six assist-mode slash commands (`watch`, `status`, `queue`, `clarify`, `review`, `merge`), each self-contained: their behavior is the `generacy` CLI verb they wrap plus the playbook body in this repository. There are no dependencies on `specs/**` contracts, no autonomy-policy lookup, and no cross-slash-command invocation (with a single documented exception: `/cockpit:review --gate impl` invokes Claude Code's built-in `/code-review`).
+This plugin is the home for the `/cockpit:*` namespace — developer-side workflow automation verbs that orchestrate epics, reviews, and merges around the spec-kit workflow. It ships exactly six assist-mode slash commands (`watch`, `status`, `queue`, `clarify`, `review`, `merge`), each self-contained: their behavior is the `generacy` CLI verb they wrap plus the playbook body in this repository. There are no dependencies on `specs/**` contracts, no autonomy-policy lookup, and no cross-slash-command invocation (with a single documented exception: `/cockpit:review --gate implementation-review` invokes Claude Code's built-in `/code-review`).
 
 ## Installation
 
@@ -44,7 +44,7 @@ The plugin ships on two rails:
 | `/cockpit:status` | Render `generacy cockpit status <epic-ref>` output for an epic and its children |
 | `/cockpit:queue` | Confirm-gated wrapper over `generacy cockpit queue <phase>` |
 | `/cockpit:clarify` | Draft grounded answers for an epic's open clarifications, approve per-question, post, and advance the gate |
-| `/cockpit:review` | Review a speckit gate — artifact (`specify`/`clarify`/`plan`/`tasks`) or `impl` PR diff — and advance on approval |
+| `/cockpit:review` | Review a speckit gate — artifact (`spec-review`/`clarification-review`/`plan-review`/`tasks-review`) or `implementation-review` PR diff — and advance on approval |
 | `/cockpit:merge` | Merge a PR via `generacy cockpit merge`; on red, spawn a bounded fixer subagent and re-evaluate. Never merges on red |
 
 ## Error Handling
