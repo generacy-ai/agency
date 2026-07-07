@@ -21,6 +21,20 @@ The wrong string appears in **seven places** that must all stay in sync per the 
 - `packages/claude-plugin-cockpit/README.md` — the canonical Error Handling block (source of truth).
 - `packages/claude-plugin-cockpit/commands/{clarify,merge,queue,review,status,watch}.md` — six inlined copies, one per command.
 
+## Clarifications
+
+Resolved 2026-07-07 (see `clarifications.md` for full rationale):
+
+- **Canonical remedy payload** (single line, byte-identical across README and six command files):
+
+  > The generacy CLI is required but is not on $PATH. In a Generacy cluster session it is already installed — add it to your PATH: `export PATH="/shared-packages/node_modules/.bin:$PATH"` (persist it in ~/.bashrc). Standalone: install it with `npm install -g @generacy-ai/generacy`.
+
+- **Remedy format** (Q1): Cluster fix includes an explicit copy-pasteable shell command in an inline backtick-quoted span (no fenced block), so mid-failure readers copy-paste rather than translate prose.
+- **Single-line / two-part** (Q2): One line carries both remedies with audience labels (cluster vs standalone). Splitting them across files would violate byte-identity.
+- **Byte-for-byte scope** (Q3): Text-only — the payload string is what must match across the seven files. Surrounding markup (README fence vs `Print:` inline backticks in command files) is presentation and stays as-is.
+- **README §Installation line 24 update** (Q4): Correct the package name AND add a one-line cross-reference to §Error Handling / MISSING_BINARY. Do not restate the cluster remedy — that would create a new drift site.
+- **Verify step in cluster remedy** (Q5): None. Pre-flight (`command -v generacy` failing) is the check that matters; the single-line payload is self-selecting (cluster users run the export, standalone users run the install, and cluster users with empty shared-packages fall through to the install).
+
 ## User Stories
 
 ### US1: Cluster-session developer hits MISSING_BINARY
@@ -59,7 +73,7 @@ The wrong string appears in **seven places** that must all stay in sync per the 
 |----|-------------|----------|-------|
 | FR-001 | Replace the `MISSING_BINARY` remedy in `packages/claude-plugin-cockpit/README.md` § Error Handling with a version that (a) instructs cluster users to check `/shared-packages/node_modules/.bin` and put it on `$PATH` first, and (b) offers `npm install -g @generacy-ai/generacy` as the standalone fallback. | P1 | Canonical source of truth. |
 | FR-002 | Replace the inlined `MISSING_BINARY` remedy in each of the six `packages/claude-plugin-cockpit/commands/{clarify,merge,queue,review,status,watch}.md` files with the exact same string used in the README. | P1 | Inline-verbatim convention — copies must match byte-for-byte. |
-| FR-003 | Remove the stale `npm install -g @generacy-ai/cli` reference in the README § Installation "Runtime dependencies" bullet (line 24) and replace with the corrected package name. | P1 | Same wrong-package-name bug, different location. |
+| FR-003 | Remove the stale `npm install -g @generacy-ai/cli` reference in the README § Installation "Runtime dependencies" bullet (line 24), replace with the corrected package name (`@generacy-ai/generacy`), AND add a one-line cross-reference to § Error Handling / MISSING_BINARY. Do NOT restate the cluster remedy here — the cross-ref keeps that string single-sourced. | P1 | Same wrong-package-name bug, different location. Cross-ref prevents drift. |
 | FR-004 | The final wording MUST NOT contain the string `@generacy-ai/cli`. | P1 | Enforceable via a repo-wide grep. |
 | FR-005 | The final wording MUST fit on a single line when inlined into a `commands/*.md` file (the inline copies are single-line per current convention). | P2 | Preserves current file structure; no line-count changes to command files. |
 
