@@ -1,0 +1,86 @@
+# Clarifications: Fuse cockpit review findings presentation and approval prompt into one turn to close the gate decay window
+
+**Issue**: [generacy-ai/agency#388](https://github.com/generacy-ai/agency/issues/388)
+**Branch**: `388-found-during-cockpit-v1`
+
+---
+
+## Batch 1 — 2026-07-08
+
+### Q1: Operator visibility of the summary in the non-oversized case
+
+**Context**: FR-003 puts the findings-summary table inside `AskUserQuestion`'s `question` text; FR-004 only mandates printing the FULL summary as prose in the same response when the digest fallback is triggered. In the normal case, the summary lives ONLY inside the tool call arguments. Whether an operator actually *sees* the `question` text is client-dependent — some clients render the full `question` string, others show only a short chip. If the summary is invisible in some clients, US1's guarantee ("no turn boundary between summary and prompt") is preserved but the summary itself may not be visible to the operator until they interact with the prompt UI — the operator has nothing to reason from before deciding.
+
+**Question**: In the normal (non-oversized) case, MUST the full summary also be printed as prose in the response body immediately before the `AskUserQuestion` call — belt-and-braces, always operator-visible — or is embedding it inside `question` text sufficient?
+
+**Options**:
+- A: Always print the summary as prose in the response body immediately before the `AskUserQuestion` call, in every case (normal AND digest-fallback). The `question` field additionally embeds the table (normal) or the digest (fallback). Rationale: uniform response shape across both cases, operator visibility guaranteed regardless of client, and FR-004's fallback rule becomes a special case of the general rule rather than a divergent branch.
+- B: Embed in `question` only in the normal case; print as prose only in the digest-fallback case (as FR-004 already specifies). Rationale: avoids duplicating the table in two places when it fits — reduces response verbosity and honors FR-003's literal "MUST embed ... inside its question text" phrasing.
+- C: Client-detect and switch — print as prose when the client is known not to surface `question` text, embed only otherwise. Rationale: minimizes duplication where it isn't needed.
+- D: Something else — please specify.
+
+**Answer**: *Pending*
+
+---
+
+### Q2: Digest fallback trigger threshold and required digest format
+
+**Context**: FR-004 mandates the header + finding-count digest when the summary payload exceeds `AskUserQuestion`'s size budget, and the Assumptions section rough-guides "~4 KB of question text is sufficient for the vast majority of reviews" while explicitly deferring exact limits to tool-runtime concerns. Two open decisions: (i) is the switch trigger a specific character/byte threshold the playbook must state, or is it left to Claude's judgment at runtime? (ii) FR-004 gives an example digest string (`Review of PR #<n>: 7 findings (3 blocking, 4 non-blocking) — see table above`); is this the required literal template or illustrative-only?
+
+**Question**: What is the digest fallback contract — specifically the trigger and the format?
+
+**Options**:
+- A: **Trigger = model judgment; format = illustrative.** The playbook states no numeric threshold; Claude uses judgment (rough guide "> ~4 KB" per the Assumptions) to decide. The digest format is illustrative — any string that carries a header (`Review of PR #<n>` or artifact identifier) + blocking/non-blocking counts + a "see table above" pointer is acceptable.
+- B: **Trigger = specific numeric threshold; format = literal template.** The playbook states a hard threshold (e.g., "> 4000 characters in the rendered table") and a required literal template (`Review of PR #<n>: N findings (B blocking, NB non-blocking) — see table above`, with `N`/`B`/`NB` interpolated). Rationale: greppable, testable, no drift across implementations.
+- C: **Trigger = specific threshold; format = illustrative.** State a numeric threshold (deterministic switch) but let the digest format be operator-facing prose at Claude's discretion.
+- D: Something else — please specify.
+
+**Answer**: *Pending*
+
+---
+
+### Q3: Zero-findings and `/code-review`-error edge cases in the fused step
+
+**Context**: The current step 3 handles zero findings by rendering `| (none) | | | |` and emitting `Suggested decision: approve`; it does not specify behavior when `/code-review` itself errors non-zero or emits malformed output. Post-fusion, both edge cases feed into the same rule "summary is delivered AS PART OF the same response that invokes `AskUserQuestion`." Under the fusion rule, the summary must render before the prompt — but there's no summary to render when `/code-review` errored, and there's a trivial one when it returned zero findings.
+
+**Question**: How does the fused step behave in the zero-findings case and in the `/code-review`-error case?
+
+**Options**:
+- A: **Zero-findings: still invoke `AskUserQuestion` with the empty-row table (`| (none) | | | |`) inside `question` text, exactly as step 3 renders today.** `/code-review`-error: apply the existing **Error handling** block (class `OTHER`), do NOT invoke `AskUserQuestion` — the fusion rule doesn't apply when there is no analysis result, and Error handling is a legitimate terminal outcome (it exits non-zero, so the Terminal Outcome Check's markers don't apply). Rationale: zero findings is a normal outcome that still needs an operator decision; `/code-review`-error is a hard failure that must not silently prompt.
+- B: **Zero-findings: skip `AskUserQuestion` and auto-approve** (advance directly, since the suggested decision is `approve` and there is nothing for the operator to review). `/code-review`-error: apply Error handling as in A.
+- C: **Zero-findings: as A.** `/code-review`-error: still invoke `AskUserQuestion` with an error-notice payload in `question` text so the operator can `abort` cleanly. Rationale: keep the terminal outcome inside the fused step's rule; never silently error out.
+- D: Something else — please specify.
+
+**Answer**: *Pending*
+
+---
+
+### Q4: Fused-step structure across the two branches (implementation-review vs. artifact-review)
+
+**Context**: The current `review.md` has step 3 (implementation-review branch) and step 4 (artifact-review branch) as parallel branches, both feeding into step 5 (the shared prompt). FR-001 says the fusion applies to "(current step 3 for implementation-review, current step 4 for artifact gates) with the approval-prompt step (current step 5)." FR-005 says "operators experience one uniform gate shape." Two file-shape realizations are consistent with those requirements: (a) ONE new fused step whose body branches internally on `--gate` and ends with the shared `AskUserQuestion` call; (b) TWO separate fused steps (steps 3 and 4 in the new numbering), each with its own rule-sentence header and its own `AskUserQuestion` invocation. Both preserve the "no turn boundary" property; they differ in file structure and diff shape.
+
+**Question**: How should the fusion be realized in `review.md`'s step structure?
+
+**Options**:
+- A: **ONE fused step (new step 3)** whose body branches internally on `--gate`: the implementation-review sub-branch produces the findings-summary table and `Suggested decision:` line; the artifact-review sub-branch produces the three-section summary; both sub-branches converge on the shared `AskUserQuestion` invocation at the end of the single fused step. The rule sentence appears ONCE at the head of this step. Steps 6/7/8 renumber to 5/6/7. Rationale: greppable rule (single occurrence), simplest file shape, one place to maintain the fusion.
+- B: **TWO fused steps (new step 3 and new step 4)**, each with its own rule-sentence header and its own `AskUserQuestion` invocation. Step 3 handles implementation-review end-to-end (analysis + summary + prompt); step 4 handles the four artifact gates end-to-end (artifact read + three-section summary + prompt). Steps 6/7/8 renumber to 5/6/7 (or preserve current numbers). Rationale: no internal branching within a step, each step is self-contained and easier to read linearly.
+- C: **ONE fused step with SC-003's greppable sentence appearing verbatim TWICE** (once per branch), even inside a single-step realization. Rationale: ensures SC-003 still passes if editors later split the branches, and reinforces the rule at both branch entry points.
+- D: Something else — please specify.
+
+**Answer**: *Pending*
+
+---
+
+### Q5: Placement of the retained "MUST NOT print raw JSON" clause and the `Suggested decision:` line
+
+**Context**: FR-006 mandates the existing "MUST NOT print raw JSON under any circumstance" clause is retained verbatim. Post-fusion, the natural home for the clause is inside the fused step's implementation-review section (or sub-branch, depending on Q4). Separately, current step 3 emits a `Suggested decision: <approve|request-changes|abort>` line that the operator sees before step 5's `AskUserQuestion` prompt. Post-fusion, the same three options are the labels of the `AskUserQuestion` options — the `Suggested decision:` line becomes an inline hint about which option Claude thinks is right. It's not required by any FR to survive; it's also not required to be removed.
+
+**Question**: Where does the retained raw-JSON clause live, and does the `Suggested decision:` line survive the fusion?
+
+**Options**:
+- A: **Raw-JSON clause: inline within the implementation-review section of the fused step**, immediately before the findings-summary table rendering instruction. **`Suggested decision:` line: retained**, printed as part of the pre-prompt prose (belt-and-braces guidance for the operator; the `AskUserQuestion` options carry the same three names but the line names Claude's recommendation explicitly).
+- B: **Raw-JSON clause: as A.** **`Suggested decision:` line: removed** — redundant with the `AskUserQuestion` options, and the fusion's spirit is to reduce prompt-surface duplication. The operator picks from the same three names Claude was recommending.
+- C: **Raw-JSON clause: kept as a stand-alone bullet at the top of the implementation-review sub-branch, greppable by first line.** **`Suggested decision:` line: retained as A.**
+- D: Something else — please specify.
+
+**Answer**: *Pending*
