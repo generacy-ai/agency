@@ -19,7 +19,7 @@
 - C: Mirror the cockpit playbook's existing `<!-- BEGIN error-conv -->` / `<!-- END error-conv -->` fenced-block convention (used for the Error handling section in every command file) so the check is discoverable and greppable across commands.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: B, plus option C's greppability — define the new block properly (`## Terminal Outcome Check`: a "exactly one of the following MUST have occurred" list and a fail-closed "if none: return to step 5" branch), and wrap it in fence markers following the existing error-conv convention (`<!-- BEGIN terminal-check -->` / `<!-- END terminal-check -->`) so it's discoverable across command files. The spec's "mirror clarify.md" premise was wrong — thanks for checking rather than mirroring a block that doesn't exist. Adopting the same block in `clarify.md` (which has approval-shaped outcomes of its own) is a sensible follow-up, not this fix.
 
 ---
 
@@ -35,7 +35,7 @@
 - C: Hybrid — text-emission for (a) and (c) via the `Labels:` / new `Aborted:` lines, plus a state check for (b) since posting is a network side effect that could partially fail.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — text-emission markers only, and step 8 gains the literal `Aborted:` line. The markers aren't decorative: each is emitted by its step only after the real side effect succeeds (`Labels:` on CLI exit 0, `Feedback posted:` after the `gh api` call returns), so verifying the emission verifies the outcome transitively. Option B's end-of-command state probes add network calls to every review and can false-positive on concurrent actors; C buys almost nothing over A once the emissions are side-effect-coupled.
 
 ---
 
@@ -51,7 +51,7 @@
 - C: Uniform for v1 (option A), and file a follow-up issue to add multi-credential detection in a later PR if/when a multi-credential cluster ships.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — uniform `event: COMMENT`, drop APPROVE entirely, with an inline rationale comment in the playbook noting the decision ("self-APPROVE is forbidden by GitHub and semantically empty; revisit if multi-credential reviewer identities ever ship"). Not B: cluster-shape detection for a deployment shape that doesn't exist is speculative machinery. Not C: a tracking issue for the same nonexistent shape is a dead issue — the inline comment travels with the code and surfaces exactly when someone touches this line again.
 
 ---
 
@@ -67,7 +67,7 @@
 - C: Restart from step 3 (re-run `/code-review` and rebuild the table) whenever the check bounces control back. Rationale: the sub-invocation may have been the source of instruction decay; re-establishing state from scratch is safer than trusting cached context. Unbounded.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — re-invoke step 5 only, unbounded. Every iteration requires a human answer at `AskUserQuestion`, so there is no runaway loop without an operator driving it — and an operator who dismisses the prompt is thinking, not stuck; force-aborting after 3 misses (B) converts hesitation into a silent non-outcome, which is this bug's failure mode wearing a different hat. Not C: re-running `/code-review` re-executes the expensive sub-invocation that caused the decay in the first place; the findings table is rebuilt from session context, and the raw-JSON case is handled upstream per Q5.
 
 ---
 
@@ -83,6 +83,6 @@
 - C: Move the enforcement upstream: strengthen step 3's instruction to render the table (e.g., "MUST NOT print raw JSON under any circumstance; if `/code-review` returns JSON, parse and rebuild the table before printing"). Keep FR-004's Post-Command Check text as a passive reminder only.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: C — enforce at the point of behavior: strengthen step 3 to "MUST NOT print raw JSON; if `/code-review` returns JSON, parse it and render the required summary table before printing anything else," and keep the check-block mention as a passive reminder. Option B's self-introspection ("read your own prior output and route back") is exactly the English-state-machine meta-machinery this plugin family exists to avoid, and it fires after the operator has already seen the JSON — the harm it prevents is already done.
 
 ---
