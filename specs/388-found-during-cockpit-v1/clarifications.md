@@ -19,7 +19,7 @@
 - C: Client-detect and switch — print as prose when the client is known not to surface `question` text, embed only otherwise. Rationale: minimizes duplication where it isn't needed.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — always print the summary as prose immediately before the `AskUserQuestion` call, both cases. The operator cannot approve what they cannot see, and question-text rendering is client-dependent; A makes visibility unconditional, gives both cases one uniform shape, and turns FR-004's fallback into a special case instead of a divergent branch. The duplication cost is a few hundred characters against the risk of a blind approval.
 
 ---
 
@@ -35,7 +35,7 @@
 - C: **Trigger = specific threshold; format = illustrative.** State a numeric threshold (deterministic switch) but let the digest format be operator-facing prose at Claude's discretion.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — trigger by judgment (with the ~4 KB rough guide), digest format illustrative with required content (artifact/PR identifier + blocking and non-blocking counts + "see table above" pointer). A playbook executor cannot count bytes accurately, so a hard numeric threshold (B/C) states a precision the runtime cannot honor; and with Q1=A the digest is a secondary surface anyway — the full table is always in the prose above.
 
 ---
 
@@ -51,7 +51,7 @@
 - C: **Zero-findings: as A.** `/code-review`-error: still invoke `AskUserQuestion` with an error-notice payload in `question` text so the operator can `abort` cleanly. Rationale: keep the terminal outcome inside the fused step's rule; never silently error out.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — zero findings still invokes the prompt with the empty-row table (assist-mode means the HUMAN approves gates; auto-approve on zero findings is the deferred autonomy policy sneaking in through a side door), and a `/code-review` hard error routes to the existing Error handling block WITHOUT prompting — a decision prompt with no analysis behind it manufactures consent, and Error handling is already a legitimate non-zero terminal outcome.
 
 ---
 
@@ -67,7 +67,7 @@
 - C: **ONE fused step with SC-003's greppable sentence appearing verbatim TWICE** (once per branch), even inside a single-step realization. Rationale: ensures SC-003 still passes if editors later split the branches, and reinforces the rule at both branch entry points.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — one fused step, one rule sentence, internal `--gate` branching for the analysis half, converging on ONE `AskUserQuestion` spec. Option B duplicates the prompt specification into two copies that can drift apart — the exact disease this plugin family keeps treating; C duplicates the sentence in anticipation of a split we should simply not do.
 
 ---
 
@@ -83,4 +83,4 @@
 - C: **Raw-JSON clause: kept as a stand-alone bullet at the top of the implementation-review sub-branch, greppable by first line.** **`Suggested decision:` line: retained as A.**
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — the raw-JSON clause sits inline immediately before the table-rendering instruction (enforcement at the point of behavior, the #384 Q5 principle), and the `Suggested decision:` line survives in the pre-prompt prose. It isn't redundant with the options list: the options name the three choices, the line names Claude's recommendation — that's the assist-mode contract (Claude drafts, human decides) rendered explicitly.
