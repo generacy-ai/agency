@@ -84,3 +84,69 @@
 - D: Something else — please specify.
 
 **Answer**: A — the raw-JSON clause sits inline immediately before the table-rendering instruction (enforcement at the point of behavior, the #384 Q5 principle), and the `Suggested decision:` line survives in the pre-prompt prose. It isn't redundant with the options list: the options name the three choices, the line names Claude's recommendation — that's the assist-mode contract (Claude drafts, human decides) rendered explicitly.
+
+---
+
+## Batch 2 — 2026-07-08
+
+### Q6: Scope of files touched by the fusion change
+
+**Context**: The current spec's Summary describes the fix as "fuse steps 3/4 and 5" but does not name a target file, and the rest of `spec.md` is a placeholder (no explicit file list). The natural target is `packages/claude-plugin-cockpit/commands/review.md`, but similar "analysis then prompt" patterns may exist in other cockpit command playbooks (e.g., `clarify.md`, `merge.md`), and the change may or may not require updates to tests, docs, or a CHANGELOG entry. Ambiguity here materially changes the diff surface and the review burden.
+
+**Question**: What is the file scope of this change?
+
+**Options**:
+- A: **Scope = `packages/claude-plugin-cockpit/commands/review.md` only**, including its inlined `## Examples` section. No other files are touched. Rationale: matches the prior specify's "All changes are to `packages/claude-plugin-cockpit/commands/review.md` (plus its inlined examples)" note; keeps the diff minimal and reviewable; retroactive fusion of other cockpit commands (per prior spec's Out of Scope) is deferred.
+- B: **Scope = review.md + audit other cockpit playbooks** (e.g., `clarify.md`, `merge.md`) for the same "analysis then prompt" pattern and apply the same fusion where it exists. Rationale: fixes the class of bug, not just the instance; avoids the same regression in a sibling playbook.
+- C: **Scope = review.md only + a CHANGELOG or docs note** describing the fusion and why the Terminal Outcome Check's role narrowed. Rationale: preserves the design context for future editors who might otherwise revert the fusion during a routine cleanup.
+- D: Something else — please specify.
+
+**Answer**: *Pending*
+
+---
+
+### Q7: `## Examples` section update requirement
+
+**Context**: `review.md` includes a `## Examples` section with worked cases demonstrating the current step 3 → step 5 shape (analysis in one response, prompt in the next). Post-fusion, examples that show the pre-fusion shape model an anti-pattern and act as counter-few-shot reinforcement. The prior spec's FR-009 mandated updating all examples to show the fused shape; the current spec is silent on this.
+
+**Question**: Must the `## Examples` section be updated as part of this change?
+
+**Options**:
+- A: **All examples touching the fused step MUST be updated** to show analysis-and-prompt in the same response. Rationale: examples act as few-shot reinforcement; leaving pre-fusion examples in place actively teaches the model to violate the rule the fusion is supposed to enforce.
+- B: **Only examples that visibly demonstrate the anti-pattern** (i.e., show a turn boundary between analysis and prompt) must be updated. Illustrative examples that don't touch the boundary can be left alone.
+- C: **Examples are illustrative-only and updating them is out of scope** for this change; a follow-up may address them.
+- D: Something else — please specify.
+
+**Answer**: *Pending*
+
+---
+
+### Q8: Terminal Outcome Check block modifications
+
+**Context**: The Summary says "Keep the Terminal Outcome Check as the secondary backstop (it still covers steps 6-8), but the primary guarantee moves from 'remember at the end' to 'the deliverable IS the prompt.'" It is not clear whether the block itself is edited (rationale comment, coverage scope, its `re-invoke step 5 only` fallback), or kept byte-identical with only its ROLE reinterpreted. The prior spec's FR-008 mandated a rationale-comment update; the current spec is silent.
+
+**Question**: What modifications, if any, are required to the Terminal Outcome Check block?
+
+**Options**:
+- A: **Update its rationale comment** to record that step 5's invocation is now structurally guaranteed by the fusion and that the block's scope is post-decision execution (steps 6-8). Preserve fence markers (`<!-- BEGIN terminal-check -->` / `<!-- END terminal-check -->`), the marker list (`Labels:` / `Feedback posted:` / `Aborted:`), and the step-5-only fallback. Rationale: documents the layering so future editors don't conflate the two guarantees; keeps behavior unchanged.
+- B: **Keep the block byte-identical** with #384's shipped version; no edits, only reinterpret its role in the surrounding prose. Rationale: minimal diff surface; if the block still functions correctly, don't touch it.
+- C: **Update the rationale AND narrow the fallback** — remove the step-5-only re-invocation fallback (which the fusion now makes structurally impossible to need). Rationale: the fallback was a workaround for the exact failure mode the fusion eliminates; dead code invites confusion.
+- D: Something else — please specify.
+
+**Answer**: *Pending*
+
+---
+
+### Q9: Success verification method
+
+**Context**: The failure mode is behavioral (a skipped gate under long-investigation conditions), so verification could be static (grep for the rule sentence + fence-marker preservation), behavioral (replay the sniplink#3 scenario and inspect the transcript), or both. The current spec has placeholder Success Criteria; the prior spec's SC-001/SC-002 mandated transcript-inspection replays and SC-003/SC-004 mandated static checks. Whether verification is a static check, a replay, or both determines what evidence the implementer must attach.
+
+**Question**: How is the fix verified?
+
+**Options**:
+- A: **Both static AND behavioral**: (i) `grep -n 'protocol violation' packages/claude-plugin-cockpit/commands/review.md` returns the fused-step rule sentence, fence markers intact, no raw-JSON emissions across a replay; (ii) a replay of the sniplink#3-like scenario ends with the `AskUserQuestion` tool call in the same response as the summary table. Rationale: static covers "the source is right," behavioral covers "the source produces the right transcript" — belt-and-braces.
+- B: **Static only**: if the file has the rule sentence, the fused-step shape, the retained raw-JSON clause, and preserved Terminal Outcome Check fence markers, the fix is in place. Behavioral replay is validation, not verification. Rationale: this is a source-side structural fix; if the source is right, the behavior follows by construction.
+- C: **Behavioral only**: the guarantee is behavioral. Attach a transcript showing the sniplink#3 scenario ending with the tool call in the same response. Rationale: static grep can pass while transcripts still fail; the load-bearing evidence is the transcript.
+- D: Something else — please specify.
+
+**Answer**: *Pending*
