@@ -101,7 +101,7 @@
 - C: **Scope = review.md only + a CHANGELOG or docs note** describing the fusion and why the Terminal Outcome Check's role narrowed. Rationale: preserves the design context for future editors who might otherwise revert the fusion during a routine cleanup.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A, amended with a zero-cost class note — the change touches `packages/claude-plugin-cockpit/commands/review.md` only (including its inlined Examples), and the PR description records a one-line assessment of the siblings: `clarify.md`'s prompts are per-item and immediately follow each draft (no analysis-then-prompt boundary to fuse), and `merge.md`/`queue.md` have no analysis phase preceding their gates. That answers the "fix the class" concern without inflating a bugfix into a three-playbook refactor; if the sibling assessment turns out wrong in practice, that's a new observed defect and a new issue.
 
 ---
 
@@ -117,7 +117,7 @@
 - C: **Examples are illustrative-only and updating them is out of scope** for this change; a follow-up may address them.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — every example touching the fused step must show analysis and prompt in the same response. Examples in a playbook are few-shot reinforcement, and a pre-fusion example is not merely stale — it is a worked demonstration of the exact violation this fix exists to prevent, sitting in the model's context every run. B's narrower filter is illusory: any example of the old shape IS the anti-pattern.
 
 ---
 
@@ -133,7 +133,7 @@
 - C: **Update the rationale AND narrow the fallback** — remove the step-5-only re-invocation fallback (which the fusion now makes structurally impossible to need). Rationale: the fallback was a workaround for the exact failure mode the fusion eliminates; dead code invites confusion.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — update the rationale comment to record the new layering (the fusion structurally guarantees REACHING the prompt; the Terminal Outcome Check backstops EXECUTING the decision, steps 6-8), preserve everything else including the step-5 fallback. Option C's premise is wrong: the fallback is not dead — the fusion closes the decay window before the prompt, but a model can still stall between the operator's answer and the advance/post/abort execution, and re-invoking step 5 is the correct recovery there. Removing it would reopen a window we know how to cover.
 
 ---
 
@@ -149,4 +149,4 @@
 - C: **Behavioral only**: the guarantee is behavioral. Attach a transcript showing the sniplink#3 scenario ending with the tool call in the same response. Rationale: static grep can pass while transcripts still fail; the load-bearing evidence is the transcript.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: A — both, with an honest epistemic note in the criteria: the static grep (rule sentence present, fence markers intact, no pre-fusion examples) is necessary but was proven insufficient by this very bug — #384's text was present while the behavior failed. The behavioral replay of a long-investigation scenario is evidence, not proof (adherence is probabilistic), so the criteria should read: static checks pass AND one replayed transcript ends with the `AskUserQuestion` call in the same response as the summary — with continued live usage as the true verifier, per the smoke-test pattern that caught both occurrences.

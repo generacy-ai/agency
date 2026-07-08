@@ -50,7 +50,8 @@ All changes are to `packages/claude-plugin-cockpit/commands/review.md` (plus its
 **Acceptance Criteria**:
 - [ ] The Terminal Outcome Check block from #384 remains at the end of `review.md`, `<!-- BEGIN terminal-check -->` / `<!-- END terminal-check -->` fence markers intact.
 - [ ] The block's marker list (`Labels:` / `Feedback posted:` / `Aborted:`) is unchanged.
-- [ ] Whether the block's rationale comment and the re-invoke-only-step-5 fallback are modified is deferred to Batch 2 clarifications (Q8, still open); this US does not lock either decision.
+- [ ] The block's rationale comment is updated (per Q8=A) to record the new layering: the fusion structurally guarantees reaching the prompt; the Terminal Outcome Check backstops executing the operator's decision across steps 6-8 (post-renumber: 5-7).
+- [ ] The step-5-only re-invocation fallback is preserved (per Q8=A); it still guards against a model stalling between the operator's answer and the advance/post/abort execution.
 
 ## Functional Requirements
 
@@ -65,7 +66,9 @@ All changes are to `packages/claude-plugin-cockpit/commands/review.md` (plus its
 | FR-007 | The `Suggested decision: <approve|request-changes|abort>` line is retained in the pre-prompt prose. | P2 | Q5=A: not redundant with the `AskUserQuestion` options — the options name the three choices, the line names Claude's recommendation. Assist-mode contract (Claude drafts, human decides) rendered explicitly. |
 | FR-008 | Zero-findings case: the fused step still invokes `AskUserQuestion` with the empty-row table (`\| (none) \| \| \| \|`) inside `question` text, exactly as current step 3 renders today. | P1 | Q3=A: assist-mode means the human approves gates; auto-approving zero-findings would be the deferred autonomy policy sneaking in through a side door. |
 | FR-009 | `/code-review`-error case: apply the existing Error handling block (class `OTHER`), do NOT invoke `AskUserQuestion`. The fusion rule does not apply when there is no analysis result. | P1 | Q3=A: a decision prompt with no analysis behind it manufactures consent. Error handling is already a legitimate non-zero terminal outcome; the Terminal Outcome Check's markers don't apply to that exit path. |
-| FR-010 | The existing Terminal Outcome Check block is retained at end-of-file with fence markers and marker list intact, functioning as a secondary backstop covering steps 6-8 (post-renumber: 5-7). | P2 | Primary guarantee moves from "remember at the end" (positional) to "the deliverable IS the prompt" (structural, via FR-001+FR-003). Rationale-comment and fallback edits remain open pending Batch 2 Q8. |
+| FR-010 | The existing Terminal Outcome Check block is retained at end-of-file with fence markers and marker list intact, functioning as a secondary backstop covering steps 6-8 (post-renumber: 5-7). Its rationale comment is updated (per Q8=A) to record the new layering — the fusion structurally guarantees reaching the prompt; this block backstops executing the operator's decision. The step-5-only re-invocation fallback is preserved: it still covers a model stalling between the operator's answer and the advance/post/abort execution. | P2 | Primary guarantee moves from "remember at the end" (positional) to "the deliverable IS the prompt" (structural, via FR-001+FR-003). |
+| FR-011 | The change touches `packages/claude-plugin-cockpit/commands/review.md` only (including its inlined `## Examples` section). Sibling cockpit playbooks are not modified. The PR description records a one-line assessment of siblings: `clarify.md`'s prompts are per-item and immediately follow each draft (no analysis-then-prompt boundary to fuse); `merge.md` and `queue.md` have no analysis phase preceding their gates. | P1 | Q6=A (amended): scoped to the observed defect. If the sibling assessment turns out wrong in practice, that's a new observed defect and a new issue. |
+| FR-012 | Every example in `review.md`'s `## Examples` section that touches the fused step MUST be updated to show analysis and prompt in the same response. No pre-fusion (analysis-in-one-response, prompt-in-the-next) examples may remain. | P1 | Q7=A: examples are few-shot reinforcement; a pre-fusion example is a worked demonstration of the exact violation this fix exists to prevent. B's narrower filter is illusory — any example of the old shape IS the anti-pattern. |
 
 ## Success Criteria
 
@@ -76,6 +79,8 @@ All changes are to `packages/claude-plugin-cockpit/commands/review.md` (plus its
 | SC-003 | Greppability of the fusion rule | The FR-002 rule sentence appears exactly ONCE in `review.md` and is grep-recoverable via a stable phrase (e.g., `delivered AS PART OF the same response that invokes AskUserQuestion`) | `grep -c "delivered AS PART OF the same response that invokes AskUserQuestion" review.md` returns 1. |
 | SC-004 | Raw-JSON regression check | The retained "MUST NOT print raw JSON" clause remains verbatim and is located inline before the findings-summary table rendering instruction | Grep for the clause phrase; visual inspection confirms placement. |
 | SC-005 | Zero-findings and error-path preservation | Zero-findings still prompts the operator; `/code-review` hard error routes to Error handling without prompting | Smoke test with a synthetic zero-findings case and a synthetic `/code-review` non-zero exit. |
+| SC-006 | Verification method — static AND behavioral (per Q9=A) | Static: rule sentence present, fence markers intact, no pre-fusion examples remain. Behavioral: one replayed long-investigation transcript ends with the `AskUserQuestion` call in the same response as the summary table. | Static checks are necessary but were proven insufficient by this very bug (#384's text was present while behavior failed); the replayed transcript is evidence, not proof (adherence is probabilistic). Continued live usage of `/cockpit:review` is the true verifier — per the smoke-test pattern that caught both occurrences. |
+| SC-007 | Examples-section adherence to the fused shape | Zero examples in `review.md` show the pre-fusion (analysis-then-turn-boundary-then-prompt) shape after the change | Read every example that touches the fused step; each must render analysis-and-prompt in the same response block. |
 
 ## Assumptions
 
@@ -89,7 +94,7 @@ All changes are to `packages/claude-plugin-cockpit/commands/review.md` (plus its
 
 - Any change to the deferred autonomy policy (e.g., auto-approving zero-findings runs).
 - Changes to `/code-review` itself, or to its output schema.
-- Retroactive fusion of analysis-and-prompt steps in sibling cockpit command files (e.g., `clarify.md`, `merge.md`). Sensible follow-up but not part of this change.
+- Retroactive fusion of analysis-and-prompt steps in sibling cockpit command files (e.g., `clarify.md`, `merge.md`, `queue.md`). Per Q6=A: the PR description records a one-line assessment (siblings do not exhibit the same analysis-then-prompt boundary), but no sibling file is modified. Any counterexample discovered later is a new issue, not this one.
 - Client-side rendering fixes for `AskUserQuestion.question` — FR-003 sidesteps this via prose-first delivery instead of trying to normalize clients.
 - Adding runtime probes (`gh api`, `generacy cockpit status`) to detect the missing-prompt condition. Fusion is a source-side fix; detection is not needed if the boundary is gone.
 - Rewriting the post-decision execution branches (current steps 6-8). They remain as shipped in #384.
