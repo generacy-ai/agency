@@ -32,6 +32,7 @@ $ARGUMENTS
 3. **`--gate implementation-review` branch** — Only when `--gate implementation-review` is selected:
    - Invoke Claude Code's built-in `/code-review` slash command. This is the sole exception to the "no cross-slash-command invocation" rule; `/code-review` ships with Claude Code, so it is always present in any session where this plugin is installed.
    - Capture `/code-review`'s output verbatim as the review summary body.
+   - **MUST NOT print raw JSON under any circumstance.** If `/code-review` returns JSON, parse it and render the required summary table (below) before printing anything else. Raw JSON output from this step is a defect: the operator must see the findings-summary table, never `{"findings": …}` prose.
    - **Classify each finding.** For each finding `/code-review` emits, judge whether it describes a correctness / security / data-integrity failure scenario (⇒ `Blocking? Yes`) or a style / simplification / nit (⇒ `Blocking? No`). `/code-review` does not carry a stable machine-readable blocking marker; this classification is Claude's judgment, and it MUST be surfaced per-finding at the `AskUserQuestion` gate in step 5 so the operator can override.
    - **Render a findings-summary table** immediately after the captured `/code-review` output, with the shape:
 
@@ -57,7 +58,7 @@ $ARGUMENTS
    The prompt MUST display the findings-summary table from step 3 (`--gate implementation-review`) or the three-section summary from step 4 (other gates) so the operator can see the classifications and reasoning before deciding.
 
 6. **Advance on approval** — Only when the user selects `approve`:
-   - If the gate is `implementation-review` AND non-blocking findings were present in step 3's table, POST an `event: APPROVE` PR review via `gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews` with a `body` that lists the non-blocking findings as human-readable text (one paragraph per finding: `- <file>:<line> — <finding text>`). Do NOT include `comments[]`. Do NOT post an accompanying `event: COMMENT` review. <!-- Rationale: PrFeedbackMonitorService triggers on unresolved review THREADS. Posting inline threads on approve would apply waiting-for:address-pr-feedback and enqueue fix work on the PR we are approving. Body-only preserves the semantic "inline threads = actionable feedback; body text = information." -->
+   - If the gate is `implementation-review` AND non-blocking findings were present in step 3's table, POST an `event: COMMENT` PR review via `gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews` with a `body` that lists the non-blocking findings as human-readable text (one paragraph per finding: `- <file>:<line> — <finding text>`). Do NOT include `comments[]`. <!-- Rationale: event: APPROVE is forbidden by GitHub on one's own PR (422 "Can not approve your own pull request") and is semantically empty on a self-PR anyway — approval on your own PR does not count toward branch-protection thresholds. event: COMMENT is permitted on one's own PR and, with no comments[], produces zero review threads, so PrFeedbackMonitorService stays quiet: the #382 semantic contract "inline threads = actionable feedback; body text = information" is preserved verbatim. self-APPROVE is forbidden by GitHub and semantically empty; revisit if multi-credential reviewer identities ever ship. -->
    - If the gate is `implementation-review` AND no findings were present, no PR review is posted (the CLI advance below is the only side effect).
    - For non-`implementation-review` gates, no PR review is posted (there is no PR at these gates).
    - Run `generacy cockpit advance --gate <name>` via the Bash tool. On exit `0`, print one line `Labels: waiting-for:<name> → completed:<name>`. On non-zero CLI exit, apply the **Error handling** block below.
@@ -72,7 +73,7 @@ $ARGUMENTS
 
    For gates other than `implementation-review`, `request-changes` is a no-op post-review-body: emit one line `Changes requested at <gate>; artifact reviewer will address feedback and re-request review.` and exit zero (no CLI, no `gh api`).
 
-8. **No-op on `abort`** — On `abort`, emit no `Labels:` line, mutate no state, post no PR review, and exit zero.
+8. **No-op on `abort`** — On `abort`, emit no `Labels:` line, mutate no state, post no PR review, print a literal single line `Aborted: no changes to gate <gate>; no PR review posted.` (with `<gate>` interpolated to the argument's value), and exit zero. <!-- The `Aborted:` line is the Terminal Outcome Check's marker for the abort branch (FR-005); it is emitted only on this code path, so its presence transitively verifies the abort outcome without any state probe. -->
 
 9. On any non-zero CLI exit, apply the **Error handling** block below.
 
@@ -86,10 +87,25 @@ $ARGUMENTS
 
 ## Examples
 
-`/cockpit:review --gate implementation-review` — invokes `/code-review` on the current epic's open PR, classifies each finding as blocking / non-blocking, appends a `Suggested decision:` line, and prompts for approval with a findings-summary table visible. On `approve` with no findings, runs `generacy cockpit advance --gate implementation-review` via Bash. On `approve` with only non-blocking findings, POSTs an `event: APPROVE` PR review whose body lists those findings (no inline threads) AND runs the CLI advance.
+`/cockpit:review --gate implementation-review` — invokes `/code-review` on the current epic's open PR, classifies each finding as blocking / non-blocking, appends a `Suggested decision:` line, and prompts for approval with a findings-summary table visible. On `approve` with no findings, runs `generacy cockpit advance --gate implementation-review` via Bash. On `approve` with only non-blocking findings, POSTs an `event: COMMENT` PR review whose body lists those findings (no inline threads, so `PrFeedbackMonitorService` stays quiet) AND runs the CLI advance.
 
 On the `request-changes` decision from that same invocation, POSTs an `event: COMMENT` PR review with `N finding(s) requiring changes; see inline comments.` and one inline anchored comment per finding, then STOPS without advancing (the resulting unresolved threads trip `PrFeedbackMonitorService`).
 
 `/cockpit:review --gate plan-review` — reads `plan.md`, produces a Blockers / Open questions / Suggested decision summary, prompts for approval, and on `approve` runs `generacy cockpit advance --gate plan-review` via Bash.
 
 `/cockpit:review --gate impl` (or any value outside the accepted set) — emits `Usage: /cockpit:review --gate <spec-review|clarification-review|plan-review|tasks-review|implementation-review>` followed by `For \`clarification\`, use \`/cockpit:clarify\` — the answering gate is a different verb.`, and exits non-zero. No file read, no CLI call, no `gh api` call.
+
+## Terminal Outcome Check
+
+<!-- BEGIN terminal-check -->
+**Terminal Outcome Check** — Before this command ends, exactly one of the following three markers MUST have been emitted in this session's output. Detection is text-emission-only: no `gh api` calls, no `generacy cockpit status` calls, no `gh pr view` calls, no state probes of any kind. Each marker is emitted by its own step only after that step's real side effect succeeds (or, in the abort case, only when the abort branch is taken), so verifying the emission verifies the outcome transitively.
+
+- **approve** — Step 6 executed and printed a line matching `Labels: waiting-for:<gate> → completed:<gate>`.
+- **request-changes** — Step 7 executed and printed a line matching `Feedback posted: N inline comment(s) on PR #<pull_number>`.
+- **abort** — Step 8 executed and printed a line matching `Aborted: no changes to gate <gate>; no PR review posted.`.
+
+If none of the three markers has been emitted, the command MUST NOT exit. Instead, re-invoke step 5 only (`AskUserQuestion` with the same three options) — do NOT re-invoke `/code-review`, do NOT restart from step 3, do NOT restart from step 1. The findings-summary table from step 3 (or the three-section summary from step 4) is re-shown from session context; the sub-invocation is not repeated. The loop is unbounded: each iteration blocks on a human answer, so there is no runaway risk, and a retry cap would convert operator hesitation into a silent non-outcome — exactly this bug's failure mode.
+
+Passive reminder for the operator (not an active check): step 3's findings are rendered via the required summary table, never as raw JSON. Raw-JSON prevention is enforced at step 3 itself (see the `MUST NOT print raw JSON` bullet in that step); this reminder is here only so an operator who lands on this block via the loop-back understands what step 3's correct output should look like.
+<!-- Rationale: this block exists because the observed cockpit v1 smoke test session (tetrad-development#88 finding #16) ran /code-review, presented findings, and ended without ever reaching step 5's AskUserQuestion — instruction decay after a long sub-invocation. Text-emission markers keyed to each terminal step's own side-effect-coupled emission provide a network-free fail-closed backstop. Retroactively adopting the same block in clarify.md (per Q1) is a sensible follow-up but is out of scope for this PR. -->
+<!-- END terminal-check -->
