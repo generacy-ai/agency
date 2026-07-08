@@ -16,7 +16,11 @@ Run `generacy cockpit watch <epic-ref>` and, for each transition line, print one
 | Transition line contains… | Suggested next command |
 |---|---|
 | `waiting-for:clarification` | `/cockpit:clarify` |
-| `waiting-for:<gate>-review` | `/cockpit:review --gate <gate>` |
+| `waiting-for:spec-review` | `/cockpit:review --gate spec-review` |
+| `waiting-for:clarification-review` | `/cockpit:review --gate clarification-review` |
+| `waiting-for:plan-review` | `/cockpit:review --gate plan-review` |
+| `waiting-for:tasks-review` | `/cockpit:review --gate tasks-review` |
+| `waiting-for:implementation-review` | `/cockpit:review --gate implementation-review` |
 | `completed:validate` or all green checks | `/cockpit:merge` |
 | any `error` / `failed` state | (no suggestion) |
 
