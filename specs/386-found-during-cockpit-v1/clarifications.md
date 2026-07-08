@@ -10,7 +10,7 @@
 - B: Producing the initial-state table is OUT of scope for #386; a separate feature adds the table, and this spec only mandates the ref-interpolation format when it lands.
 - C: Producing the table is IN scope for #386 — extend `watch.md` to fetch initial state (e.g., call `generacy cockpit status <epic-ref>` or similar) and render a table before streaming transitions.
 
-**Answer**: *Pending*
+**Answer**: B, with the spec corrected — the "initial-state table" does not exist in watch.md; it was one session's ad-hoc presentation of the #839 initial lines, and the issue text (mine) mistook it for a playbook artifact. Initial lines are ordinary transition lines, so the per-line suggestion fix covers them with zero extra machinery. Replace the table FRs with: "any presentation of a suggestion — streamed line or improvised table — carries the complete invocation." Do not add table-rendering machinery to the playbook.
 
 ### Q2: How the playbook detects "transition's repo" for the cwd-origin match
 **Context**: FR-003 requires the bare `N` form when "the transition's repo matches the session's cwd origin" and `owner/repo#N` otherwise. But the current watch step is a thin pass-through — the playbook doesn't inspect per-line repo metadata today. The spec doesn't say how the playbook obtains the transition's repo or how it obtains the cwd origin for comparison.
@@ -20,7 +20,7 @@
 - B: The CLI does the resolution — it emits either the bare form or qualified form pre-decided based on its own cwd/context — and the playbook just uses whatever the CLI provides verbatim. FR-003 becomes a CLI contract, not a playbook rule.
 - C: The playbook always emits the qualified `owner/repo#N` (safest default; drops the bare-form optimization for now).
 
-**Answer**: *Pending*
+**Answer**: C — always emit the qualified owner/repo#N form. This dissolves the question: no repo detection, no origin comparison, no logic in markdown. The bare-number form optimizes for TYPING, but this issue's entire point is copy-paste executability — and when you copy, length is free. The CLI accepts qualified refs everywhere (#822/#850), so the qualified suggestion is 100% executable in every session regardless of cwd. (The bare-number idea was also mine; C is simply better.)
 
 ### Q3: What "the ref" refers to per transition line
 **Context**: FR-001 and the acceptance criteria show examples like `/cockpit:merge 2` and `/cockpit:review 3 --gate implementation-review`, implying every non-error transition has a single unambiguous ref to interpolate. But transitions may target different subjects — child gates (`waiting-for:clarification` on a child spec), epic-level rollups (`completed:validate` for the epic), or merge readiness (which could be per-child or per-epic).
@@ -30,7 +30,7 @@
 - B: Gates interpolate the CHILD ref; `/cockpit:merge` interpolates the EPIC ref (merge the epic-level rollup PR).
 - C: Whatever ref the CLI names on the transition line — the playbook trusts and interpolates it verbatim without knowing whether it's child- or epic-scoped.
 
-**Answer**: *Pending*
+**Answer**: C — interpolate the ref the transition line itself names, verbatim. Every actionable transition is child-scoped (the line's repo+number IS the subject; there is no epic-level rollup PR in this design), so C equals A in practice while requiring no scope-awareness in the playbook.
 
 ### Q4: Verb mapping table placeholder convention
 **Context**: FR-004 requires the "Suggested next command" column of the verb mapping table to show the interpolated shape "with a placeholder (e.g. `<ref>`)". The example uses `<ref>`, but the spec text elsewhere uses `<epic-ref>` and `<child-ref>` in different contexts.
@@ -40,7 +40,7 @@
 - B: `<child-ref>` — explicit about scope (assumes A's answer to Q3 above).
 - C: `N` — bare-number style, matching what typical output actually looks like.
 
-**Answer**: *Pending*
+**Answer**: A — `<ref>`, matching Q2/Q3: one placeholder, one meaning (the line's own qualified ref).
 
 ### Q5: Behavior when a non-error transition line lacks a ref
 **Context**: FR-007 preserves today's behavior of omitting the ` · suggested: …` segment on error rows. But there may be non-error transition lines that don't carry a ref at all (e.g., "watcher started" banners, epic-level rollup summaries, or format anomalies). The spec doesn't specify behavior for these.
@@ -50,4 +50,4 @@
 - B: Emit the verb-only suggestion as today (fallback, preserves the pre-#386 behavior for these edge cases).
 - C: This case should not occur — treat as a CLI contract violation and log/warn, then omit the suggestion.
 
-**Answer**: *Pending*
+**Answer**: A — omit the suggested segment entirely, mirroring error-row behavior. A verb-only suggestion is exactly the non-executable output this issue exists to eliminate, and C's warn is unnecessary: the NDJSON schema guarantees refs on transition lines, so a refless line is already a schema anomaly that degrades most gracefully in silence.
