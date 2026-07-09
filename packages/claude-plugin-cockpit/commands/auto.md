@@ -24,13 +24,32 @@ $ARGUMENTS
 
 3. **Startup sweep.** Call `generacy cockpit status --json <epic-ref>` and treat every issue whose current transition class is one of D.1–D.9 (below) as a synthetic event. Dispatch each one by one (per § Dispatch and § Ledger) before entering the main loop. This handles the case where the epic already has open work when `/cockpit:auto` is invoked.
 
-4. **Main loop.** For each event line from the watcher:
+4. **Main loop.** New lines from the background watch process output are read **unfiltered**. Every non-empty line (trim leading/trailing whitespace, then any remaining content — including malformed or truncated JSON) is an event; whitespace-only lines are dropped as line-framing hygiene. Content-shape heuristics (must-start-with-`{`, must-parse-as-JSON, or similar) are prohibited — a truncated flush would be dropped silently, which is under-delivery, the failure class this fix exists to kill.
+
+   **Never construct field- or content-based filters over the stream.** The stream carries more than one event shape: legacy per-issue transitions use the envelope `{ts, repo, kind, number, event, labels}` and have **no `type` field**; only S8 synthetic aggregates (`phase-complete`/`epic-complete`) carry `type`. Filtering on `type` would drop every real transition event. The T-S4 anti-pattern — `tail -n 0 -f <watch-output> | grep --line-buffered '"type"'` — is prohibited. Over-delivery is harmless (step 4a re-check absorbs it); under-delivery is silent loop death — this asymmetry is the entire justification for the no-filter rule.
+
+   If the harness's stream-monitor primitive requires a match pattern to arm a reader, the sanctioned pattern is any non-empty line (regex `.+`, or the newline-delimited-read equivalent) — never a JSON field, JSON key, `type`/`event` substring, or any schema-shape discriminator.
+
+   Each read from the background watch process output is bounded to **30 seconds** per iteration. The 30-second bounded read is the sole new detection mechanism admitted by this fix: a dead reader cannot event-drive its own diagnosis, so a bounded read is required to make the empty-read counter observable at step 5's liveness cross-check.
+
+   For each event line consumed:
    - **(a) Re-check live state** via `generacy cockpit status --json <epic-ref>`. The streamed line is advisory; the live JSON is authoritative (spec § Loop). If the epic's live state is `epic-complete`, go to step 6.
    - **(b) Dispatch** per § Dispatch below, branching on the *live* transition class.
    - **(c) Write one ledger line** per § Ledger (transcript print + append to the run's `.ledger` file). A dispatch without a ledger line is a protocol violation.
    - **(d) Continue** the loop.
 
+   Issue-history footnote: on the T-S4 run, `cockpit watch` produced 17 NDJSON lines and 1 reached the loop; the other 16 legacy per-issue events were dropped by an improvised field-based filter (see agency#394). This is an instance of the "instruction gap → improvisation" class that #384 (Terminal Outcome Check) and #388 (fusion) instanced at the review gate; #394 instances it at the mechanism gap in the consumption recipe.
+
 5. **Watch re-arm.** If the background `cockpit watch` process dies while the epic is incomplete, re-spawn it (repeat step 2's Bash invocation). The **Startup sweep** (step 3) + the live-state re-check (4a) make the re-arm idempotent — spawning `cockpit watch` twice on the same live state produces no duplicate action, because the re-check catches events that are already dispatched (state moved on).
+
+   **Liveness cross-check.** A live watch process with a dead consumer must be treated as a broken loop — the mechanism-gap defense-in-depth analogue of this step's process-death defense, not a replacement. The cross-check fires only on the conjunction of:
+   1. The background watch process is alive (still running per Bash tool handle status).
+   2. **N=4 consecutive empty reads** have elapsed from step 4's 30-second bounded read (~2 minutes of silence).
+   3. `generacy cockpit status --json <epic-ref>` reports at least one issue in a D.1–D.9 transition class (actionable live state).
+
+   The `cockpit status --json` call runs **only at the threshold** (after N=4 empty reads), not on every empty read. The cross-check is **compound**: silence alone is normal during long implement stretches and does not fire it — the compound predicate (silence AND actionable live state) is what distinguishes a broken consumer from an idle loop.
+
+   **Recovery** is exactly: re-arm the stream reader (same mechanism as the process-death path above) + re-run step 3 (startup sweep). Both are idempotent per the L.5 rule so no duplicate action can result. **No new recovery machinery is introduced** — this constraint applies to the recovery path only; step 4's 30-second bounded read + N=4 empty-read counter is the only new detection mechanism admitted by this fix.
 
 6. **Exit.** On `epic-complete`, kill the background watch process, print the run summary per § Ledger L.6 (including the absolute path of the run's `.ledger` file), and exit zero. Non-`epic-complete` exits (Stop from an escalation gate, unrecoverable error) print an abbreviated summary with the exit reason.
 
@@ -538,6 +557,7 @@ Counts are derived from the ledger file (or the in-memory count if the file is u
 4. **No cross-slash-command invocation** from `auto.md`. Cross-command composition is CLI verb (`generacy cockpit …`) + subagent boundary only. No `/cockpit:*`, `/code-review`, or `/speckit:*` invocation from the parent's execution path.
 5. **Analysis in subagents** whose contracts end with the subagent — the #390 pattern. All four analysis workloads (clarification drafting, review verdict, manual-validation summary, bounded fixer) live inside `subagent_type: "general-purpose"` hops with strict-JSON returns.
 6. **Autonomy *policy* out of scope.** Per-gate auto-approve and "full auto" mode are explicitly out of scope in v1. Every gate prompts; none auto-proceed.
+7. **Stream consumption is unfiltered.** Every non-empty line from `cockpit watch` is an event; content-based filters over the stream are prohibited. If the harness requires a match pattern to arm a reader, it matches any non-empty line, never a JSON field.
 
 ## Examples
 

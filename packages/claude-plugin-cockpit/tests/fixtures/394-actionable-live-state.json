@@ -1,0 +1,16 @@
+{
+  "epic_ref": "christrudelpw/sniplink#1",
+  "epic_state": "phase-in-progress",
+  "issues": [
+    {
+      "ref": "christrudelpw/sniplink#2",
+      "transition_class": "waiting-for:clarification",
+      "labels": ["waiting-for:clarification"]
+    },
+    {
+      "ref": "christrudelpw/sniplink#3",
+      "transition_class": "waiting-for:implementation-review",
+      "labels": ["waiting-for:implementation-review"]
+    }
+  ]
+}
