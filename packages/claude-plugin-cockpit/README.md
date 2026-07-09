@@ -46,6 +46,7 @@ The plugin ships on two rails:
 | `/cockpit:clarify` | Draft grounded answers for an epic's open clarifications, approve per-question, post, and advance the gate |
 | `/cockpit:review` | Review a speckit gate — artifact (`spec-review`/`clarification-review`/`plan-review`/`tasks-review`) or `implementation-review` PR diff — and advance on approval |
 | `/cockpit:merge` | Merge a PR via `generacy cockpit merge`; on red, spawn a bounded fixer subagent and re-evaluate. Never merges on red |
+| `/cockpit:auto` | Drive an epic to `epic-complete` — watch transitions, dispatch through CLI verbs + subagents, gate on judgment surfaces. Never merges on red; every gate prompts (no auto-approve). |
 
 ## Error Handling
 
