@@ -20,7 +20,7 @@ Neither surface shows the operator what the workflow agent actually asked — th
 **1. Per-question presentation shows five elements**, rendered in the presentation block for every open question:
 
 ```markdown
-### Q<n> — <question title from batch comment>
+### Q<n> — <question title/summary>
 **Context:** <the framing the workflow agent posted with the question, verbatim/condensed>
 **Question:** <the question verbatim>
 **Options:** <the lettered options as posted (A — …, B — …); or "(free-form — no options posted)">
@@ -29,32 +29,22 @@ Neither surface shows the operator what the workflow agent actually asked — th
 _provenance: <citation>_
 ```
 
-Title, context, question, and options are parsed from the `clarificationComment.body` field of the `generacy cockpit context` payload (already fetched in step 1 of both flows) — the body is the engine-authored batch template (`### Q<n>: <title>` / `**Context**:` / `**Question**:` / `**Options**:`), so the playbooks parse their own wire format. The parse must be mildly tolerant of option-bullet variations (`A:` vs `A)`). The title is reused verbatim from the batch comment header. First-line truncation of `question` is a fallback only when a batch comment arrives without titles. Recommendation, justification, and provenance come from the drafter.
+Context, question, and options come verbatim from the `generacy cockpit context` payload (already fetched in step 1 of both flows); recommendation, justification, and provenance come from the drafter.
 
 **2. One approval decision for the whole batch**, replacing per-question prompts. Exactly one `AskUserQuestion` per batch:
 
 - Question: `Post all <N> drafted answers to <issue-ref>?` · header `Clarify` · `multiSelect: false`
 - Options:
   1. `Approve all & post (Recommended)` — post every drafted answer as-is
-  2. `Make changes` — collect per-question change directives, apply them, re-present only the changed questions plus the same batch gate; loop until approved or skipped. Zero directives is a no-op: re-present the entire batch and fire the same gate again (never auto-approve or auto-skip on empty input)
+  2. `Make changes` — collect per-question change directives (e.g. `Q2: B instead — <reason>; Q4: skip`), apply them, re-present only the changed questions plus the same batch gate; loop until approved or skipped
   3. `Skip this batch` — post nothing, do not advance, ledger line
 - The built-in "Other" free-text remains the one-turn change path: directives typed there are applied directly (edited answers posted verbatim / individual questions skipped) without the extra `Make changes` round-trip.
-
-**Directive grammar** (identical parser in both `Make changes` and "Other" paths):
-
-- Token-anchored rule: a new directive begins at each `Q<n>:` token. Split the input at `Q<n>:` occurrences; each directive's payload runs to the next token or end of input.
-- Canonical documented form is newline-separated (`Q2: B\nQ4: skip`); the single-line semicolon form (`Q2: B; Q4: skip`) parses identically under the same rule — a verbatim replacement's text may itself contain semicolons, and the token rule doesn't mis-split it.
-- Payload forms:
-  - `Q<n>: <letter>` — bare letter resolves to that option's text from the parsed batch comment; the answer posts with **no rationale line** (never retain the draft's justification under an operator-overridden answer — it would argue for a different choice).
-  - `Q<n>: <letter> — <reason>` — letter resolves to option text and `<reason>` replaces the justification.
-  - `Q<n>: skip` — excludes that question from the posted batch and blocks advance.
-  - Anything else — treated as verbatim replacement text for the answer.
 
 Note on the G.1 rationale text: G.1 currently rejects a listed "Edit" option citing the #388 turn-split. That concern was about splitting a gate's *presentation from its decision* (decay into auto-proceed); a change-collection turn that follows an explicit operator selection of `Make changes` cannot auto-proceed and is not the same risk. Keep "Other" documented as the no-extra-turn path.
 
 **3. Unchanged semantics** (explicitly out of scope to change):
 
-- Posted comment format: `<!-- generacy-cockpit:clarification-answers -->` marker + one `### Q<n>` block per posted answer, `--body-file` only. Each block is two labeled fields — `**Answer:** <recommendation>` on one line and `**Rationale:** <justification>` on the next — mapping one-to-one onto the SB.1 fields so displayed and posted content cannot drift. The five-element display is presentation-only; context/question/options are already on the issue and are not re-posted.
+- Posted comment format: `<!-- generacy-cockpit:clarification-answers -->` marker + one `### Q<n>` block per posted answer, `--body-file` only. The posted body per question is the recommendation + its justification (the five-element display is presentation-only; context/question/options are already on the issue and are not re-posted).
 - Advance rule: advance the clarification gate only when every open question has a posted answer; per-question skips → post the approved subset, don't advance, ledger `posted <k>/<N>, skipped <s>`.
 - Ledger line shapes (auto.md D.1), error handling, and the drafter-subagent isolation contract (no slash commands, JSON-only return).
 
@@ -96,14 +86,11 @@ Note on the G.1 rationale text: G.1 currently rejects a listed "Edit" option cit
 
 ## Assumptions
 
-- The `generacy cockpit context` payload exposes the raw clarification comment as `clarificationComment.body` (returned unparsed by `clarification-comment-finder.ts` / `context.ts` on generacy `develop`). The playbooks parse the per-question title, context, question, and options from that body — parsing our own engine-authored wire format, not scraping GitHub.
-- The parse must tolerate minor variation in option-bullet style (`A:` vs `A)`) observed across live clarification comments.
-- Every batch comment header carries `### Q<n>: <title>`; first-line truncation of the question is the fallback only if a batch ever arrives without titles.
+- [Assumption 1]
 
 ## Out of Scope
 
-- Upstream schema change in `generacy cockpit` to emit structured per-question fields alongside the raw comment. This is the eventual hardening path if parse fragility shows up in practice, but is a generacy-side change that does not gate this playbook improvement.
-- Changes to the drafter subagent isolation contract (no slash commands, JSON-only return), ledger line shapes, error handling, or the advance rule (advance only when every open question has a posted answer).
+- [Exclusion 1]
 
 ---
 
