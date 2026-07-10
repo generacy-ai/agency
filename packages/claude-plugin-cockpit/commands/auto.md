@@ -68,6 +68,10 @@ The following nine event classes are dispatched per this table. The parent **alw
 | D.7 | `agent:error` / `failed:*` | Fetch evidence → escalation gate (Requeue / Skip / Stop) |
 | D.8 | `phase-complete` | Phase-queue confirmation gate → `cockpit queue --yes` |
 | D.9 | `waiting-for:address-pr-feedback` | Ledger line only (server-side owns it) |
+| D.9a | `waiting-for:pr-feedback` | Ledger line only (legacy alias) |
+| D.9b | `waiting-for:children-complete` | Ledger line only (epic-container state) |
+| D.9c | `waiting-for:dependencies` | Ledger line only (engine-owned cross-issue wait) |
+| D.11 | `waiting-for:merge-conflicts` | Escalation gate (`I've resolved it` / `Skip` / `Stop`) |
 | D.10 | Unrecognized / ambiguous | Escalation gate (Skip / Stop only, never Retry) |
 
 ### D.1 — `waiting-for:clarification`
@@ -245,9 +249,51 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Ledger line**: `<issue-ref> · waiting-for:address-pr-feedback · (no-op) · server-side-owned`.
 
+### D.9a — `waiting-for:pr-feedback` → ledger only
+
+**Trigger**: An issue enters `waiting-for:pr-feedback`. Verbatim event string: `waiting-for:pr-feedback`. Legacy alias of the engine-owned feedback loop (D.9 `waiting-for:address-pr-feedback` is the modern shape; some pre-migration epics still emit the shorter `pr-feedback` label).
+
+**Dispatch**: **Ledger line only.** No CLI verb, no subagent, no gate — server-side-owned.
+
+**Ledger line**: `<issue-ref> · waiting-for:pr-feedback · (no-op) · server-side-owned`.
+
+### D.9b — `waiting-for:children-complete` → ledger only
+
+**Trigger**: An epic-container issue enters `waiting-for:children-complete`. Verbatim event string: `waiting-for:children-complete`. Epic-container state — the running auto loop *is* its resolution (children dispatch as they transition; on the last child's completion, this label transitions naturally to `epic-complete` without operator input).
+
+**Dispatch**: **Ledger line only.** No CLI verb, no subagent, no gate — server-side-owned.
+
+**Ledger line**: `<issue-ref> · waiting-for:children-complete · (no-op) · server-side-owned`.
+
+### D.9c — `waiting-for:dependencies` → ledger only
+
+**Trigger**: An issue enters `waiting-for:dependencies`. Verbatim event string: `waiting-for:dependencies`. Engine-owned cross-issue wait — resolved server-side when the depended-on issue transitions.
+
+**Dispatch**: **Ledger line only.** No CLI verb, no subagent, no gate — server-side-owned.
+
+**Ledger line**: `<issue-ref> · waiting-for:dependencies · (no-op) · server-side-owned`.
+
+### D.11 — `waiting-for:merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)
+
+**Trigger**: An issue enters `waiting-for:merge-conflicts` (base-sync produced a merge conflict; the branch cannot be advanced without an operator-authored resolution). Verbatim event string: `waiting-for:merge-conflicts`.
+
+**Dispatch**:
+1. **Fetch context.** Read the pause-alert comment posted by the engine when the label was set (via `gh issue view --comments <issue-ref>`). Extract the list of conflicted paths.
+2. **Present escalation gate** (see § Gate contract G.4d). In one assistant response: presentation block including the conflicted paths + single `AskUserQuestion` with options `I've resolved it — advance the gate` / `Skip (session-local mute)` / `Stop (exit auto)`, header `Escalate`, `multiSelect: false`.
+3. **Apply verdict**:
+   - `I've resolved it — advance the gate` → run `generacy cockpit advance --gate merge-conflicts <issue-ref>`. On zero exit: ledger `advanced`; continue. **On non-zero exit: re-present the D.11 gate with the CLI stderr prepended verbatim to the presentation block** (see § Gate contract G.4d re-present shape). The operator may retry, skip, or stop from the re-presented gate.
+   - `Skip (session-local mute)` → add `<issue-ref>` to session mute set; ledger line `skip (session-local mute)`; continue.
+   - `Stop (exit auto)` → kill watch; summary; exit.
+
+**Future degradation**: Once the engine-side merge-conflicts resolver ships (companion finding in generacy dead-end-gate), this row degrades to ledger-only (D.9-shape) — the label becomes server-side-owned. Until then, this escalation gate is the operator's resolution surface.
+
+**Ledger line**: `<issue-ref> · waiting-for:merge-conflicts · escalation-gate · <advanced | advance failed: <description> | skip (session-local mute) | stop (exit)>`.
+
 ### D.10 — Unrecognized / ambiguous state → escalation gate (Skip / Stop only)
 
-**Trigger**: The re-check step reads a live state whose transition class is not one of D.1–D.9. This can happen when: (a) S8 adds a new transition class the playbook doesn't know, (b) the streamed event conflicts with the live state and neither is dispatchable, (c) `cockpit status --json` returns an unexpected shape.
+**Trigger**: The re-check step reads a live state whose transition class is not one of D.1–D.9 (including D.9a/b/c) or D.11. This can happen when: (a) S8 adds a new transition class the playbook doesn't know, (b) the streamed event conflicts with the live state and neither is dispatchable, (c) `cockpit status --json` returns an unexpected shape, **(d) the `waiting-for:*` label is a token that does not match a Trigger in any § Dispatch row (D.1–D.9c or D.11)**.
+
+**Any `waiting-for:*` label without a matching dispatch row IS an unrecognized state.** "Known but not actionable" is not a permissible classification outcome — the § Dispatch table is the exhaustive list of `waiting-for:*` states the loop may treat as no-ops (via the named ledger-only rows D.9, D.9a, D.9b, D.9c). "Wait for someone else to handle it" is never a permissible dispatch outcome for a `waiting-for:*` state unless the table explicitly names it ledger-only. If the table does not name it, D.10 fires — verbatim state in the presentation block.
 
 **Dispatch**:
 1. **Present escalation gate** (see § Gate contract G.4c). In one assistant response: presentation block including the observed state (verbatim from `cockpit status --json`) + streamed event line + single `AskUserQuestion` with options `Skip (session-local mute) (Recommended)` / `Stop (exit auto)`, header `Escalate`, `multiSelect: false`. **NEVER Retry** (nothing to retry — we don't know what to do).
@@ -270,6 +316,7 @@ Four gate types — **clarification batches, review/validation verdicts, phase-q
 | G.3 | Manual-validation confirm | `manually validated` / `not yet` (single call) | Scenarios + acceptance_checks lists |
 | G.4 (a) | Escalation: validate-red / merge-red | `Retry` / `Skip` / `Stop` (single call) | Fixer summary + reason + failing checks |
 | G.4 (b) | Escalation: agent:error / failed:* | `Requeue` / `Skip` / `Stop` (single call) | Failure evidence |
+| G.4 (d) | Escalation: Merge-conflicts | `I've resolved it — advance the gate` / `Skip` / `Stop` (single call) | Conflicted paths (+ CLI stderr on re-present) |
 | G.4 (c) | Escalation: unrecognized state | `Skip (Recommended)` / `Stop` (single call, no Retry) | Observed state |
 | G.5 | Phase-queue confirmation | `Queue P<next> (Recommended)` / `Cancel` (single call) | Next-phase issue list |
 
@@ -394,6 +441,7 @@ The scenarios and acceptance_checks lists come **only** from the subagent hop �
 **Trigger**: One of:
 - (a) `completed:validate` red / merge red after fixer runs and returns `{fixed: false, …}` (D.6).
 - (b) `agent:error` / `failed:*` (D.7).
+- (d) `waiting-for:merge-conflicts` (D.11).
 - (c) Unrecognized / ambiguous state (D.10).
 
 **Presentation** (in the same response as the `AskUserQuestion` call) — evidence formatted per subtype.
@@ -418,6 +466,38 @@ Agent error on <issue-ref>:
 <evidence — bot-authored alert comment body from gh issue view --comments, or the failure trace>
 ```
 
+**(d) Merge-conflicts**:
+
+Initial presentation:
+
+```markdown
+Merge conflicts on <issue-ref>:
+
+Conflicted paths (from engine pause alert):
+- <path 1>
+- <path 2>
+- ...
+
+The branch cannot advance until the conflicts are resolved and the branch is pushed conflict-free. Resolve locally (e.g., `git checkout <branch>; git rebase origin/main; git mergetool; git push --force-with-lease`), then select `I've resolved it — advance the gate` to run `generacy cockpit advance --gate merge-conflicts <issue-ref>`.
+```
+
+Re-presentation on non-zero CLI exit (Q3=A shape):
+
+```markdown
+Advance failed for <issue-ref>:
+
+<CLI stderr verbatim, from `generacy cockpit advance --gate merge-conflicts <issue-ref>`>
+
+Merge conflicts on <issue-ref>:
+
+Conflicted paths (from engine pause alert):
+- <path 1>
+- <path 2>
+- ...
+
+The branch cannot advance until the conflicts are resolved and the branch is pushed conflict-free. Resolve locally (e.g., `git checkout <branch>; git rebase origin/main; git mergetool; git push --force-with-lease`), then select `I've resolved it — advance the gate` to run `generacy cockpit advance --gate merge-conflicts <issue-ref>`.
+```
+
 **(c) Unrecognized state**:
 
 ```markdown
@@ -437,6 +517,7 @@ Streamed event: <original transition line>
   |---------|---------|
   | (a) validate-red / merge-red | `Retry (re-run fixer)` / `Skip (session-local mute)` / `Stop (exit auto)` |
   | (b) agent:error / failed:* | `Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)` |
+  | (d) merge-conflicts | `I've resolved it — advance the gate` / `Skip (session-local mute)` / `Stop (exit auto)` |
   | (c) unrecognized state | `Skip (session-local mute) (Recommended)` / `Stop (exit auto)` — **NEVER Retry** |
 
 - **multiSelect**: `false`
@@ -444,6 +525,7 @@ Streamed event: <original transition line>
 **Post-gate mechanism sentences** (verbatim per Q3=D):
 - `Retry` (subtype a only) → re-run the fixer subagent **once**. If `{fixed: true}`, loop back to D.5; if `{fixed: false}`, re-present the escalation gate.
 - `Requeue` (subtype b only) → `generacy cockpit resume <issue-ref>` (Assumption A2). If verb missing, degrade to Skip with explicit ledger note.
+- `I've resolved it — advance the gate` (subtype d only) → `generacy cockpit advance --gate merge-conflicts <issue-ref>`. On zero exit, ledger `advanced` and continue. On non-zero exit, re-present the D.11 gate with the CLI stderr prepended verbatim to the presentation block (see § D.11 dispatch step 3).
 - `Skip` (all subtypes) → add `<issue-ref>` to the in-memory **session mute set**; ledger line; continue. **Labels untouched.**
 - `Stop` (all subtypes) → kill watch process; print run summary; exit auto cleanly. **No label writes.**
 
@@ -525,6 +607,10 @@ Stable strings per dispatch table row, so `grep` recipes on `<action>` / `<outco
 | D.7 agent-error / failed | `escalation-gate` | `requeue (cockpit resume)`, `requeue failed: <description>`, `skip (session-local mute)`, `skip (cockpit resume unavailable — G-S8 prerequisite)`, `stop (exit)` |
 | D.8 phase-complete | `phase-queue-gate` | `queued P<next> (<N> issues)`, `cancelled` |
 | D.9 address-pr-feedback | `(no-op)` | `server-side-owned` |
+| D.9a pr-feedback | `(no-op)` | `server-side-owned` |
+| D.9b children-complete | `(no-op)` | `server-side-owned` |
+| D.9c dependencies | `(no-op)` | `server-side-owned` |
+| D.11 merge-conflicts | `escalation-gate` | `advanced`, `advance failed: <description>`, `skip (session-local mute)`, `stop (exit)` |
 | D.10 unrecognized | `unrecognized-state` | `skip (session-local mute)`, `stop (exit)` |
 | mute-set hit | `(muted)` | `skip (session-local mute active)` |
 

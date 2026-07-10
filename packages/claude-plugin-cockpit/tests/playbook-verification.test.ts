@@ -10,9 +10,11 @@ import {
   type CounterRef,
   type StatusJson,
 } from "./reference-consumption.js";
+import { GATE_VOCABULARY } from "../lib/gate-vocabulary.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, "fixtures");
+const AUTO_MD_PATH = resolve(__dirname, "..", "commands", "auto.md");
 
 describe("394 — auto.md unfiltered stream consumption + liveness cross-check", () => {
   it("Test 1 (SC-002): every non-whitespace-only line reaches dispatch; both event shapes present", () => {
@@ -99,3 +101,212 @@ describe("394 — auto.md unfiltered stream consumption + liveness cross-check",
     vi.useRealTimers();
   });
 });
+
+// -----------------------------------------------------------------------------
+// 396 — auto.md D.11 dispatch + tightened D.10 trigger + drift audit
+//
+// The runtime is playbook prose interpreted by the model at slash-command time;
+// there is no production dispatch module to exercise. The helpers below are
+// test-side reference interpretations of the D.11 / D.10 prose in auto.md.
+// A drift between prose and helper is a review-time signal — the assertions
+// below lock in the shape the prose describes.
+// -----------------------------------------------------------------------------
+
+interface AskUserQuestionCall {
+  question: string;
+  header: string;
+  options: string[];
+  multiSelect: boolean;
+}
+
+interface DispatchContext {
+  askUserQuestion: (call: AskUserQuestionCall) => string;
+  ledger: (line: string) => void;
+  presentationBlocks: string[];
+}
+
+interface FixtureIssue {
+  issue_ref: string;
+  labels?: string[];
+  transition_class: string;
+  conflicted_paths?: string[];
+}
+
+interface FixtureLiveState {
+  epic_ref: string;
+  issues: FixtureIssue[];
+}
+
+const D11_OPTIONS = [
+  "I've resolved it — advance the gate",
+  "Skip (session-local mute)",
+  "Stop (exit auto)",
+];
+
+const D10_OPTIONS = ["Skip (session-local mute)", "Stop (exit auto)"];
+
+const NAMED_DISPATCH_TOKENS: ReadonlySet<string> = new Set([
+  "waiting-for:clarification",
+  "waiting-for:spec-review",
+  "waiting-for:clarification-review",
+  "waiting-for:plan-review",
+  "waiting-for:tasks-review",
+  "waiting-for:implementation-review",
+  "waiting-for:manual-validation",
+  "waiting-for:address-pr-feedback",
+  "waiting-for:pr-feedback",
+  "waiting-for:children-complete",
+  "waiting-for:dependencies",
+  "waiting-for:merge-conflicts",
+]);
+
+function d11Dispatch(issue: FixtureIssue, ctx: DispatchContext): void {
+  const paths = issue.conflicted_paths ?? [];
+  const presentation = [
+    `Merge conflicts on ${issue.issue_ref}:`,
+    "",
+    "Conflicted paths (from engine pause alert):",
+    ...paths.map((p) => `- ${p}`),
+  ].join("\n");
+  ctx.presentationBlocks.push(presentation);
+  ctx.askUserQuestion({
+    question: `How to proceed on ${issue.issue_ref}?`,
+    header: "Escalate",
+    options: D11_OPTIONS,
+    multiSelect: false,
+  });
+}
+
+function dispatchClassifier(issue: FixtureIssue, ctx: DispatchContext): void {
+  const token = issue.transition_class;
+  if (token === "waiting-for:merge-conflicts") {
+    d11Dispatch(issue, ctx);
+    return;
+  }
+  if (token.startsWith("waiting-for:") && !NAMED_DISPATCH_TOKENS.has(token)) {
+    // D.10 catch-all — tightened trigger routes any `waiting-for:*` without a
+    // matching dispatch row to the unrecognized-state gate.
+    const presentation = [
+      `Unrecognized state on ${issue.issue_ref}:`,
+      "",
+      `Observed: ${token}`,
+    ].join("\n");
+    ctx.presentationBlocks.push(presentation);
+    ctx.askUserQuestion({
+      question: `How to proceed on ${issue.issue_ref}?`,
+      header: "Escalate",
+      options: D10_OPTIONS,
+      multiSelect: false,
+    });
+    return;
+  }
+  // Named ledger-only rows (D.9 family) and other named rows would dispatch
+  // elsewhere. The 396 assertions exercise only D.10 and D.11.
+}
+
+describe("396 — auto.md D.11 dispatch + tightened D.10 trigger + drift audit", () => {
+  it("396-1: D.11 escalation gate fires on waiting-for:merge-conflicts with correct options + conflicted paths", () => {
+    const fixture = JSON.parse(
+      readFileSync(resolve(FIXTURES, "396-merge-conflicts-live-state.json"), "utf-8"),
+    ) as FixtureLiveState;
+
+    const askUserQuestion = vi.fn<(call: AskUserQuestionCall) => string>();
+    askUserQuestion.mockReturnValue("Skip (session-local mute)");
+    const ledger = vi.fn<(line: string) => void>();
+    const presentationBlocks: string[] = [];
+    const ctx: DispatchContext = { askUserQuestion, ledger, presentationBlocks };
+
+    const issue = fixture.issues[0]!;
+    dispatchClassifier(issue, ctx);
+
+    expect(askUserQuestion).toHaveBeenCalledTimes(1);
+    const call = askUserQuestion.mock.calls[0]![0];
+    expect(call.options).toEqual(D11_OPTIONS);
+    expect(call.multiSelect).toBe(false);
+    expect(call.header).toBe("Escalate");
+
+    // Presentation block includes the fixture's conflicted paths.
+    const presentation = presentationBlocks[0]!;
+    for (const path of issue.conflicted_paths ?? []) {
+      expect(presentation).toContain(path);
+    }
+  });
+
+  it("396-2: D.10 unrecognized-state gate fires on novel waiting-for:someday-gate with verbatim state", () => {
+    const fixture = JSON.parse(
+      readFileSync(resolve(FIXTURES, "396-someday-gate-live-state.json"), "utf-8"),
+    ) as FixtureLiveState;
+
+    const askUserQuestion = vi.fn<(call: AskUserQuestionCall) => string>();
+    askUserQuestion.mockReturnValue("Skip (session-local mute)");
+    const ledger = vi.fn<(line: string) => void>();
+    const presentationBlocks: string[] = [];
+    const ctx: DispatchContext = { askUserQuestion, ledger, presentationBlocks };
+
+    const issue = fixture.issues[0]!;
+    // Regression check: the token is neither in the vocabulary nor a named row.
+    expect(GATE_VOCABULARY).not.toContain(issue.transition_class);
+    expect(NAMED_DISPATCH_TOKENS.has(issue.transition_class)).toBe(false);
+
+    dispatchClassifier(issue, ctx);
+
+    expect(askUserQuestion).toHaveBeenCalledTimes(1);
+    const call = askUserQuestion.mock.calls[0]![0];
+    expect(call.options).toEqual(D10_OPTIONS);
+    expect(call.multiSelect).toBe(false);
+
+    // Verbatim state in the presentation block.
+    const presentation = presentationBlocks[0]!;
+    expect(presentation).toContain("waiting-for:someday-gate");
+
+    // Regression: no ledger line was written classifying this as a no-op /
+    // server-side-owned (the T-S5 stall-class check).
+    for (const call of ledger.mock.calls) {
+      expect(call[0]).not.toContain("(no-op)");
+      expect(call[0]).not.toContain("server-side-owned");
+    }
+  });
+
+  it("396-3: drift audit — every GATE_VOCABULARY token has a Trigger match in auto.md § Dispatch", () => {
+    expect(GATE_VOCABULARY.length).toBe(12);
+
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const dispatchSection = extractDispatchSection(autoMd);
+
+    const missing: string[] = [];
+    for (const token of GATE_VOCABULARY) {
+      const escaped = escapeRegExp(token);
+      const hasSubheading = new RegExp(
+        `^###\\s+D\\.\\d+[a-z]?\\s+—\\s+\`${escaped}\``,
+        "m",
+      ).test(dispatchSection);
+      const hasTableRow = new RegExp(
+        `^\\|\\s*D\\.\\d+[a-z]?\\s*\\|\\s*\`${escaped}\``,
+        "m",
+      ).test(dispatchSection);
+      // D.2 covers four `<artifact>-review` tokens under a single grouped
+      // subheading — accept a table-row-column match against the grouped
+      // pattern as a Trigger presence signal too.
+      const artifactMatch =
+        /^waiting-for:(spec|clarification|plan|tasks)-review$/.test(token) &&
+        /\|\s*D\.2\s*\|\s*`waiting-for:<artifact>-review`/.test(dispatchSection);
+      if (!(hasSubheading || hasTableRow || artifactMatch)) {
+        missing.push(token);
+      }
+    }
+    expect(missing, `tokens not found as a Trigger: ${missing.join(", ")}`).toEqual([]);
+  });
+});
+
+function extractDispatchSection(md: string): string {
+  const start = md.indexOf("\n## Dispatch\n");
+  if (start === -1) throw new Error("§ Dispatch heading not found in auto.md");
+  const rest = md.slice(start + 1);
+  const nextH2 = rest.indexOf("\n## ", 1);
+  return nextH2 === -1 ? rest : rest.slice(0, nextH2);
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
