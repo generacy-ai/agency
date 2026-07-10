@@ -1,8 +1,8 @@
 ---
 description: Merge a PR via generacy cockpit merge; on red checks, spawn a bounded fixer subagent and re-evaluate. Never merges on red.
 arguments:
-  - name: ref
-    description: "PR reference (owner/repo#N, #N, or bare integer). Optional; falls back to the current branch's open PR."
+  - name: issue
+    description: "Issue reference (owner/repo#N, #N, or bare integer). Optional; falls back to the current branch's open PR's linked issue. Passing a PR reference directly is a distinct failure mode — the CLI resolves the linked PR from the issue internally."
     required: false
   - name: --max-fix-attempts
     description: "Max fixer passes on red (default 1)"
@@ -22,16 +22,16 @@ $ARGUMENTS
 ## Instructions
 
 1. **Parse arguments** — Extract:
-   - `<pr-ref>` (positional, optional) — if omitted, resolve from the current branch's open PR via `gh pr view --json url,number,headRefName -q .` (from the repository root).
+   - `<issue>` (positional, optional) — an issue reference (owner/repo#N, #N, or bare integer). If omitted, resolve the current branch's open PR via `gh pr view --json url,number,headRefName -q .` and pass its linked issue to the CLI. Passing a PR reference directly is prohibited — the CLI resolves the linked PR from the issue internally (see agency#398).
    - `--max-fix-attempts=N` (integer, default `1`; must be `>= 0`). Setting `0` short-circuits the fixer entirely; setting `>= 1` allows up to N fixer passes.
 
-   On usage error, print `Usage: /cockpit:merge [<pr-ref>] [--max-fix-attempts=N]` and exit non-zero.
+   On usage error, print `Usage: /cockpit:merge [<issue>] [--max-fix-attempts=N]` and exit non-zero.
 
 2. **Pre-flight** — `command -v generacy >/dev/null 2>&1`. If the pre-flight returns non-zero, apply the **Error handling** block below with class `MISSING_BINARY` and stop.
 
-3. **PR summary** — Print a single line summarizing the resolved PR: `Resolved <ref> → <repo>#<pr-number> (PR #<pr-number>)`.
+3. **PR summary** — Print a single line summarizing the resolved PR: `Resolved <issue> → <repo>#<pr-number> (PR #<pr-number>)`.
 
-4. **Invoke CLI** — Run `generacy cockpit merge <resolved-pr-ref>` via the Bash tool. Parse stdout as JSON with fields `{ result, reason, pr, checks, details }` where `result` ∈ `{ merged, red, blocked }`. On JSON parse failure, apply the **Error handling** block below.
+4. **Invoke CLI** — Run `generacy cockpit merge <issue>` via the Bash tool. Parse stdout as JSON with fields `{ result, reason, pr, checks, details }` where `result` ∈ `{ merged, red, blocked }`. On JSON parse failure, apply the **Error handling** block below.
 
 5. **Decision tree** — Route strictly on `result` + `reason`:
 
@@ -82,6 +82,6 @@ $ARGUMENTS
 
 ## Examples
 
-`/cockpit:merge` — resolves the current branch's open PR and attempts merge; on red-checks with one attempt remaining, spawns a fixer, re-checks, and merges if green.
+`/cockpit:merge` — resolves the current branch's open PR, extracts its linked issue, and attempts merge; on red-checks with one attempt remaining, spawns a fixer, re-checks, and merges if green.
 
-`/cockpit:merge generacy-ai/agency#789 --max-fix-attempts=2` — merges PR #789 with up to two fixer passes.
+`/cockpit:merge generacy-ai/agency#789 --max-fix-attempts=2` — merges the PR linked to issue #789 with up to two fixer passes. (The bare `#789` is an issue reference, per the CLI's contract; the CLI resolves its linked PR internally.)

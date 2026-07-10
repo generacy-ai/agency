@@ -1,0 +1,12 @@
+# captured from: generacy --version 0.0.1
+Usage: generacy cockpit merge [options] <issue>
+
+Squash-merge the PR for <issue> iff it carries completed:validate and every
+required check is green
+
+Arguments:
+  issue          GitHub issue number
+
+Options:
+  --repo <repo>  Owner/name (inferred from cwd if absent)
+  -h, --help     display help for command

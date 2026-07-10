@@ -1,0 +1,13 @@
+# captured from: generacy --version 0.0.1
+Usage: generacy cockpit status [options] <epic-ref>
+
+Print a one-shot snapshot of every ref in the epic body's phases.
+
+Arguments:
+  epic-ref    Epic ref. Accepts <n>, <owner>/<repo>#<n>, or
+              https://github.com/<owner>/<repo>/issues/<n>.
+
+Options:
+  --json      Emit a single-line JSON envelope and exit. Disables color.
+              (default: false)
+  -h, --help  display help for command

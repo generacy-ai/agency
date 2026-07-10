@@ -1,0 +1,13 @@
+# captured from: generacy --version 0.0.1
+Usage: generacy cockpit watch [options] <epic-ref>
+
+Emit one NDJSON line per issue/PR state transition. Pure sensor.
+
+Arguments:
+  epic-ref          Epic ref. Accepts <n>, <owner>/<repo>#<n>, or
+                    https://github.com/<owner>/<repo>/issues/<n>.
+
+Options:
+  --interval <ms>   Poll interval in ms (default 30000, floor 15000).
+  --safety-cap <n>  Warn when per-poll item count exceeds this (default 1000).
+  -h, --help        display help for command

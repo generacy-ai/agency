@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -309,4 +309,225 @@ function extractDispatchSection(md: string): string {
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+// -----------------------------------------------------------------------------
+// 398 — drift audit: playbook invocations match generacy cockpit <verb> --help
+//
+// The audit sweeps every `commands/*.md` file for `generacy cockpit <verb>`
+// invocations (fenced blocks + inline backtick spans that carry an argument
+// per Q2=B) and cross-checks each invocation's angle-bracket positional
+// argument tokens against the checked-in `--help` snapshot for that verb
+// under `tests/fixtures/help-snapshots/<verb>.txt` (Q1=A source, Q3=A exact-
+// string match).
+//
+// Non-angle-bracket tokens (concrete example literals like `1`, `P1`) are
+// excluded from positional extraction — the audit's purpose is template drift
+// detection, not literal-example matching. The has-an-argument rule (Q2=B)
+// excludes bare-verb prose ("MUST NOT call `generacy cockpit merge`") from
+// invocation extraction without any author annotations.
+// -----------------------------------------------------------------------------
+
+interface Invocation {
+  file: string;
+  line: number;
+  verb: string;
+  argTokens: string[];
+  source: "fenced" | "inline";
+}
+
+interface Mismatch {
+  file: string;
+  line: number;
+  verb: string;
+  position: number;
+  observed: string;
+  expected: string;
+}
+
+const COMMANDS_DIR = resolve(__dirname, "..", "commands");
+const SNAPSHOTS_DIR = resolve(__dirname, "fixtures", "help-snapshots");
+const FIXTURE_398_DRIFT_AUTO = resolve(FIXTURES, "398-drift-auto.md");
+
+function parseSnapshotUsageArgTokens(snapshotContent: string, verb: string): string[] {
+  const lines = snapshotContent.split("\n");
+  const usagePrefix = `Usage: generacy cockpit ${verb}`;
+  for (const line of lines) {
+    if (line.startsWith(usagePrefix)) {
+      const rest = line.slice(usagePrefix.length).trim();
+      const tokens = rest.split(/\s+/).filter((t) => t.length > 0);
+      return tokens.filter((t) => /^<[a-z][a-z0-9-]*>$/.test(t));
+    }
+  }
+  throw new Error(`Usage line for verb '${verb}' not found in snapshot`);
+}
+
+function extractPositionalTokens(rest: string): string[] {
+  const tokens = rest.trim().split(/\s+/).filter((t) => t.length > 0);
+  const positional: string[] = [];
+  for (const token of tokens) {
+    if (token.startsWith("-")) continue;
+    const stripped = token.replace(/[.,;:)]+$/, "");
+    if (!stripped.startsWith("<")) continue;
+    if (!/^<[a-z][a-z0-9-]*>$/.test(stripped)) continue;
+    positional.push(stripped);
+  }
+  return positional;
+}
+
+function matchVerbAtStart(
+  text: string,
+  knownVerbs: readonly string[],
+): { verb: string; rest: string } | null {
+  const prefix = "generacy cockpit ";
+  if (!text.startsWith(prefix)) return null;
+  const afterPrefix = text.slice(prefix.length);
+  for (const verb of knownVerbs) {
+    if (
+      afterPrefix === verb ||
+      afterPrefix.startsWith(verb + " ") ||
+      afterPrefix.startsWith(verb + "\t")
+    ) {
+      return { verb, rest: afterPrefix.slice(verb.length) };
+    }
+  }
+  return null;
+}
+
+function extractInlineSpans(line: string): { content: string }[] {
+  const spans: { content: string }[] = [];
+  const regex = /`([^`]+)`/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(line)) !== null) {
+    spans.push({ content: m[1]! });
+  }
+  return spans;
+}
+
+function parseInvocations(filePath: string, knownVerbs: readonly string[]): Invocation[] {
+  const raw = readFileSync(filePath, "utf-8");
+  const lines = raw.split("\n");
+  const invocations: Invocation[] = [];
+
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const lineNo = i + 1;
+
+    if (line.trim().startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+
+    if (inFence) {
+      const trimmed = line.trim();
+      const match = matchVerbAtStart(trimmed, knownVerbs);
+      if (match) {
+        const rest = match.rest.trim();
+        if (rest.length > 0) {
+          invocations.push({
+            file: filePath,
+            line: lineNo,
+            verb: match.verb,
+            argTokens: extractPositionalTokens(match.rest),
+            source: "fenced",
+          });
+        }
+      }
+      continue;
+    }
+
+    for (const span of extractInlineSpans(line)) {
+      const content = span.content.trim();
+      const match = matchVerbAtStart(content, knownVerbs);
+      if (!match) continue;
+      const rest = match.rest.trim();
+      if (rest.length === 0) continue;
+      invocations.push({
+        file: filePath,
+        line: lineNo,
+        verb: match.verb,
+        argTokens: extractPositionalTokens(match.rest),
+        source: "inline",
+      });
+    }
+  }
+
+  return invocations;
+}
+
+function loadKnownVerbSnapshots(): { verbs: string[]; snapshots: Record<string, string[]> } {
+  const snapshotFiles = readdirSync(SNAPSHOTS_DIR).filter((f) => f.endsWith(".txt"));
+  const verbs = snapshotFiles.map((f) => f.slice(0, -".txt".length));
+  const snapshots: Record<string, string[]> = {};
+  for (const verb of verbs) {
+    const content = readFileSync(resolve(SNAPSHOTS_DIR, `${verb}.txt`), "utf-8");
+    snapshots[verb] = parseSnapshotUsageArgTokens(content, verb);
+  }
+  return { verbs, snapshots };
+}
+
+function auditInvocations(
+  invocations: Invocation[],
+  snapshots: Record<string, string[]>,
+): Mismatch[] {
+  const mismatches: Mismatch[] = [];
+  for (const invocation of invocations) {
+    const expected = snapshots[invocation.verb];
+    if (!expected) continue;
+    for (let i = 0; i < expected.length; i++) {
+      const observedToken = invocation.argTokens[i];
+      const expectedToken = expected[i]!;
+      if (observedToken === undefined) break;
+      if (observedToken !== expectedToken) {
+        mismatches.push({
+          file: invocation.file,
+          line: invocation.line,
+          verb: invocation.verb,
+          position: i,
+          observed: observedToken,
+          expected: expectedToken,
+        });
+      }
+    }
+  }
+  return mismatches;
+}
+
+describe("398 — playbook invocations match generacy cockpit <verb> --help", () => {
+  it("398-1 (drift audit): every commands/*.md invocation matches its --help snapshot argument-kind token", () => {
+    const { verbs, snapshots } = loadKnownVerbSnapshots();
+    const playbookFiles = readdirSync(COMMANDS_DIR)
+      .filter((f) => f.endsWith(".md"))
+      .map((f) => resolve(COMMANDS_DIR, f));
+    const invocations = playbookFiles.flatMap((f) => parseInvocations(f, verbs));
+    const mismatches = auditInvocations(invocations, snapshots);
+
+    const failureMessage = mismatches
+      .map(
+        (m) =>
+          `  ${m.file}:${m.line}  verb=${m.verb} position=${m.position}  observed=${m.observed}  expected=${m.expected}`,
+      )
+      .join("\n");
+    expect(
+      mismatches,
+      `\nInvocation-vs-help drift detected (${mismatches.length} mismatches):\n${failureMessage}`,
+    ).toEqual([]);
+  });
+
+  it("398-2 (regression check): audit reports the known pre-fix D.5 drift on 398-drift-auto.md fixture", () => {
+    const { verbs, snapshots } = loadKnownVerbSnapshots();
+    const invocations = parseInvocations(FIXTURE_398_DRIFT_AUTO, verbs);
+
+    const mergeInvocations = invocations.filter((i) => i.verb === "merge");
+    expect(mergeInvocations.length).toBeGreaterThanOrEqual(1);
+
+    const mismatches = auditInvocations(invocations, snapshots);
+    expect(mismatches).toHaveLength(1);
+    const m = mismatches[0]!;
+    expect(m.verb).toBe("merge");
+    expect(m.position).toBe(0);
+    expect(m.observed).toBe("<pr-ref>");
+    expect(m.expected).toBe("<issue>");
+  });
+});
 

@@ -1,0 +1,12 @@
+# captured from: generacy --version 0.0.1
+Usage: generacy cockpit advance [options] [issue]
+
+Manually advance a gated issue.
+
+Arguments:
+  issue          Issue ref — <number>, <owner>/<repo>#<n>, or full URL.
+
+Options:
+  --gate <name>  Gate name (e.g. "clarification", "plan-review").
+  --help-gates   Print the list of valid gate names and exit 0.
+  -h, --help     display help for command
