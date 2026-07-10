@@ -59,7 +59,7 @@ The following nine event classes are dispatched per this table. The parent **alw
 
 | # | Event | Action shape |
 |---|-------|--------------|
-| D.1 | `waiting-for:clarification` | Clarification drafter subagent → fused batch gate → post + `cockpit advance` |
+| D.1 | `waiting-for:clarification` | Clarification drafter subagent → single batched-gate `AskUserQuestion` (three options) → post + `cockpit advance` |
 | D.2 | `waiting-for:<artifact>-review` | Review-verdict analyzer subagent → fused verdict gate → `cockpit advance` OR `COMMENT` review |
 | D.3 | `waiting-for:implementation-review` | Same as D.2 (uses #390 contract for PR-scope analyzer) |
 | D.4 | `waiting-for:manual-validation` | Manual-validation summarizer subagent → confirm gate → `cockpit advance` |
@@ -79,16 +79,43 @@ The following nine event classes are dispatched per this table. The parent **alw
 **Trigger**: An issue enters `waiting-for:clarification` (open clarification questions posted, awaiting operator-authored answers). Verbatim event string: `waiting-for:clarification`.
 
 **Dispatch**:
-1. **Fetch context**: `generacy cockpit context <issue>` (the same CLI verb `/cockpit:clarify` uses — the renamed successor to `clarify-context`).
+1. **Fetch context**: `generacy cockpit context <issue>` (the same CLI verb `/cockpit:clarify` uses — the renamed successor to `clarify-context`). The payload's `clarificationComment.body` field carries the engine-authored batch-comment template (raw). Parse it into per-question `{title, context, question, options}` per the shared batch-comment rule (`### Q<n>: <title>` headers + `**Context**:` / `**Question**:` / `**Options**:` labels; option bullets tolerant of `A:` and `A)` styles; free-form questions with no `**Options**:` label yield `options: null`).
 2. **Spawn clarification drafter subagent** (see § Gate contract G.1 and the SB.1 return schema below). Invocation:
    ```
    subagent_type: "general-purpose"
    description: "Draft clarifications <issue-ref>"
    prompt: <inlined open-question list + spec/plan bodies + touched-files context + return-schema directive>
    ```
-   The subagent MUST NOT invoke any slash command. It returns a single JSON value — either an array of `{question_id, drafted_answer, provenance}` (one per open question, in order), or `{"error": "<description>"}`. No prose, no fenced block.
-3. **Present fused batch gate** (see § Gate contract G.1). In one assistant response: presentation block with numbered `### Q<n>` drafts and one-line `_provenance: …_` citations; **plus** `ceil(N/4)` `AskUserQuestion` calls, one per open clarification, options exactly `Approve draft (Recommended)` / `Skip this question`, header `Q<n>` (≤ 12 chars), `multiSelect: false`. Built-in "Other" free-text = edit path — the operator's replacement text is posted verbatim in place of the draft.
-4. **Assemble comment body**: `<!-- generacy-cockpit:clarification-answers -->` marker + one `### Q<n>` block per approved (or edited) answer. Write to `/tmp/cockpit-auto-clarify-<issue>-<unix_ts>.md`. Post via `gh issue comment "$ISSUE" --body-file <tmpfile>` — use `--body-file` exclusively (never `-b` / `--body`; shell quoting risks stripping the marker).
+   The subagent MUST NOT invoke any slash command. It returns a single JSON value — either an array of `{question_id, recommendation, justification, provenance}` (one per open question, in order), or `{"error": "<description>"}`. No prose, no fenced block. `recommendation` is the chosen letter + its text (for lettered-option questions) OR the drafted free-form response (for free-form questions); `justification` is 1–3 sentences of *why over alternatives* (rendered under `**Why:**` and posted as `**Rationale:**`).
+3. **Present fused batch gate** (see § Gate contract G.1). In one assistant response, merge the parsed batch (step 1) with the drafter return (step 2) into a five-element presentation block per open question — title from the batch header, context/question/options verbatim from the batch, recommendation/why/provenance from the drafter:
+
+   ```markdown
+   Drafted answers for <issue-ref> (<N> open questions):
+
+   ### Q<n> — <title from batch comment>
+   **Context:** <framing from batch comment, verbatim/condensed>
+   **Question:** <question verbatim>
+   **Options:** <lettered options as posted (A — …, B — …); or "(free-form — no options posted)">
+   **Recommendation:** <chosen letter + its text, or the drafted free-form response>
+   **Why:** <1–3 sentences justifying the recommendation over the other options>
+   _provenance: <citation>_
+
+   (repeat per open question — one block per Q, separated by a blank line)
+   ```
+
+   Free-form questions render `**Options:** (free-form — no options posted)` verbatim (never drop the line). When a batch header lacks a title, substitute `q.question.split('\n')[0].slice(0, 80)` — canonical path is verbatim from the batch header; truncation is defense-in-depth.
+
+   **Plus** a single `AskUserQuestion` call in the same response (never `ceil(N/4)` and never per-question):
+   - **Question text**: `Post all <N> drafted answers to <issue-ref>?`
+   - **Header**: `Clarify` (≤ 12 chars)
+   - **multiSelect**: `false`
+   - **Options** (exactly three, discrete, in this order):
+     1. `Approve all & post (Recommended)` — post every drafted answer as-is.
+     2. `Make changes` — enter the re-loop (see § Directive grammar): parse operator-typed directives, apply them, re-present only the changed questions plus the same batch gate, loop until Approve or Skip. Zero directives is a no-op re-present.
+     3. `Skip this batch` — post nothing; do not advance; ledger line noting the skip.
+
+   Built-in "Other" free-text is the **one-turn edit path**: directives typed there are parsed via the same rule (see § Directive grammar) and applied directly (edited answers posted verbatim, individual questions skipped) without the extra `Make changes` round-trip. The change-collection turn following an explicit `Make changes` selection is NOT the same risk as the #388 turn-split concern — the #388 concern was about splitting a gate's presentation from its decision, which allowed the loop to auto-proceed on an implicit-approve default; the `Make changes` re-loop cannot auto-proceed (zero directives is a no-op re-present, not an implicit approve or skip), and every iteration requires an explicit operator choice.
+4. **Assemble comment body**: `<!-- generacy-cockpit:clarification-answers -->` marker + one `### Q<n>` block per approved (or edited) answer, in ascending question-number order, separated by a single blank line. Each block emits `**Answer:** <recommendation>` on one line and `**Rationale:** <justification>` on the next. Read the `recommendation` and `justification` fields from the drafter return (step 2); the assembly step reads the same fields the presentation renders, so display and posted content cannot drift. For bare-letter operator overrides (a directive whose `rationale` is `null` per § Directive grammar), emit NO `**Rationale:**` line — never retain the draft's justification under an operator-overridden answer. Skipped questions do not appear. Write to `/tmp/cockpit-auto-clarify-<issue>-<unix_ts>.md`. Post via `gh issue comment "$ISSUE" --body-file <tmpfile>` — use `--body-file` exclusively (never `-b` / `--body`; shell quoting risks stripping the marker).
 5. **Advance gate**: If every open question received an approved or edited answer, run `generacy cockpit advance --gate clarification <issue-ref>`. If some were skipped, do not advance — write a ledger line noting the partial state (`posted <k>/<N>, skipped <s>`) and continue.
 
 **Ledger line**: `<issue-ref> · waiting-for:clarification · clarification-batch · <outcome>` where outcome is one of `advanced` / `posted <k>/<N>, skipped <s>` / `all answers skipped` / `error: <description>`.
@@ -311,7 +338,7 @@ Four gate types — **clarification batches, review/validation verdicts, phase-q
 
 | # | Gate | Options | Presentation |
 |---|------|---------|--------------|
-| G.1 | Clarification batch | `Approve draft (Recommended)` / `Skip this question` × `ceil(N/4)` calls | Numbered drafts with provenance |
+| G.1 | Clarification batch | `Approve all & post (Recommended)` / `Make changes` / `Skip this batch` (single call per batch) | Five-element `### Q<n>` block per open question (context/question/options/recommendation/why + provenance) |
 | G.2 | Review verdict | `approve` / `request-changes` / `abort` (single call) | Findings-summary table + Suggested decision |
 | G.3 | Manual-validation confirm | `manually validated` / `not yet` (single call) | Scenarios + acceptance_checks lists |
 | G.4 (a) | Escalation: validate-red / merge-red | `Retry` / `Skip` / `Stop` (single call) | Fixer summary + reason + failing checks |
@@ -324,39 +351,76 @@ Four gate types — **clarification batches, review/validation verdicts, phase-q
 
 **Trigger**: D.1 (`waiting-for:clarification`).
 
-**Presentation** (in the same response as the `AskUserQuestion` calls):
+**Presentation** (in the same response as the single `AskUserQuestion` call) — one five-element `### Q<n>` block per open question:
 
 ```markdown
-Drafted answers for <issue-ref> (N open questions):
+Drafted answers for <issue-ref> (<N> open questions):
 
-### Q1: <question title / summary>
-<drafted answer, ~4-8 sentences>
+### Q<n> — <title from batch comment>
+**Context:** <framing from batch comment, verbatim/condensed>
+**Question:** <question verbatim>
+**Options:** <lettered options as posted (A — …, B — …); or "(free-form — no options posted)">
+**Recommendation:** <chosen letter + its text, or the drafted free-form response>
+**Why:** <1–3 sentences justifying the recommendation over the other options>
 _provenance: <citation>_
 
-### Q2: <question title / summary>
-<drafted answer>
-_provenance: <citation>_
-
-... (Q3 through QN)
+(repeat per open question — one block per Q, separated by a blank line)
 ```
 
-**Gate invocation**: `ceil(N/4)` `AskUserQuestion` calls in the **same response**, one question per open clarification, each with:
-- **Question text**: `Approve Q<n>? "<question summary>"`
-- **Header**: `Q<n>` (≤ 12 chars)
-- **Options** (exactly two, discrete, in this order):
-  1. `Approve draft (Recommended)` — post the drafted body verbatim
-  2. `Skip this question` — drop this answer from the run
-- **multiSelect**: `false`
+Title comes from the batch comment header verbatim (`ParsedQuestion.title`); when the header lacks a title (`### Q<n>` without colon-title), substitute `q.question.split('\n')[0].slice(0, 80)` — the canonical path uses the header title verbatim; truncation is defense-in-depth. Free-form questions render `**Options:** (free-form — no options posted)` verbatim (never drop the line — the five-element structure is a fixed shape). Context, question, and options come from parsing `clarificationComment.body` (D.1 step 1); recommendation, why, and provenance come from the drafter (SB.1 return, D.1 step 2).
 
-**Edit path**: The built-in "Other" free-text channel per `AskUserQuestion` is the edit path. Whatever replacement text the operator types is posted **verbatim** in place of the draft. No explicit "Edit" option is listed — listing "Edit" would require a second turn to collect the replacement text, reintroducing the #388 turn-split this gate exists to prevent.
+**Gate invocation**: **Exactly one** `AskUserQuestion` call per batch in the same response (never `ceil(N/4)`, never per-question). Parameters:
+- **Question text**: `Post all <N> drafted answers to <issue-ref>?`
+- **Header**: `Clarify` (≤ 12 chars)
+- **multiSelect**: `false`
+- **Options** (exactly three, discrete, in this order):
+  1. `Approve all & post (Recommended)` — post every drafted answer as-is.
+  2. `Make changes` — enter the re-loop (see § Directive grammar): parse operator-typed directives, apply them, re-present only the changed questions plus the same three-option batch gate, loop until Approve or Skip. Zero directives is a no-op re-present.
+  3. `Skip this batch` — post nothing; do not advance; ledger line noting the skip.
+
+**Edit path**: The built-in "Other" free-text channel is the **one-turn edit path**: directives typed there are parsed via the same rule (see § Directive grammar) and applied directly to the drafted answers (edited answers posted verbatim, individual questions skipped) without the extra `Make changes` round-trip. The listed `Make changes` option is not the same risk as the #388 turn-split concern. Splitting a gate's presentation from its decision (the #388 concern) allowed the loop to auto-proceed on an implicit-approve default. A change-collection turn that follows an explicit operator selection of `Make changes` cannot auto-proceed — zero directives is a no-op re-present, not an implicit approve or skip. Every iteration requires an explicit operator choice. Keep "Other" documented as the no-extra-turn path.
 
 **Post-gate behavior**:
-- Approved answers → posted as one marker-prefixed comment (per D.1 step 4).
+- `Approve all & post` → post every drafted answer as-is; `cockpit advance --gate clarification`; ledger `advanced`.
+- `Make changes` → parse directives via § Directive grammar; if `Directive[]` is empty, re-present the entire batch (no changes) and re-fire the same three-option gate — do NOT auto-approve, do NOT auto-skip; if non-empty, apply directives (edits update the staged answer/rationale, `skip` marks the question excluded), re-present only the changed questions plus the same three-option batch gate, loop until Approve or Skip.
+- `Skip this batch` → post no comment; do not advance; ledger `all answers skipped`.
+- "Other" (one-turn edit) → parse directives via § Directive grammar; apply to the drafted answers (edits overwrite, `skip` excludes); post the resulting subset; advance if every question was posted, else ledger `posted <k>/<N>, skipped <s>`.
 - Skipped answers → dropped; do not appear in the comment.
-- Edited answers ("Other" free-text) → posted verbatim.
-- All approved → `cockpit advance --gate clarification`; ledger `advanced`.
+- All approved (including via edits) → `cockpit advance --gate clarification`; ledger `advanced`.
 - Some approved, some skipped → post the approved subset; do not advance; ledger `posted <k>/<N>, skipped <s>`.
-- All skipped → post no comment; do not advance; ledger `all answers skipped`.
+- All skipped (via directives or `Skip this batch`) → post no comment; do not advance; ledger `all answers skipped`.
+
+### Directive grammar
+
+Both `Make changes` and the "Other" free-text path parse per-question directives identically, using a `Q<n>:` token-anchored rule.
+
+**Rule**: A new directive begins at each `Q<n>:` token. Split the input at `Q<n>:` occurrences; each directive's payload runs from the token to the next token or end of input.
+
+**Documented forms** (both parse identically under the rule):
+
+- Newline-separated (canonical):
+  ```
+  Q2: B
+  Q4: skip
+  ```
+- Single-line semicolon (a verbatim replacement's text may itself contain semicolons; the token rule doesn't mis-split it):
+  ```
+  Q2: B; Q4: skip
+  ```
+
+**Payload forms**:
+
+- `Q<n>: <letter>` — bare letter (matching an option from the parsed batch comment) resolves to that option's text. The answer posts with **no rationale line** — never retain the draft's justification under an operator-overridden answer, because it would argue for a different choice.
+- `Q<n>: <letter> — <reason>` — letter resolves to option text, and `<reason>` replaces the justification.
+- `Q<n>: skip` — excludes that question from the posted batch and blocks advance.
+- Anything else — treated as verbatim replacement text for the answer, posted as-is.
+
+**Applied identically in two paths**:
+
+- **`Make changes` re-loop** — the operator's turn collects directives typed in a follow-up prompt or in the initial `AskUserQuestion` "Other" field; the loop re-presents only changed questions plus the same batch gate; loops until Approve or Skip.
+- **"Other" free-text on the batch gate** — the operator's replacement text is applied directly (edited answers posted verbatim, individual questions skipped) without the extra `Make changes` round-trip.
+
+Zero directives from a `Make changes` turn is a no-op: re-present the entire batch and fire the same gate again (never auto-approve or auto-skip on empty input).
 
 ### G.2 — Review verdict gate (artifact and implementation)
 
@@ -675,30 +739,43 @@ Run shape:
 
 Trigger: D.1 for `christrudelpw/epic#43` with 6 open clarifications.
 
-The subagent returns 6 drafted answers in one JSON array. The parent renders:
+The subagent returns 6 drafted answers in one JSON array (`{question_id, recommendation, justification, provenance}` per entry). The parent parses `clarificationComment.body` for the per-question `{title, context, question, options}` and renders a five-element block per question:
 
 ```markdown
 Drafted answers for christrudelpw/epic#43 (6 open questions):
 
-### Q1: What auth mode?
-<drafted answer>
+### Q1 — What auth mode?
+**Context:** The client needs to negotiate auth without a shared secret pre-provisioned.
+**Question:** Which auth mode should the client default to?
+**Options:** A — OAuth device flow, B — API key from environment, C — mTLS
+**Recommendation:** A — OAuth device flow
+**Why:** Device flow works in headless contexts and doesn't need a pre-shared secret. API key requires operator provisioning per install; mTLS demands certificate distribution.
 _provenance: spec.md § Auth_
 
-### Q2: Timeout policy?
-<drafted answer>
+### Q2 — Timeout policy?
+**Context:** ...
+**Question:** ...
+**Options:** ...
+**Recommendation:** ...
+**Why:** ...
 _provenance: plan.md § Timeouts_
 
 ... (Q3 through Q6)
 ```
 
-Then, **in the same assistant response**, `ceil(6/4) = 2` `AskUserQuestion` calls fanned out:
+Then, **in the same assistant response**, **exactly one** `AskUserQuestion` call fires (never fanned out) with header `Clarify` and options `Approve all & post (Recommended)` / `Make changes` / `Skip this batch`.
 
-- **Call 1**: 4 questions (Q1–Q4), each with options `Approve draft (Recommended)` / `Skip this question`, headers `Q1`, `Q2`, `Q3`, `Q4`.
-- **Call 2**: 2 questions (Q5–Q6), same options, headers `Q5`, `Q6`.
+Operator responses (illustrative): operator selects `Make changes` and types:
 
-Operator responses (illustrative): Q1 approved, Q2 approved, Q3 skipped, Q4 approved, Q5 selected "Other" and typed a replacement answer, Q6 skipped.
+```
+Q3: skip
+Q5: B — because we validated this shape in the pilot
+Q6: skip
+```
 
-Post-gate: post the assembled comment with Q1/Q2/Q4/Q5 (5 answers, Q5 with the edited body); do not advance (2 skipped).
+The parser (§ Directive grammar) produces three directives — `{skip Q3}`, `{edit Q5, answer=<option-B text>, rationale="because we validated this shape in the pilot"}`, `{skip Q6}`. The parent re-presents only Q3, Q5, Q6 (Q3 marked skipped, Q5 with updated recommendation + rationale, Q6 marked skipped) plus the same three-option batch gate. Operator selects `Approve all & post`.
+
+Post-gate: post the assembled comment with Q1/Q2/Q4/Q5 (4 answers, Q5 with the edited answer/rationale); do not advance (2 skipped).
 
 Ledger: `christrudelpw/epic#43 · waiting-for:clarification · clarification-batch · posted 4/6, skipped 2`.
 

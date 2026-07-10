@@ -11,6 +11,13 @@ import {
   type StatusJson,
 } from "./reference-consumption.js";
 import { GATE_VOCABULARY } from "../lib/gate-vocabulary.js";
+import {
+  parseBatchComment,
+  parseDirectives,
+  type Directive,
+  type ParsedBatch,
+  type ParsedQuestion,
+} from "../lib/clarification-batch-parser.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, "fixtures");
@@ -530,4 +537,214 @@ describe("398 — playbook invocations match generacy cockpit <verb> --help", ()
     expect(m.expected).toBe("<issue>");
   });
 });
+
+// -----------------------------------------------------------------------------
+// 400 — clarification batch parser + directive grammar
+//
+// The runtime is Claude interpreting the playbook prose in clarify.md step 5
+// and auto.md D.1 step 3 / § Gate contract G.1. The parser module under
+// lib/clarification-batch-parser.ts is a machine-checkable reference
+// implementation of the rule the prose describes. The five assertions below
+// exercise the parser against fixture inputs and act as a build-time backstop
+// against silent regression of the load-bearing rules — mildly-tolerant
+// option-bullet parsing, title-fallback path, free-form no-options placeholder,
+// token-anchored directive splitting (no semicolon mis-split), and the
+// newline≡semicolon documented-form equivalence.
+// -----------------------------------------------------------------------------
+
+function normalizeQuestion(q: ParsedQuestion): {
+  questionId: number;
+  title: string | null;
+  context: string;
+  question: string;
+  options: ReadonlyArray<{ letter: string; text: string }> | null;
+} {
+  return {
+    questionId: q.questionId,
+    title: q.title,
+    context: q.context,
+    question: q.question,
+    options: q.options,
+  };
+}
+
+function renderOptionsLine(q: ParsedQuestion): string {
+  if (q.options === null) {
+    return "**Options:** (free-form — no options posted)";
+  }
+  const parts = q.options.map((o) => `${o.letter} — ${o.text}`);
+  return `**Options:** ${parts.join(", ")}`;
+}
+
+describe("400 — clarification batch parser + directive grammar", () => {
+  it("400-1: batch-comment parse tolerates option-bullet variations (A: and A))", () => {
+    const colonRaw = readFileSync(
+      resolve(FIXTURES, "400-batch-comment-a-colon.md"),
+      "utf-8",
+    );
+    const parenRaw = readFileSync(
+      resolve(FIXTURES, "400-batch-comment-a-paren.md"),
+      "utf-8",
+    );
+
+    const colonBatch = parseBatchComment(colonRaw);
+    const parenBatch = parseBatchComment(parenRaw);
+
+    const colonNormalized = colonBatch.questions.map(normalizeQuestion);
+    const parenNormalized = parenBatch.questions.map(normalizeQuestion);
+
+    expect(
+      parenNormalized,
+      `A) fixture parse must equal A: fixture parse position-for-position; observed A: shape: ${JSON.stringify(colonNormalized)}`,
+    ).toEqual(colonNormalized);
+    expect(colonBatch.questions.length).toBe(5);
+  });
+
+  it("400-2: title fallback fires only when the batch header lacks a title", () => {
+    const noTitleRaw = readFileSync(
+      resolve(FIXTURES, "400-batch-comment-no-title.md"),
+      "utf-8",
+    );
+    const colonRaw = readFileSync(
+      resolve(FIXTURES, "400-batch-comment-a-colon.md"),
+      "utf-8",
+    );
+
+    const noTitleBatch = parseBatchComment(noTitleRaw);
+    expect(
+      noTitleBatch.questions[0]!.title,
+      `expected title:null when the batch header is "### Q1" (no colon-title); fixture: 400-batch-comment-no-title.md`,
+    ).toBe(null);
+
+    const colonBatch = parseBatchComment(colonRaw);
+    expect(
+      colonBatch.questions[0]!.title,
+      `expected verbatim header title "Directive grammar shape"; fixture: 400-batch-comment-a-colon.md`,
+    ).toBe("Directive grammar shape");
+  });
+
+  it("400-3: free-form question renders the no-options placeholder rather than omitting the element", () => {
+    const freeFormRaw = readFileSync(
+      resolve(FIXTURES, "400-batch-comment-free-form.md"),
+      "utf-8",
+    );
+
+    const batch = parseBatchComment(freeFormRaw);
+    const q1 = batch.questions[0]!;
+    expect(
+      q1.options,
+      `expected options:null for a question with no **Options**: label; fixture: 400-batch-comment-free-form.md`,
+    ).toBe(null);
+
+    const rendered = renderOptionsLine(q1);
+    expect(
+      rendered,
+      `renderer must emit the free-form placeholder rather than dropping the **Options:** line`,
+    ).toBe("**Options:** (free-form — no options posted)");
+  });
+
+  it("400-4: directive payload shapes — bare letter / letter+reason / skip / verbatim with semicolon", () => {
+    const batchRaw = readFileSync(
+      resolve(FIXTURES, "400-batch-comment-a-colon.md"),
+      "utf-8",
+    );
+    const batch = parseBatchComment(batchRaw);
+    const q2 = batch.questions.find((q) => q.questionId === 2)!;
+    const optionB = q2.options!.find((o) => o.letter === "B")!;
+
+    const bareLetter = readFileSync(
+      resolve(FIXTURES, "400-directives-bare-letter.txt"),
+      "utf-8",
+    );
+    const bareLetterDirectives = parseDirectives(bareLetter, batch);
+    expect(bareLetterDirectives).toEqual([
+      {
+        kind: "edit",
+        questionId: 2,
+        answer: optionB.text,
+        rationale: null,
+      },
+    ] as Directive[]);
+
+    const letterReason = readFileSync(
+      resolve(FIXTURES, "400-directives-letter-reason.txt"),
+      "utf-8",
+    );
+    const letterReasonDirectives = parseDirectives(letterReason, batch);
+    expect(letterReasonDirectives).toEqual([
+      {
+        kind: "edit",
+        questionId: 2,
+        answer: optionB.text,
+        rationale: "because it's mildly tolerant",
+      },
+    ] as Directive[]);
+
+    const skip = readFileSync(
+      resolve(FIXTURES, "400-directives-skip.txt"),
+      "utf-8",
+    );
+    const skipDirectives = parseDirectives(skip, batch);
+    expect(skipDirectives).toEqual([
+      { kind: "skip", questionId: 2 },
+    ] as Directive[]);
+
+    const verbatimSemicolon = readFileSync(
+      resolve(FIXTURES, "400-directives-verbatim-with-semicolon.txt"),
+      "utf-8",
+    );
+    const verbatimDirectives = parseDirectives(verbatimSemicolon, batch);
+    expect(
+      verbatimDirectives.length,
+      `token-anchored rule must not mis-split verbatim text containing a semicolon; fixture: 400-directives-verbatim-with-semicolon.txt; observed: ${JSON.stringify(verbatimDirectives)}`,
+    ).toBe(1);
+    const verbatim = verbatimDirectives[0]!;
+    expect(verbatim.kind).toBe("edit");
+    if (verbatim.kind === "edit") {
+      expect(verbatim.questionId).toBe(2);
+      expect(verbatim.rationale).toBe(null);
+      expect(
+        verbatim.answer,
+        `verbatim answer must retain the embedded semicolon; observed: ${verbatim.answer}`,
+      ).toContain(";");
+      expect(verbatim.answer).toContain("We should defer this");
+      expect(verbatim.answer).toContain("the tradeoff is unclear");
+    }
+  });
+
+  it("400-5: single-line semicolon form parses identically to newline-separated form", () => {
+    const batchRaw = readFileSync(
+      resolve(FIXTURES, "400-batch-comment-a-colon.md"),
+      "utf-8",
+    );
+    const batch = parseBatchComment(batchRaw);
+
+    const newlineInput = readFileSync(
+      resolve(FIXTURES, "400-directives-newline.txt"),
+      "utf-8",
+    );
+    const semicolonInput = readFileSync(
+      resolve(FIXTURES, "400-directives-semicolon-inline.txt"),
+      "utf-8",
+    );
+
+    const newlineDirectives = parseDirectives(newlineInput, batch);
+    const semicolonDirectives = parseDirectives(semicolonInput, batch);
+
+    expect(
+      semicolonDirectives,
+      `Q2: B; Q4: skip must produce byte-identical Directive[] as newline-separated form; observed newline: ${JSON.stringify(newlineDirectives)}; observed semicolon: ${JSON.stringify(semicolonDirectives)}`,
+    ).toEqual(newlineDirectives);
+
+    expect(newlineDirectives.length).toBe(2);
+    expect(newlineDirectives[0]!.kind).toBe("edit");
+    expect(newlineDirectives[1]!.kind).toBe("skip");
+    const q4 = newlineDirectives[1]!;
+    if (q4.kind === "skip") expect(q4.questionId).toBe(4);
+  });
+});
+
+// Silence TS unused-import warning if only used for type narrowing.
+const _typeGuardParsedBatch = (b: ParsedBatch) => b.questions.length;
+void _typeGuardParsedBatch;
 
