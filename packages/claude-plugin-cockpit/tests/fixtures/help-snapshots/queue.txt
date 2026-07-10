@@ -1,0 +1,16 @@
+# captured from: generacy --version 0.0.1
+Usage: generacy cockpit queue [options] <epic-ref> <phase>
+
+Queue every eligible ref under a phase heading to the cluster pipeline.
+
+Arguments:
+  epic-ref             Epic ref (owner/repo#N).
+  phase                Phase token — matched case-insensitively against the
+                       first token of a ### heading.
+
+Options:
+  --label <name>       Workflow label (default: process:speckit-feature).
+  --repo <owner/repo>  Restrict the invocation to a single repo.
+  --assignee <login>   Override the default cluster-account assignee.
+  --yes                Skip the interactive confirmation prompt.
+  -h, --help           display help for command

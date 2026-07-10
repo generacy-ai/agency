@@ -22,7 +22,7 @@ $ARGUMENTS
 
 2. **Pre-flight** — `command -v generacy >/dev/null 2>&1`. If the pre-flight returns non-zero, apply the **Error handling** block below with class `MISSING_BINARY` and stop.
 
-3. **Fetch context** — Invoke `generacy cockpit context <issue-ref>` via the Bash tool. This is the renamed successor to `clarify-context`; the old verb no longer exists. Handle:
+3. **Fetch context** — Invoke `generacy cockpit context <issue>` via the Bash tool. This is the renamed successor to `clarify-context`; the old verb no longer exists. Handle:
    - Exit `0` → parse stdout as the JSON payload (open-question list, spec/plan bodies, touched files).
    - CLI reports "no open clarifications" (gate refusal, empty question list) → print `no open clarification questions for <issue-ref>` and exit zero without posting or advancing.
    - Any other non-zero exit → apply the **Error handling** block below.

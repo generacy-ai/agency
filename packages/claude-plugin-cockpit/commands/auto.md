@@ -79,7 +79,7 @@ The following nine event classes are dispatched per this table. The parent **alw
 **Trigger**: An issue enters `waiting-for:clarification` (open clarification questions posted, awaiting operator-authored answers). Verbatim event string: `waiting-for:clarification`.
 
 **Dispatch**:
-1. **Fetch context**: `generacy cockpit context <issue-ref>` (the same CLI verb `/cockpit:clarify` uses — the renamed successor to `clarify-context`).
+1. **Fetch context**: `generacy cockpit context <issue>` (the same CLI verb `/cockpit:clarify` uses — the renamed successor to `clarify-context`).
 2. **Spawn clarification drafter subagent** (see § Gate contract G.1 and the SB.1 return schema below). Invocation:
    ```
    subagent_type: "general-purpose"
@@ -168,7 +168,7 @@ The following nine event classes are dispatched per this table. The parent **alw
 
 **Dispatch**:
 1. **Confirm state via `cockpit status --json`** — verify `checks_state == "green"` and no infrastructure/runner failures. A `completed:validate` streamed event whose live state shows red falls through to D.6.
-2. **Merge**: `generacy cockpit merge <pr-ref>` (squash, branch delete per the CLI's default).
+2. **Merge**: `generacy cockpit merge <issue>` (squash, branch delete per the CLI's default; the CLI resolves the issue's linked PR internally — passing a PR ref directly is a distinct failure mode observed in agency#398).
 3. **No gate.** The operator's judgment was recorded at `waiting-for:implementation-review` (D.3). `validate` + green checks is mechanical; no additional prompt.
 
 **Never merge on red** — the branch exists here strictly on the `result: merged` outcome (invariant §1).
@@ -413,7 +413,7 @@ Hard-error subagent returns (`{"error": …}` or unparseable) → **Error handli
 **Presentation** (in the same response as the `AskUserQuestion` call) — the subagent's structured summary rendered as bullet lists:
 
 ```markdown
-Manual validation checklist for <issue-ref> (PR <pr-ref>):
+Manual validation checklist for <issue-ref> (PR <pr-number>):
 
 **Scenarios to test:**
 - <scenario 1>
@@ -449,7 +449,7 @@ The scenarios and acceptance_checks lists come **only** from the subagent hop �
 **(a) Validate-red / merge-red**:
 
 ```markdown
-Fixer could not resolve <issue-ref> (PR <pr-ref>):
+Fixer could not resolve <issue-ref> (PR <pr-number>):
 
 <fixer summary — the subagent's `summary` field>
 
