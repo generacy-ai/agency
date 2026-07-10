@@ -1,0 +1,11 @@
+{
+  "epic_ref": "christrudelpw/epic#42",
+  "issues": [
+    {
+      "issue_ref": "christrudelpw/epic#43",
+      "labels": ["waiting-for:merge-conflicts"],
+      "transition_class": "waiting-for:merge-conflicts",
+      "conflicted_paths": ["packages/foo/src/bar.ts", "packages/foo/tests/bar.test.ts"]
+    }
+  ]
+}
