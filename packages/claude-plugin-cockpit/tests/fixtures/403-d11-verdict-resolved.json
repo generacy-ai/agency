@@ -1,0 +1,6 @@
+{
+  "root_cause": "The base branch advanced with a competing edit to packages/foo/src/bar.ts; git status shows the conflict marker is on a single import statement addition.",
+  "evidence": "packages/foo/src/bar.ts:14: both branches added an import; a manual rebase preserving both imports resolves cleanly. git status shows the branch is otherwise clean.",
+  "recommended_action": "I've resolved it — advance the gate",
+  "confidence": "medium"
+}

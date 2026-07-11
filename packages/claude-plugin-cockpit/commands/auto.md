@@ -55,7 +55,7 @@ $ARGUMENTS
 
 ## Dispatch
 
-The following nine event classes are dispatched per this table. The parent **always** re-checks live state on every event (step 4a) — streamed lines are advisory (spec § Loop trust boundary). Each dispatch is composed of **CLI verb + optional subagent + optional gate**; no dispatch invokes a `/cockpit:*` slash command (invariant §4).
+The following nine event classes are dispatched per this table. The parent **always** re-checks live state on every event (step 4a) — streamed lines are advisory (spec § Loop trust boundary). The re-check is mandatory for every *actionable* dispatch class (D.1–D.8, D.10, D.11); ledger-only rows (D.9, D.9a, D.9b, D.9c, D.9d) skip the re-check entirely per § Invariants #8's cost contract. Each dispatch is composed of **CLI verb + optional subagent + optional gate**; no dispatch invokes a `/cockpit:*` slash command (invariant §4).
 
 | # | Event | Action shape |
 |---|-------|--------------|
@@ -71,6 +71,7 @@ The following nine event classes are dispatched per this table. The parent **alw
 | D.9a | `waiting-for:pr-feedback` | Ledger line only (legacy alias) |
 | D.9b | `waiting-for:children-complete` | Ledger line only (epic-container state) |
 | D.9c | `waiting-for:dependencies` | Ledger line only (engine-owned cross-issue wait) |
+| D.9d | `phase:*` (prefix-match) | Ledger line only (engine-owned phase transition) |
 | D.11 | `waiting-for:merge-conflicts` | Escalation gate (`I've resolved it` / `Skip` / `Stop`) |
 | D.10 | Unrecognized / ambiguous | Escalation gate (Skip / Stop only, never Retry) |
 
@@ -242,9 +243,16 @@ The fixer runs **once autonomously** per red event; each further run requires th
 **Trigger**: An issue enters `agent:error` or any `failed:*` state. Verbatim event strings: `agent:error` and `failed:` (matching any `failed:<subtype>`).
 
 **Dispatch**:
-1. **Fetch evidence** — read the alert content (bot-authored comment on the issue with the failure evidence). Use `gh issue view <issue-ref> --comments --json comments -q '.comments[]'` or equivalent.
-2. **Present escalation gate** (see § Gate contract G.4b). In one assistant response: presentation block including the evidence (last N lines of the failure trace, or the alert comment body) + single `AskUserQuestion` with options `Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)`, header `Escalate`, `multiSelect: false`.
-3. **Apply verdict**:
+1. **Fetch evidence** — the parent's sole evidence-fetch verb is `generacy cockpit context <issue>`. **No ad-hoc `gh` chains, no link-following, no `gh issue view --comments` inline in the parent.** The payload is whatever the engine bundle returns — if the diagnosis subagent routinely needs a specific artifact (e.g., the primary CI log), fix the engine bundle (server-side, generacy-side), not the per-session parent envelope.
+2. **Spawn diagnosis subagent** — for any further work (reproducing, reading logs, bisecting versions, inspecting branches, downstream artifact fetch), dispatch to a diagnosis subagent. Invocation:
+   ```
+   subagent_type: "general-purpose"
+   description: "Diagnose <issue-ref> failure"
+   prompt: <issue-ref + failure-context payload + gate-option-set directive + return-schema directive>
+   ```
+   The subagent MUST NOT invoke any slash command. Return contract: a single JSON value `{root_cause: string, evidence: string, recommended_action: string, confidence: "low"|"medium"|"high"}` where `recommended_action` is exactly one of the target gate's option strings (`Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)` — verbatim). No prose, no fenced block. On unrecoverable error the subagent returns `{"error": "<description>"}`.
+3. **Present escalation gate** (see § Gate contract G.4b). In one assistant response: presentation block per § Gate contract G.4b (subtype b) — five-element block populated verbatim from the verdict (`root_cause`/`evidence` fill the context and evidence rows; `recommended_action` renders as a "Suggested decision" line with `confidence` beside it) + single `AskUserQuestion` with the unchanged D.7 option set (`Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)`), header `Escalate`, `multiSelect: false`. No in-parent re-analysis.
+4. **Apply verdict**:
    - `Requeue` → `generacy cockpit resume <issue-ref>` (engine verb per Assumption A2 — clears `agent:error` / `failed:*`, restores the phase's `waiting-for:` / `completed:` resume pair).
    - `Skip` → add `<issue-ref>` to session mute set; ledger line; continue.
    - `Stop` → kill watch; summary; exit.
@@ -272,7 +280,7 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Trigger**: An issue enters `waiting-for:address-pr-feedback`. Verbatim event string: `waiting-for:address-pr-feedback`.
 
-**Dispatch**: **Ledger line only.** No CLI verb, no subagent, no gate — this transition is **server-side-owned** (the plugin has no local action to add). The ledger line accounts for the event; the loop continues.
+**Dispatch**: **Ledger line only.** No CLI verb (in particular, no `generacy cockpit status --json` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned. The ledger line accounts for the event; the loop continues.
 
 **Ledger line**: `<issue-ref> · waiting-for:address-pr-feedback · (no-op) · server-side-owned`.
 
@@ -280,7 +288,7 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Trigger**: An issue enters `waiting-for:pr-feedback`. Verbatim event string: `waiting-for:pr-feedback`. Legacy alias of the engine-owned feedback loop (D.9 `waiting-for:address-pr-feedback` is the modern shape; some pre-migration epics still emit the shorter `pr-feedback` label).
 
-**Dispatch**: **Ledger line only.** No CLI verb, no subagent, no gate — server-side-owned.
+**Dispatch**: **Ledger line only.** No CLI verb (in particular, no `generacy cockpit status --json` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned.
 
 **Ledger line**: `<issue-ref> · waiting-for:pr-feedback · (no-op) · server-side-owned`.
 
@@ -288,7 +296,7 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Trigger**: An epic-container issue enters `waiting-for:children-complete`. Verbatim event string: `waiting-for:children-complete`. Epic-container state — the running auto loop *is* its resolution (children dispatch as they transition; on the last child's completion, this label transitions naturally to `epic-complete` without operator input).
 
-**Dispatch**: **Ledger line only.** No CLI verb, no subagent, no gate — server-side-owned.
+**Dispatch**: **Ledger line only.** No CLI verb (in particular, no `generacy cockpit status --json` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned.
 
 **Ledger line**: `<issue-ref> · waiting-for:children-complete · (no-op) · server-side-owned`.
 
@@ -296,17 +304,32 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Trigger**: An issue enters `waiting-for:dependencies`. Verbatim event string: `waiting-for:dependencies`. Engine-owned cross-issue wait — resolved server-side when the depended-on issue transitions.
 
-**Dispatch**: **Ledger line only.** No CLI verb, no subagent, no gate — server-side-owned.
+**Dispatch**: **Ledger line only.** No CLI verb (in particular, no `generacy cockpit status --json` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned.
 
 **Ledger line**: `<issue-ref> · waiting-for:dependencies · (no-op) · server-side-owned`.
+
+### D.9d — `phase:*` → ledger only
+
+**Trigger**: An issue enters any `phase:*` state. **Prefix-match**: any transition class whose token begins with the literal `phase:` prefix matches this row (`phase:specify`, `phase:clarify`, `phase:plan`, `phase:tasks`, `phase:implement`, `phase:validate`, and any future workflow-phase addition). The phase set is workflow-dependent and open-ended — speckit-feature and speckit-bugfix already differ; enumeration would break the day a workflow adds a phase.
+
+**Dispatch**: **Ledger line only.** No CLI verb (in particular, no `generacy cockpit status --json` re-check), no subagent, no gate, no status table, no prose recap — engine-owned transient transition. Never surface a D.10 escalation gate on a `phase:*` token; D.10 remains the catch-all for genuinely unknown, non-`phase:` labels (per § Dispatch D.10's tightened trigger — an unrecognized `waiting-for:*` still fires D.10).
+
+**Ledger line**: `<issue-ref> · <phase:*-token> · (no-op) · engine-owned phase transition`.
 
 ### D.11 — `waiting-for:merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)
 
 **Trigger**: An issue enters `waiting-for:merge-conflicts` (base-sync produced a merge conflict; the branch cannot be advanced without an operator-authored resolution). Verbatim event string: `waiting-for:merge-conflicts`.
 
 **Dispatch**:
-1. **Fetch context.** Read the pause-alert comment posted by the engine when the label was set (via `gh issue view --comments <issue-ref>`). Extract the list of conflicted paths.
-2. **Present escalation gate** (see § Gate contract G.4d). In one assistant response: presentation block including the conflicted paths + single `AskUserQuestion` with options `I've resolved it — advance the gate` / `Skip (session-local mute)` / `Stop (exit auto)`, header `Escalate`, `multiSelect: false`.
+1. **Fetch context.** The parent's sole evidence-fetch verb is `generacy cockpit context <issue>`; the payload includes the pause-alert comment content and the list of conflicted paths. **No ad-hoc `gh` chains, no link-following, no `gh issue view --comments` inline in the parent.**
+1.5. **Spawn diagnosis subagent** — for any conflict-triage work beyond the engine bundle (repro, log reads, `git status` / `git diff` / branch inspection, downstream artifact fetch), dispatch to a diagnosis subagent. Invocation:
+   ```
+   subagent_type: "general-purpose"
+   description: "Diagnose <issue-ref> merge conflicts"
+   prompt: <issue-ref + conflicted-paths payload + gate-option-set directive + return-schema directive>
+   ```
+   The subagent MUST NOT invoke any slash command. Return contract: a single JSON value `{root_cause: string, evidence: string, recommended_action: string, confidence: "low"|"medium"|"high"}` where `recommended_action` is exactly one of the target gate's option strings (`I've resolved it — advance the gate` / `Skip (session-local mute)` / `Stop (exit auto)` — verbatim). No prose, no fenced block. On unrecoverable error the subagent returns `{"error": "<description>"}`.
+2. **Present escalation gate** (see § Gate contract G.4d). In one assistant response: presentation block per § Gate contract G.4d — five-element block populated verbatim from the verdict (`root_cause`/`evidence` fill the context and evidence rows; conflicted paths shown; `recommended_action` renders as a "Suggested decision" line with `confidence` beside it) + single `AskUserQuestion` with options `I've resolved it — advance the gate` / `Skip (session-local mute)` / `Stop (exit auto)`, header `Escalate`, `multiSelect: false`. No in-parent re-analysis.
 3. **Apply verdict**:
    - `I've resolved it — advance the gate` → run `generacy cockpit advance --gate merge-conflicts <issue-ref>`. On zero exit: ledger `advanced`; continue. **On non-zero exit: re-present the D.11 gate with the CLI stderr prepended verbatim to the presentation block** (see § Gate contract G.4d re-present shape). The operator may retry, skip, or stop from the re-presented gate.
    - `Skip (session-local mute)` → add `<issue-ref>` to session mute set; ledger line `skip (session-local mute)`; continue.
@@ -524,23 +547,33 @@ Failing checks: <check names>
 
 **(b) `agent:error` / `failed:*`**:
 
+Populated verbatim from the diagnosis subagent's verdict (D.7 step 2). No in-parent re-analysis; the operator still chooses from the full option set; the option set itself is unchanged.
+
 ```markdown
 Agent error on <issue-ref>:
 
-<evidence — bot-authored alert comment body from gh issue view --comments, or the failure trace>
+**Root cause:** <verdict.root_cause verbatim>
+**Evidence:** <verdict.evidence verbatim>
+**Current state:** <observed state from `generacy cockpit context <issue>`>
+**Suggested decision:** <verdict.recommended_action> (confidence: <verdict.confidence>)
 ```
 
 **(d) Merge-conflicts**:
+
+Populated verbatim from the diagnosis subagent's verdict (D.11 step 1.5). No in-parent re-analysis; the operator still chooses from the full option set; the option set itself is unchanged.
 
 Initial presentation:
 
 ```markdown
 Merge conflicts on <issue-ref>:
 
-Conflicted paths (from engine pause alert):
+**Root cause:** <verdict.root_cause verbatim>
+**Evidence:** <verdict.evidence verbatim>
+**Conflicted paths (from engine pause alert):**
 - <path 1>
 - <path 2>
 - ...
+**Suggested decision:** <verdict.recommended_action> (confidence: <verdict.confidence>)
 
 The branch cannot advance until the conflicts are resolved and the branch is pushed conflict-free. Resolve locally (e.g., `git checkout <branch>; git rebase origin/main; git mergetool; git push --force-with-lease`), then select `I've resolved it — advance the gate` to run `generacy cockpit advance --gate merge-conflicts <issue-ref>`.
 ```
@@ -554,10 +587,13 @@ Advance failed for <issue-ref>:
 
 Merge conflicts on <issue-ref>:
 
-Conflicted paths (from engine pause alert):
+**Root cause:** <verdict.root_cause verbatim>
+**Evidence:** <verdict.evidence verbatim>
+**Conflicted paths (from engine pause alert):**
 - <path 1>
 - <path 2>
 - ...
+**Suggested decision:** <verdict.recommended_action> (confidence: <verdict.confidence>)
 
 The branch cannot advance until the conflicts are resolved and the branch is pushed conflict-free. Resolve locally (e.g., `git checkout <branch>; git rebase origin/main; git mergetool; git push --force-with-lease`), then select `I've resolved it — advance the gate` to run `generacy cockpit advance --gate merge-conflicts <issue-ref>`.
 ```
@@ -688,9 +724,21 @@ Stable strings per dispatch table row, so `grep` recipes on `<action>` / `<outco
 | D.9a pr-feedback | `(no-op)` | `server-side-owned` |
 | D.9b children-complete | `(no-op)` | `server-side-owned` |
 | D.9c dependencies | `(no-op)` | `server-side-owned` |
+| D.9d phase:* | `(no-op)` | `engine-owned phase transition` |
 | D.11 merge-conflicts | `escalation-gate` | `advanced`, `advance failed: <description>`, `skip (session-local mute)`, `stop (exit)` |
 | D.10 unrecognized | `unrecognized-state` | `skip (session-local mute)`, `stop (exit)` |
 | mute-set hit | `(muted)` | `skip (session-local mute active)` |
+
+### L.4 — Status table policy
+
+The full epic status table (anchor: header row `| Issue | Phase | State |`) is emitted **only** at the following surfaces:
+
+1. **`phase-complete` dispatch** (D.8, § Gate contract G.5 presentation block).
+2. **`epic-complete` exit** (step 6, § Ledger L.6 run-summary paragraph).
+3. **Escalation-gate presentations** (D.6 G.4a, D.7 G.4b, D.10 G.4c, D.11 G.4d) — the operator needs orientation before an escalation decision.
+4. **Startup-sweep summary** (step 3) — session-start orientation is a real operator need; every resumed run starts with "where are things?". The sweep ends with exactly one full status table, then enters the main loop.
+
+Between phase boundaries, the ledger line is the sole record of a dispatch. No status table is emitted after D.1–D.5, D.9/D.9a/D.9b/D.9c/D.9d, or any actionable dispatch that is not one of the four surfaces above.
 
 ### L.6 — Run summary at exit
 
@@ -722,6 +770,7 @@ Counts are derived from the ledger file (or the in-memory count if the file is u
 5. **Analysis in subagents** whose contracts end with the subagent — the #390 pattern. All four analysis workloads (clarification drafting, review verdict, manual-validation summary, bounded fixer) live inside `subagent_type: "general-purpose"` hops with strict-JSON returns.
 6. **Autonomy *policy* out of scope.** Per-gate auto-approve and "full auto" mode are explicitly out of scope in v1. Every gate prompts; none auto-proceed.
 7. **Stream consumption is unfiltered.** Every non-empty line from `cockpit watch` is an event; content-based filters over the stream are prohibited. If the harness requires a match pattern to arm a reader, it matches any non-empty line, never a JSON field.
+8. **Ledger-only rows are cheap by contract.** A transition that dispatches to a ledger-only row (D.9, D.9a, D.9b, D.9c, D.9d) must add no tool calls beyond the ledger append and no prose. Playbook edits that add per-event output — a `cockpit status --json` re-check, an epic status table, a prose recap — on a ledger-only row are efficiency regressions.
 
 ## Examples
 

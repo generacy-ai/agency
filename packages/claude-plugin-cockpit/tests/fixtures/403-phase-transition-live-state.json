@@ -1,0 +1,10 @@
+{
+  "epic_ref": "christrudelpw/epic#42",
+  "issues": [
+    {
+      "issue_ref": "christrudelpw/epic#43",
+      "labels": ["phase:plan"],
+      "transition_class": "phase:plan"
+    }
+  ]
+}
