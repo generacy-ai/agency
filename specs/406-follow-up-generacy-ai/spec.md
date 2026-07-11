@@ -12,103 +12,52 @@ Migrate `auto.md` (and any cockpit playbook that invokes CLI verbs) from Bash + 
 
 ## Changes
 
-1. **Verb migration**: every `generacy cockpit status|context|queue|advance|resume|merge` invocation in auto.md's D-rows becomes the corresponding MCP tool call (`cockpit_status`, `cockpit_context`, `cockpit_queue`, `cockpit_advance`, `cockpit_resume`, `cockpit_merge`). Typed refs replace string refs (the PR-number-as-issue class becomes a schema error — do not re-wrap tool errors in CLI-style error handling).
-2. **Event loop**: replace the Monitor-runs-`cockpit watch` plumbing with a `cockpit_await_events` loop — defaults per #917 (`maxWaitMs=55000`, `coalesceWindowMs=3000`, `maxBatchSize=256` soft-cap): one batch → one dispatch round, events processed in stream order within the round. Cursor handling: persist the returned cursor in the run state; on `invalid-cursor` typed error → fail loud (caller bug); on a `resetFrom` reset signal → run the startup sweep (events may have been missed — the existing recovery mechanism, now with an explicit trigger).
+1. **Verb migration**: every `generacy cockpit status|context|queue|advance|resume|merge` invocation across the in-scope playbooks (see Change #6) becomes the corresponding MCP tool call (`cockpit_status`, `cockpit_context`, `cockpit_queue`, `cockpit_advance`, `cockpit_resume`, `cockpit_merge`). Typed refs replace string refs (the PR-number-as-issue class becomes a schema error — do not re-wrap tool errors in CLI-style error handling).
+2. **Event loop**: replace the Monitor-runs-`cockpit watch` plumbing (in `auto.md` only — `watch.md` retains the NDJSON stream) with a `cockpit_await_events` loop — defaults per #917 (`maxWaitMs=55000`, `coalesceWindowMs=3000`, `maxBatchSize=256` soft-cap): one batch → one dispatch round, events processed in stream order within the round. Cursor handling: the cursor is **in-memory only** for the current dispatch loop — no on-disk persistence, no ledger re-derivation. A new session starts cursor-less and runs the startup sweep (live state is authoritative and subsumes any missed-event replay). Session restart, `invalid-cursor` typed error (still fail loud — caller bug), `resetFrom` reset signal, and cursor expiry all converge on the same recovery path: run the startup sweep, then re-arm cursor-less from connect-time position.
 3. **Ledger-only rows stay cheap**: D.9/D.9d handling under #403's cost contract is unchanged — a batch containing only ledger-only events is one ledger append and nothing else.
 4. **Audit-suite migration** (the #398/#402 static suites): the CLI-invocation drift audit (playbook `--help` snapshot comparison) retires for migrated verbs and is replaced by a tool-contract audit — every `cockpit_*` tool call in the playbook names a tool and parameters that exist in the #917 schema exports. The § AskUserQuestion invocation contract (#402) is unaffected.
-5. **Decision point (clarify)** — tools absent at session start (old cluster, cluster-base#75 not yet deployed, registration failed): recommended posture is **fail loud at the startup sweep** with guidance ("cockpit MCP tools not available — upgrade the cluster / verify registration; see cluster-base#75"), NOT a silent CLI fallback — dual-path playbooks are the drift factory this suite exists to prevent. If a transition period is wanted, prefer publishing the migration as a plugin version bump adopted only by clusters that also carry the registration, over in-playbook branching.
+5. **Fail-loud on missing tools** (clarified): the migrated playbooks ship without CLI fallback or plugin-version-bump gating. At the top of the startup sweep, the session verifies the `cockpit_*` tools are present before dispatching anything; on absence, it writes a ledger line in the agency#403 shape (`startup · cockpit-mcp-tools-missing · abort · see cluster-base#75`), prints the guidance ("cockpit MCP tools not available — upgrade the cluster / verify registration; see cluster-base#75"), and ends the run. No AskUserQuestion prompt (the operator can do nothing in-session about missing registration — a prompt whose every option means "abort" is not a decision; the gate contract enumerates four question kinds, this would be a fifth). The ledger entry is a contract obligation, not a code-path detail — the sweep is playbook prose executed by the session, so FR-007's audit asserts the playbook text mandates the ledger line.
+6. **Migrated-playbook scope**: `auto.md` plus every cockpit playbook in this repo that invokes any of the six verbs; enumerated in plan.md by grepping for `generacy cockpit <verb>`. Expected set (subject to grep confirmation at plan time): `auto.md` (all six verbs + watch replacement), `clarify.md` (context, advance), `review.md` (context, advance), `merge.md` (merge), `queue.md` (queue), `status.md` (status). `watch.md` is explicitly **not** migrated — its verb isn't among the six, and the NDJSON stream remains the human/script surface per generacy#917's out-of-scope. Only `auto.md` swaps its Monitor/watch event plumbing for `cockpit_await_events`; the other in-scope playbooks are verb-migration only.
 
 ## Success criteria
 
-- A full epic run completes with zero Bash invocations of cockpit CLI verbs and zero `--help` consultations (generacy#917 SC-001).
-- Watch-derived dispatch rounds for a comparable 12-issue epic drop ≥2× versus the snappoll run-7 baseline (generacy#917 SC-003), measured from the session transcript.
-- A malformed ref is rejected at the tool layer with actionable guidance — no engine round-trip, no diagnosis turn.
-- Playbook-verification suite: no `generacy cockpit` CLI invocation remains in migrated playbooks; all `cockpit_*` tool references validate against the #917 schemas.
+- **SC-001**: A full epic run completes with zero Bash invocations of cockpit CLI verbs and zero `--help` consultations (generacy#917 SC-001).
+- **SC-003**: On a comparable 12-issue epic, the count of `cockpit_await_events` calls that returned ≥1 event is ≤ ~50 (a ≥2× reduction versus the snappoll run-7 baseline of ~100 watch-derived events, each consumed as a separate dispatch round; 233 API turns total, ~508k final-context tokens, 12-issue epic; recorded in generacy-ai/tetrad-development#92 `issuecomment-4948309408` dated 2026-07-11). Measured from the session transcript by counting non-empty `cockpit_await_events` returns and comparing against total events delivered.
+- **Ref-layer errors**: A malformed ref is rejected at the tool layer with actionable guidance — no engine round-trip, no diagnosis turn.
+- **SC-005 (playbook-verification suite)**: no `generacy cockpit` CLI invocation remains in migrated playbooks (see Change #6 for scope); all `cockpit_*` tool references validate against the #917 schemas; the startup-sweep tool-presence check and its ledger-line contract (see Change #5) are asserted by the audit.
 
 
 ## User Stories
 
-### US1: Migrated verb calls in auto.md
+### US1: [Primary User Story]
 
-**As a** cockpit auto.md operator (Claude Code driving an epic),
-**I want** every cockpit verb (`status`, `context`, `queue`, `advance`, `resume`, `merge`) to be invoked as an MCP tool call rather than a Bash `generacy cockpit <verb>` shell-out,
-**So that** typed refs are validated at the tool boundary, malformed refs (e.g. PR number passed as issue) become schema errors instead of engine round-trips, and the CLI syntax-negotiation / `--help` re-parse turn classes (#398/#906 lineage) disappear.
-
-**Acceptance Criteria**:
-- [ ] Every D-row in `auto.md` that previously ran `generacy cockpit <verb>` now names a `cockpit_*` MCP tool.
-- [ ] All `cockpit_*` tool references validate against the #917 schema exports (tool name exists; parameters match).
-- [ ] A malformed ref (wrong type, missing required field) surfaces the tool's typed error verbatim — no CLI-style re-wrapping, no diagnosis turn.
-- [ ] Zero `generacy cockpit` Bash invocations remain in migrated playbooks (verified by static audit).
-
-### US2: Long-poll event loop replaces Monitor/watch NDJSON
-
-**As a** cockpit auto.md operator,
-**I want** `cockpit_await_events` long-poll batching (defaults `maxWaitMs=55000`, `coalesceWindowMs=3000`, `maxBatchSize=256` soft-cap) to deliver events instead of Monitor streaming NDJSON from `cockpit watch`,
-**So that** one batch collapses to one dispatch round, event-delivery turn count drops ≥2× on a comparable 12-issue epic vs the snappoll run-7 baseline, and D.9/D.9d ledger-only batches remain a single ledger append (per #403's cost contract).
+**As a** [user type],
+**I want** [capability],
+**So that** [benefit].
 
 **Acceptance Criteria**:
-- [ ] auto.md's event dispatch loop is `cockpit_await_events` — no `Monitor` invocation of `cockpit watch`.
-- [ ] The returned cursor is persisted in run state and passed on the next call; events within a batch are processed in stream order.
-- [ ] `invalid-cursor` typed error → fail loud (caller bug); a `resetFrom` reset signal → invoke the existing startup sweep as the recovery path.
-- [ ] A batch containing only ledger-only events (D.9/D.9d rows) produces exactly one ledger append and nothing else.
-- [ ] Dispatch-round count on the reference 12-issue epic run drops ≥2× vs the snappoll run-7 baseline, measured from session transcript.
-
-### US3: Audit suite reflects the tool-contract world
-
-**As a** playbook maintainer,
-**I want** the #398/#402 static audit suites to check the new invariants — no `generacy cockpit` CLI verbs remain, every `cockpit_*` reference resolves in the #917 schema — instead of the retiring `--help` snapshot comparison for migrated verbs,
-**So that** contract drift is caught at review time and the § AskUserQuestion invocation contract (#402, unaffected) continues to hold.
-
-**Acceptance Criteria**:
-- [ ] The `--help` snapshot audit is removed for migrated verbs.
-- [ ] A new tool-contract audit fails the suite if any `cockpit_*` reference in the playbook names a tool or parameter absent from the #917 schema exports.
-- [ ] A regression test asserts zero `generacy cockpit` Bash invocations in migrated playbooks.
-- [ ] The § AskUserQuestion invocation contract audit (#402) continues to pass.
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | Replace every `generacy cockpit status\|context\|queue\|advance\|resume\|merge` Bash invocation in `auto.md` with the matching `cockpit_*` MCP tool call. | P1 | Typed refs — do not re-wrap tool errors in CLI-style error handling. |
-| FR-002 | Implement the `cockpit_await_events` long-poll loop as the sole event source for auto.md's D-row dispatcher, using #917 defaults (`maxWaitMs=55000`, `coalesceWindowMs=3000`, `maxBatchSize=256`). | P1 | One batch → one dispatch round; stream-order processing within the batch. |
-| FR-003 | Persist the `cockpit_await_events` cursor in run state; on `invalid-cursor` → fail loud; on `resetFrom` → invoke the existing startup sweep. | P1 | `resetFrom` is the explicit trigger for the recovery mechanism that already exists. |
-| FR-004 | Preserve the #403 cost contract for ledger-only rows (D.9/D.9d): a batch of ledger-only events yields one ledger append and nothing else. | P1 | No behavioural change here — asserted, not modified. |
-| FR-005 | Remove the `--help` snapshot audit for migrated verbs and replace it with a tool-contract audit that validates every `cockpit_*` reference against the #917 schema exports. | P1 | The § AskUserQuestion invocation contract (#402) is unaffected. |
-| FR-006 | On startup sweep, if the `cockpit_*` MCP tools are absent (old cluster, cluster-base#75 not deployed, registration failed), fail loud with actionable guidance pointing to cluster-base#75 — do not silently fall back to CLI. | P1 | Confirm-via-clarify. Dual-path playbooks are the drift factory this suite exists to prevent. |
-| FR-007 | The playbook-verification suite MUST assert zero `generacy cockpit` Bash invocations in migrated playbooks. | P1 | Static grep-style audit. |
+| FR-001 | [Description] | P1 | |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | Bash cockpit CLI invocations in a full epic run | 0 | Grep session transcript for `generacy cockpit <verb>` — mirrors generacy#917 SC-001. |
-| SC-002 | `--help` consultations for cockpit verbs during a run | 0 | Session transcript scan. |
-| SC-003 | Watch-derived dispatch rounds on the reference 12-issue epic | ≥2× reduction vs snappoll run-7 baseline | Count dispatch rounds in session transcript (generacy#917 SC-003). |
-| SC-004 | Malformed-ref handling | Rejected at the tool layer with actionable guidance; zero engine round-trips; zero diagnosis turns | Inject a PR number as an issue ref; observe typed schema error and no follow-up parse turn. |
-| SC-005 | Playbook-verification suite | Passes | Suite green: no `generacy cockpit` CLI invocation remains; every `cockpit_*` tool call validates against the #917 schema. |
-| SC-006 | § AskUserQuestion invocation contract audit (#402) | Passes | Continues to pass unchanged. |
+| SC-001 | [Metric] | [Target] | [How to measure] |
 
 ## Assumptions
 
-- generacy-ai/generacy#917 (cockpit MCP server) is shipped and its schema exports are the authoritative source for tool names and parameters.
-- generacy-ai/agency#403 (auto.md efficiency contract) is shipped; the per-event cost contract this spec preserves comes from that PR.
-- Runtime cutover is gated on generacy-ai/cluster-base#75 (registration of the MCP server in the cluster). The playbook change can be merged first; cutover follows registration.
-- The existing startup-sweep recovery mechanism (invoked today on Monitor restart) is the correct target for the `resetFrom` reset signal — no new recovery path is needed.
-- The §402 AskUserQuestion invocation contract is orthogonal to this migration and does not require changes.
+- [Assumption 1]
 
 ## Out of Scope
 
-- Any change to the cockpit MCP server itself (generacy#917 is treated as a fixed contract).
-- Changes to the #403 per-event cost contract for ledger-only rows — this spec asserts the contract, does not modify it.
-- Registering the MCP server in the cluster — that is cluster-base#75's job; this spec only fails loud when registration is absent.
-- A CLI fallback path when MCP tools are unavailable — explicitly rejected in the issue's decision point (dual-path playbooks are the drift factory this suite exists to prevent). A transition period, if wanted, is handled by plugin-version-bump rollout, not in-playbook branching.
-- Migration of any non-cockpit playbook or any non-migrated cockpit verb outside `status|context|queue|advance|resume|merge`.
-
-## Open Questions / Clarification Targets
-
-- **Fallback posture on missing tools** — issue Change #5 records the recommended posture (fail loud + guidance) but flags it for clarify. Confirm before `/speckit:plan`.
-- **Cursor persistence location** — issue says "persist the returned cursor in the run state" but doesn't specify the file/keyspace. Clarify during planning.
-- **Reference epic for SC-003 measurement** — the "snappoll run-7 baseline" needs a concrete transcript pointer to be verifiable.
+- [Exclusion 1]
 
 ---
 
