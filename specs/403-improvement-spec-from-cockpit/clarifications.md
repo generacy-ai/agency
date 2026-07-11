@@ -11,7 +11,7 @@
 - C: Add a single row that documents `phase:*` as a wildcard category alongside D.9's existing wildcard-flavored entries
 - D: `phase:*` transitions are engine-internal and should never surface on the watch stream at all — this issue's scope expands to filter them upstream (generacy-side)
 
-**Answer**: *Pending*
+**Answer**: A — one wildcard ledger-only row (D.9d, `phase:*` prefix-match). The phase set is workflow-dependent (speckit-feature and speckit-bugfix already differ), so B's enumeration breaks the day a workflow adds a phase — and the failure mode would be D.10 escalation gates firing on routine transitions. D is scope creep in the wrong direction: filtering upstream removes the liveness heartbeat from the watch stream and grazes the agency#394 never-filter invariant. A gives the open set one named row with explicit prefix-match semantics; D.10 remains the catch-all for genuinely unknown, non-phase labels.
 
 ### Q2: Scope of D.9 taxonomy pre-validation
 **Context**: The Assumptions section says: "The current D.9 taxonomy in `auto.md` correctly identifies all ledger-only transition classes; if any actionable transition is currently misclassified as D.9, it must be re-classified before this contract change lands." The pre-validation is described as a hard prerequisite (contract change would suppress prose/re-check for actionable rows that shouldn't have it), but the spec doesn't state who runs the audit or where its output lands. This affects whether tasks.md includes a validation task and whether FR-001 has an implicit blocker.
@@ -22,7 +22,7 @@
 - C: A separate prerequisite issue filed before this one merges — this issue does not land until that issue closes
 - D: No audit needed — the current D.9/D.9a/D.9b/D.9c rows are known-correct by construction; the assumption is a caution, not a task
 
-**Answer**: *Pending*
+**Answer**: A — a blocking task in this issue's tasks.md, findings resolved in the same PR. The audit is design-time reading with real consequences (a misclassified actionable row would be silently muted by this very contract change), so it needs teeth and a deliverable — an audit table in the PR that review can check. B's plan.md note decays into "we looked, trust us"; C over-processes an afternoon's work into a dependency issue; D waves off a hazard the spec itself calls a hard prerequisite.
 
 ### Q3: Failure-alert evidence fetch boundary (FR-003)
 **Context**: FR-003 caps the parent at "exactly one CLI call to fetch failure-alert evidence"; any further work is subagent-only. But failure alerts commonly reference *external* evidence — the alert comment on the issue links to a workflow-run URL, whose logs are pulled with a second CLI call (`gh run view --log`). Whether that second fetch is parent work ("still evidence") or subagent work ("investigation") determines what the diagnosis subagent is handed at spawn time (bare alert body vs. alert body + primary log).
@@ -33,7 +33,7 @@
 - C: Parent may follow one level of links (URLs mentioned inside the alert body) but not further; subagent handles multi-hop investigation
 - D: Parent fetches whatever `generacy cockpit context <issue>` returns as the failure bundle (one CLI verb), and everything else is subagent — no ad-hoc `gh` chains in parent
 
-**Answer**: *Pending*
+**Answer**: D — the parent's envelope is exactly what `generacy cockpit context <issue>` returns; no ad-hoc gh chains, everything else is subagent work. This is the only option that is a *contract* rather than a judgment call — A/B/C all require the parent to reason about link topology, which is precisely the in-parent analysis the FR exists to remove. It also puts bundle-completeness pressure where it belongs: if diagnosis routinely needs the linked CI log, the engine's failure bundle should include it (the generacy#865 alert-content lineage), fixed once server-side instead of re-decided per session. The subagent has tools and fetches whatever else it needs.
 
 ### Q4: Diagnosis subagent verdict → escalation gate
 **Context**: FR-003 specifies the subagent returns `{root_cause, evidence, recommended_action, confidence}` and "the parent presents the escalation gate directly from that verdict; no in-parent re-analysis." The existing D.7 gate offers `Requeue / Skip / Stop`; D.11 offers `I've resolved it / Skip / Stop`. The verdict fields' types and how they map to the operator-facing #400 five-element gate display are not specified — critical for both the subagent's prompt contract and the gate's presentation code.
@@ -44,7 +44,7 @@
 - C: `recommended_action` is free-form prose that appears in the presentation block; the operator interprets it; no auto-suggested option in the AskUserQuestion prompt
 - D: The subagent returns structured findings only (`root_cause`, `evidence`) and the parent's gate presenter selects the option to suggest based on rules over those fields; `recommended_action` and `confidence` are subagent hints only, not surfaced verbatim to the operator
 
-**Answer**: *Pending*
+**Answer**: A — `recommended_action` is one of the exact gate option strings, rendered as a "Suggested decision" line; `confidence` is low/medium/high alongside it; `root_cause`/`evidence` fill the context and evidence rows. Exact-string recommendations keep the parent at zero re-analysis (it maps the verdict straight onto the #400-style presentation, recommended option first) while the operator keeps the full option set. B's numeric confidence is false precision from an LLM judge; C loses the one-decision gate property; D quietly reintroduces parent-side inference — the thing FR-003 forbids — dressed as presentation rules.
 
 ### Q5: Startup sweep vs. "no status tables between phase boundaries"
 **Context**: FR-002 restricts the full epic status table to `phase-complete`, `epic-complete`, and escalation-gate presentations. The startup sweep (auto.md § 3) dispatches every D.1–D.9 issue one-by-one at session start, before any `phase-complete` event fires. The current run emits a status table when the sweep finishes; under FR-002 that table would be forbidden, leaving no session-start orientation for the operator. The Explicitly-Unchanged section preserves "startup sweep" behavior but does not specify whether the post-sweep table is part of that.
@@ -55,4 +55,4 @@
 - C: Yes, but the sweep emits a *reduced* one-line summary (e.g., "swept N issues; M actionable dispatched") — not the full status table
 - D: Only when the sweep produces zero actionable dispatches — otherwise the last dispatch's ledger line is the sweep summary and no separate table is emitted
 
-**Answer**: *Pending*
+**Answer**: B — the sweep ends with exactly one full status table, added to FR-002's allowed list. Session-start orientation is a real operator need (every resumed run starts with "where are things?"), and the cost is one table per session — the problem being fixed was ~30 tables per run, not this one. A sends the operator to file archaeology at the moment they most need a picture; C's one-liner spends a turn to convey almost nothing.
