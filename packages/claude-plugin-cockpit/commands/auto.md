@@ -369,7 +369,7 @@ _provenance: <citation>_
 
 Title comes from the batch comment header verbatim (`ParsedQuestion.title`); when the header lacks a title (`### Q<n>` without colon-title), substitute `q.question.split('\n')[0].slice(0, 80)` — the canonical path uses the header title verbatim; truncation is defense-in-depth. Free-form questions render `**Options:** (free-form — no options posted)` verbatim (never drop the line — the five-element structure is a fixed shape). Context, question, and options come from parsing `clarificationComment.body` (D.1 step 1); recommendation, why, and provenance come from the drafter (SB.1 return, D.1 step 2).
 
-**Gate invocation**: **Exactly one** `AskUserQuestion` call per batch in the same response (never `ceil(N/4)`, never per-question). Parameters:
+**Gate invocation**: Per § AskUserQuestion invocation contract — one `AskUserQuestion` call per batch (single-item `questions` array); when multiple clarification gates fuse into one response, fire one call per gate. Parameters:
 - **Question text**: `Post all <N> drafted answers to <issue-ref>?`
 - **Header**: `Clarify` (≤ 12 chars)
 - **multiSelect**: `false`
@@ -454,7 +454,7 @@ Suggested decision: approve
 
 **Retained rule** (canonical inline occurrence is in D.2 prose — the raw-JSON-suppression clause carried forward from #388 / #390): the subagent's structured return is parsed and rendered as a table; it is never restated verbatim in the response body.
 
-**Gate invocation**: One `AskUserQuestion` call in the same response, with:
+**Gate invocation**: Per § AskUserQuestion invocation contract — one call per verdict gate (single-item `questions` array); when multiple review gates fuse into one response, fire one call per gate. Parameters:
 - **Question text**: `Verdict for <issue-ref> (<gate-name>)?`
 - **Header**: `Verdict` (≤ 12 chars)
 - **Options** (exactly three, discrete, in this order):
@@ -490,7 +490,7 @@ Manual validation checklist for <issue-ref> (PR <pr-number>):
 - ...
 ```
 
-**Gate invocation**: One `AskUserQuestion` call in the same response, with:
+**Gate invocation**: Per § AskUserQuestion invocation contract — one call per manual-validation gate (single-item `questions` array); when multiple manual-validation gates fuse into one response, fire one call per gate. Parameters:
 - **Question text**: `Have you manually validated <issue-ref>?`
 - **Header**: `Validated?` (≤ 12 chars)
 - **Options** (exactly two, discrete):
@@ -572,7 +572,7 @@ Observed: <raw state from cockpit status --json>
 Streamed event: <original transition line>
 ```
 
-**Gate invocation**: One `AskUserQuestion` call in the same response, with:
+**Gate invocation**: Per § AskUserQuestion invocation contract — one call per escalation gate (single-item `questions` array); when multiple escalation gates fuse into one response, fire one call per gate. The reference applies uniformly to each of the four subtypes G.4a/G.4b/G.4c/G.4d listed in the Options table below. Parameters:
 - **Question text**: `How to proceed on <issue-ref>?`
 - **Header**: `Escalate` (≤ 12 chars)
 - **Options** (subtype-specific, in the listed order):
@@ -610,7 +610,7 @@ Issues to queue:
 ...
 ```
 
-**Gate invocation**: One `AskUserQuestion` call in the same response, with:
+**Gate invocation**: Per § AskUserQuestion invocation contract — one call per phase-queue gate (single-item `questions` array); phase-queue gates rarely fuse but the fanout rule applies uniformly if they do. Parameters:
 - **Question text**: `Queue P<next> (<N> issues)?`
 - **Header**: `QueueP<next>` (≤ 12 chars)
 - **Options** (exactly two, discrete):
@@ -619,6 +619,20 @@ Issues to queue:
 - **multiSelect**: `false`
 
 On `Queue`, the CLI verb is called with `--yes` — the gate itself is the confirmation.
+
+## AskUserQuestion invocation contract
+
+Every gate contract G.1–G.5 above emits an `AskUserQuestion` call. This section states the three general rules that govern every such invocation, so each gate contract can reference them rather than restating them inline. Every future gate G.6+ MUST reference this section as well.
+
+**Rule 1 — Default gate shape.** `AskUserQuestion.questions` is a **single-item array** (one call per gate/batch). Each of G.1–G.5 emits exactly one item in its `questions` array — this is the load-bearing structural default. The array's length is the number of `AskUserQuestion.question` objects the caller wants answered in a single harness call; the default is one per gate.
+
+**Rule 2 — Harness ceiling.** `AskUserQuestion.questions` array MUST NOT exceed **4 items** per call. This is a hard input-validation bound enforced by the Claude Code SDK harness: exceeding it returns the harness error `InputValidationError: Too big: expected array to have <=4 items (questions)` and forces a retry round-trip that costs correctness signal (duplicated presentation block in the transcript, laggy last item as it fires in a subsequent call). The playbook cannot change this bound — it is a property of the harness, not of the playbook — so the playbook must never write shape that violates it.
+
+**Rule 3 — Multi-gate fanout.** When multiple gates fuse into one assistant response (five issues hitting a `waiting-for:*` label simultaneously, or a phase-boundary co-fire of verdict gates, or an escalation-gate co-fire), fire **multiple `AskUserQuestion` calls** in that one response — one call per gate — never a single fused call whose `questions` array carries every gate's item concatenated. The fanout dimension is the *number of `AskUserQuestion` calls*, not the length of a single call's `questions` array.
+
+The three rules compose transitively: default 1 item per call (Rule 1) + ≤4 items per call (Rule 2) → the fanout mechanism is per-call fanout (Rule 3), and each call's `questions` array stays at 1 item per gate. The ceiling is a property of each individual call, not of the response as a whole; a response containing five `AskUserQuestion` calls each with `questions.length === 1` satisfies all three rules simultaneously.
+
+Every gate contract G.1–G.5 in the preceding `## Gate contract` section carries a one-sentence `Per § AskUserQuestion invocation contract — …` reference in its `**Gate invocation**` paragraph. When a future gate G.6+ is added, its gate contract MUST also reference this section — the reference is the discovery path a future author reading only one gate contract follows to find the ceiling and the fanout rule.
 
 ## Ledger
 
