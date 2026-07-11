@@ -22,11 +22,24 @@ auto.md's D.1/G.1 (post-#400) specifies one batch-approval question **per issue'
 
 ## Fix
 
-State the invocation contract explicitly in D.1/G.1 (and clarify.md if it fuses multi-issue batches): **one `AskUserQuestion` call per issue's clarification batch (one question per call), multiple calls in the same response when several issues gate simultaneously; a single call must never carry more than 4 questions.** Add the constraint to the playbook-verification suite (S6 pattern): scan command playbooks for AskUserQuestion contracts and assert they state the ≤4-questions-per-call bound wherever multi-gate fusion is described.
+Add a new top-level **"§ AskUserQuestion invocation contract"** section to `auto.md` stating the general rules governing every gate:
+
+- Default gate shape: a single-item `questions` array (one call per gate/batch).
+- Harness ceiling: `AskUserQuestion.questions` array MUST NOT exceed 4 items per call.
+- Multi-gate fanout: when several gates fuse into one response, fire multiple `AskUserQuestion` calls in that response (one per gate), never a single fused call.
+
+Shorten `auto.md` G.1 to reference this contract section (removing the inline "Exactly one … per batch / never `ceil(N/4)` / never per-question" prose). G.2–G.5 gate contracts similarly reference it.
+
+Scope: `auto.md` only. `clarify.md` handles one issue per invocation and is out of scope (it never fuses across issues). `review.md`, `merge.md`, `queue.md`, `status.md`, `watch.md` are out of scope (their single-question gates make the bound vacuous).
 
 ## Regression test
 
-Playbook audit fixture: a D.1 section describing multi-issue fusion without the per-call bound → flagged; current auto.md text (post-fix) → passes.
+Add `402-1` static-drift audit to `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts`, following the `398-1` pattern (issue-numbered `describe("402 — …")` block):
+
+- **Positive check**: current `auto.md` MUST contain the top-level "AskUserQuestion invocation contract" section, that section MUST contain the ≤4-items-per-call bound, and each gate contract (G.1–G.5) MUST reference it.
+- **Negative fixture**: a synthetic `402-drift-auto.md` variant missing the contract section (or missing the reference from a gate) MUST be flagged.
+
+Structural assertion over prose-sniffing: check for the section, the bound, and the cross-references — do not regex the fusion vocabulary. (This avoids the dialect-pinning failure mode where content-sniffing false-negatives on unanticipated wording.)
 
 
 ## User Stories
