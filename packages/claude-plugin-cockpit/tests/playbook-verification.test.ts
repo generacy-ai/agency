@@ -748,3 +748,367 @@ describe("400 — clarification batch parser + directive grammar", () => {
 const _typeGuardParsedBatch = (b: ParsedBatch) => b.questions.length;
 void _typeGuardParsedBatch;
 
+// -----------------------------------------------------------------------------
+// 403 — auto.md ledger-only contract + phase:* row + subagent diagnosis
+// + invariants cost-contract
+//
+// The runtime is playbook prose interpreted by the model at slash-command
+// time. The 403 fix locks in five contracts:
+//   1. D.9-family ledger-only rows are cheap by contract (no re-check, no
+//      status table, no prose recap).
+//   2. A new D.9d row with `phase:*` prefix-match routes routine workflow-
+//      phase transitions to ledger-line-only, preventing D.10 escalation.
+//   3. D.7/D.11 diagnosis moves to a subagent whose return is a strict
+//      JSON Verdict `{root_cause, evidence, recommended_action, confidence}`;
+//      `recommended_action` is constrained to the gate's option strings.
+//   4. Full epic status table emission is restricted to four permitted
+//      surfaces (phase-complete, epic-complete, escalation gates, startup
+//      sweep).
+//   5. The § Invariants surface grows a §8 cost-contract line that survives
+//      rewrites.
+//
+// The assertions grep auto.md for positive/negative anchors and exercise a
+// tiny `parseVerdict` reference against fixture JSONs (matching the shape
+// of the 396 `dispatchClassifier` inline reference).
+// -----------------------------------------------------------------------------
+
+type Verdict = {
+  root_cause: string;
+  evidence: string;
+  recommended_action: string;
+  confidence: "low" | "medium" | "high";
+};
+
+type ValidationError = { kind: "validation-error"; reason: string };
+
+const D7_OPTIONS = [
+  "Requeue (cockpit resume)",
+  "Skip (session-local mute)",
+  "Stop (exit auto)",
+] as const;
+
+const D11_VERDICT_OPTIONS = [
+  "I've resolved it — advance the gate",
+  "Skip (session-local mute)",
+  "Stop (exit auto)",
+] as const;
+
+function parseVerdict(
+  input: string,
+  gateType: "D.7" | "D.11",
+): Verdict | ValidationError {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(input);
+  } catch (e) {
+    return { kind: "validation-error", reason: `not valid JSON: ${(e as Error).message}` };
+  }
+  if (typeof raw !== "object" || raw === null) {
+    return { kind: "validation-error", reason: "expected a JSON object" };
+  }
+  const obj = raw as Record<string, unknown>;
+  if ("error" in obj) {
+    return { kind: "validation-error", reason: `subagent returned error: ${String(obj.error)}` };
+  }
+  for (const field of ["root_cause", "evidence", "recommended_action", "confidence"]) {
+    if (typeof obj[field] !== "string" || (obj[field] as string).length === 0) {
+      return { kind: "validation-error", reason: `missing or non-string field: ${field}` };
+    }
+  }
+  const confidence = obj.confidence as string;
+  if (confidence !== "low" && confidence !== "medium" && confidence !== "high") {
+    return {
+      kind: "validation-error",
+      reason: `confidence must be one of "low"|"medium"|"high"; got ${JSON.stringify(confidence)}`,
+    };
+  }
+  const options: readonly string[] = gateType === "D.7" ? D7_OPTIONS : D11_VERDICT_OPTIONS;
+  const action = obj.recommended_action as string;
+  if (!options.includes(action)) {
+    return {
+      kind: "validation-error",
+      reason: `recommended_action for ${gateType} must be one of ${JSON.stringify(options)}; got ${JSON.stringify(action)}`,
+    };
+  }
+  return {
+    root_cause: obj.root_cause as string,
+    evidence: obj.evidence as string,
+    recommended_action: action,
+    confidence: confidence as Verdict["confidence"],
+  };
+}
+
+function extractSubheadingBlock(md: string, header: string): string {
+  const escaped = escapeRegExp(header);
+  const re = new RegExp(`^### ${escaped}\\s*$`, "m");
+  const m = re.exec(md);
+  if (!m) throw new Error(`subheading '${header}' not found in auto.md`);
+  const start = m.index;
+  const rest = md.slice(start + m[0].length);
+  const nextHeader = rest.search(/^### /m);
+  const end = nextHeader === -1 ? rest.length : nextHeader;
+  return rest.slice(0, end);
+}
+
+function extractInvariantsSection(md: string): string {
+  const start = md.indexOf("\n## Invariants\n");
+  if (start === -1) throw new Error("§ Invariants heading not found in auto.md");
+  const rest = md.slice(start + 1);
+  const nextH2 = rest.indexOf("\n## ", 1);
+  return nextH2 === -1 ? rest : rest.slice(0, nextH2);
+}
+
+function extractH3Sections(md: string): Array<{ heading: string; body: string }> {
+  const sections: Array<{ heading: string; body: string }> = [];
+  const lines = md.split("\n");
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i]!;
+    if (line.startsWith("### ")) {
+      const heading = line.slice(4).trim();
+      const bodyLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i]!.startsWith("### ") && !lines[i]!.startsWith("## ")) {
+        bodyLines.push(lines[i]!);
+        i++;
+      }
+      sections.push({ heading, body: bodyLines.join("\n") });
+    } else {
+      i++;
+    }
+  }
+  return sections;
+}
+
+function phaseAwareDispatchClassifier(issue: FixtureIssue, ctx: DispatchContext): void {
+  const token = issue.transition_class;
+  if (token === "waiting-for:merge-conflicts") {
+    d11Dispatch(issue, ctx);
+    return;
+  }
+  // D.9d prefix-match branch — added by #403.
+  if (token.startsWith("phase:")) {
+    ctx.ledger(`${issue.issue_ref} · ${token} · (no-op) · engine-owned phase transition`);
+    return;
+  }
+  if (token.startsWith("waiting-for:") && !NAMED_DISPATCH_TOKENS.has(token)) {
+    const presentation = [
+      `Unrecognized state on ${issue.issue_ref}:`,
+      "",
+      `Observed: ${token}`,
+    ].join("\n");
+    ctx.presentationBlocks.push(presentation);
+    ctx.askUserQuestion({
+      question: `How to proceed on ${issue.issue_ref}?`,
+      header: "Escalate",
+      options: D10_OPTIONS,
+      multiSelect: false,
+    });
+    return;
+  }
+}
+
+describe("403 — auto.md ledger-only contract + phase:* row + subagent diagnosis + invariants cost-contract", () => {
+  it("403-1: D.9 family subheadings state the no-re-check/no-prose contract verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const headers = [
+      "D.9 — `waiting-for:address-pr-feedback` → ledger only",
+      "D.9a — `waiting-for:pr-feedback` → ledger only",
+      "D.9b — `waiting-for:children-complete` → ledger only",
+      "D.9c — `waiting-for:dependencies` → ledger only",
+    ];
+    for (const header of headers) {
+      const block = extractSubheadingBlock(autoMd, header);
+      expect(
+        block,
+        `subheading '${header}' must contain 'no status table, no prose recap'`,
+      ).toContain("no status table, no prose recap");
+    }
+  });
+
+  it("403-2: new D.9d subheading exists with `phase:*` prefix-match, ledger-line-only dispatch, engine-owned phase transition outcome", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.9d — `phase:*` → ledger only");
+    expect(block).toContain("Prefix-match");
+    expect(block).toContain(
+      "any transition class whose token begins with the literal `phase:` prefix matches this row",
+    );
+    expect(block).toContain("Ledger line only.");
+    expect(block).toContain("no status table, no prose recap");
+    expect(block).toContain("engine-owned phase transition");
+    expect(block).toContain("Never surface a D.10 escalation gate on a `phase:*` token");
+  });
+
+  it("403-3: reference dispatch classifier prefix-matches `phase:*` to D.9d, not D.10 (fixtures: phase:plan and phase:someday)", () => {
+    for (const fixtureName of [
+      "403-phase-transition-live-state.json",
+      "403-phase-someday-live-state.json",
+    ]) {
+      const fixture = JSON.parse(
+        readFileSync(resolve(FIXTURES, fixtureName), "utf-8"),
+      ) as FixtureLiveState;
+
+      const askUserQuestion = vi.fn<(call: AskUserQuestionCall) => string>();
+      const ledger = vi.fn<(line: string) => void>();
+      const presentationBlocks: string[] = [];
+      const ctx: DispatchContext = { askUserQuestion, ledger, presentationBlocks };
+
+      const issue = fixture.issues[0]!;
+      expect(issue.transition_class.startsWith("phase:")).toBe(true);
+
+      phaseAwareDispatchClassifier(issue, ctx);
+
+      // D.9d ledger-line-only: no escalation gate, no presentation block.
+      expect(
+        askUserQuestion,
+        `phase:* fixture ${fixtureName} must NOT fire an AskUserQuestion (no D.10 escalation)`,
+      ).not.toHaveBeenCalled();
+      expect(presentationBlocks).toEqual([]);
+
+      // Exactly one ledger line, with the engine-owned phase-transition outcome.
+      expect(ledger).toHaveBeenCalledTimes(1);
+      const ledgerLine = ledger.mock.calls[0]![0];
+      expect(ledgerLine).toContain(issue.issue_ref);
+      expect(ledgerLine).toContain(issue.transition_class);
+      expect(ledgerLine).toContain("(no-op)");
+      expect(ledgerLine).toContain("engine-owned phase transition");
+    }
+  });
+
+  it("403-4: D.7 and D.11 state `generacy cockpit context <issue>` as sole evidence-fetch verb and dispatch further work to a subagent (no gh issue view --comments)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const d7Block = extractSubheadingBlock(
+      autoMd,
+      "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)",
+    );
+    const d11Block = extractSubheadingBlock(
+      autoMd,
+      "D.11 — `waiting-for:merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+    );
+
+    // Positive: sole-verb contract.
+    expect(d7Block).toContain("generacy cockpit context <issue>");
+    expect(d11Block).toContain("generacy cockpit context <issue>");
+
+    // Negative: no ad-hoc `gh issue view` INVOCATION in the step-1 prose.
+    // The prose is allowed (and required) to name `gh issue view --comments`
+    // as an explicit anti-pattern in a negation clause; the load-bearing
+    // check is that no `Use \`gh issue view ...\`` or backticked invocation
+    // shape survives. The invocation form has a positional issue-ref token
+    // (`gh issue view <issue-ref>` or `gh issue view --comments <issue-ref>`)
+    // whereas the negation form does not.
+    const ghInvocationPattern = /`gh issue view[^`]*<issue-ref>[^`]*`/;
+    expect(
+      d7Block,
+      `D.7 step-1 prose must not carry a gh issue view invocation with <issue-ref>`,
+    ).not.toMatch(ghInvocationPattern);
+    expect(
+      d11Block,
+      `D.11 step-1 prose must not carry a gh issue view invocation with <issue-ref>`,
+    ).not.toMatch(ghInvocationPattern);
+    // Also assert no `Use \`gh issue view` positive-instruction verb survives.
+    expect(d7Block).not.toMatch(/Use\s+`gh issue view/);
+    expect(d11Block).not.toMatch(/Use\s+`gh issue view/);
+
+    // Subagent return-schema directive present verbatim in each.
+    const schema =
+      '{root_cause: string, evidence: string, recommended_action: string, confidence: "low"|"medium"|"high"}';
+    expect(d7Block).toContain(schema);
+    expect(d11Block).toContain(schema);
+  });
+
+  it("403-5: parseVerdict reference type shape + option-set constraint (fixtures: D.7 valid, D.11 valid, invalid-action)", () => {
+    const d7Raw = readFileSync(resolve(FIXTURES, "403-d7-verdict-requeue.json"), "utf-8");
+    const d11Raw = readFileSync(resolve(FIXTURES, "403-d11-verdict-resolved.json"), "utf-8");
+    const invalidRaw = readFileSync(resolve(FIXTURES, "403-verdict-invalid-action.json"), "utf-8");
+
+    const d7Result = parseVerdict(d7Raw, "D.7");
+    expect(
+      "kind" in d7Result && d7Result.kind === "validation-error",
+      `D.7 valid fixture must parse cleanly; got: ${JSON.stringify(d7Result)}`,
+    ).toBe(false);
+    if (!("kind" in d7Result)) {
+      expect(d7Result.recommended_action).toBe("Requeue (cockpit resume)");
+      expect(d7Result.confidence).toBe("high");
+    }
+
+    const d11Result = parseVerdict(d11Raw, "D.11");
+    expect(
+      "kind" in d11Result && d11Result.kind === "validation-error",
+      `D.11 valid fixture must parse cleanly; got: ${JSON.stringify(d11Result)}`,
+    ).toBe(false);
+    if (!("kind" in d11Result)) {
+      expect(d11Result.recommended_action).toBe("I've resolved it — advance the gate");
+    }
+
+    // Invalid action fixture — must fail for both D.7 and D.11 gates.
+    const invalidD7 = parseVerdict(invalidRaw, "D.7");
+    expect("kind" in invalidD7 && invalidD7.kind === "validation-error").toBe(true);
+    if ("kind" in invalidD7) {
+      expect(invalidD7.reason).toContain("Merge it");
+    }
+    const invalidD11 = parseVerdict(invalidRaw, "D.11");
+    expect("kind" in invalidD11 && invalidD11.kind === "validation-error").toBe(true);
+    if ("kind" in invalidD11) {
+      expect(invalidD11.reason).toContain("Merge it");
+    }
+  });
+
+  it("403-6: § Invariants section contains exactly eight numbered items; §8's opening substring is the cost-contract line", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const invariants = extractInvariantsSection(autoMd);
+
+    const numberedItems = invariants.match(/^\d+\.\s+\*\*/gm) ?? [];
+    expect(
+      numberedItems.length,
+      `§ Invariants must have exactly 8 numbered items; observed: ${numberedItems.length}\n${numberedItems.join("\n")}`,
+    ).toBe(8);
+
+    const item8Match = invariants.match(/^8\.\s+\*\*[^*]+\*\*\s+([^\n]+)/m);
+    expect(item8Match, "§ Invariants must have a numbered §8 with the cost-contract line").toBeTruthy();
+    if (item8Match) {
+      const item8Body = item8Match[1]!;
+      expect(item8Body).toContain(
+        "A transition that dispatches to a ledger-only row (D.9, D.9a, D.9b, D.9c, D.9d) must add no tool calls beyond the ledger append and no prose.",
+      );
+    }
+  });
+
+  it("403-7: full epic status table anchor appears only at permitted surfaces (phase-complete, epic-complete, escalation gates, startup-sweep summary)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const anchor = "| Issue | Phase | State |";
+
+    // Permitted surface heading patterns:
+    //  - G.4 (all subtypes: G.4 heading covers a-d)
+    //  - G.5 (phase-queue confirmation)
+    //  - L.4 (status table policy — the policy statement itself)
+    //  - L.6 (run summary at exit)
+    //  - Startup sweep: currently the "startup sweep" prose lives in step 3
+    //    of the Instructions section under a numbered list item, not a
+    //    dedicated ### heading. If the anchor appears in a section not on
+    //    the permitted list, fail with the section heading.
+    const permittedHeadingPrefixes = [
+      "G.4",
+      "G.5",
+      "L.4",
+      "L.6",
+    ];
+
+    const sections = extractH3Sections(autoMd);
+    const offenders: string[] = [];
+    for (const section of sections) {
+      if (!section.body.includes(anchor)) continue;
+      const isPermitted = permittedHeadingPrefixes.some((prefix) =>
+        section.heading.startsWith(prefix),
+      );
+      if (!isPermitted) {
+        offenders.push(section.heading);
+      }
+    }
+    expect(
+      offenders,
+      `full epic status table anchor appeared in non-permitted sections: ${offenders.join(", ")}`,
+    ).toEqual([]);
+  });
+});
+

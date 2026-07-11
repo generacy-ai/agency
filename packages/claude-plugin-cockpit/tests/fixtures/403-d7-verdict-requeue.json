@@ -1,0 +1,6 @@
+{
+  "root_cause": "The CI runner exited 137 after 90s (OOM). The failing job's memory profile indicates a transient allocation spike unrelated to the branch's changes.",
+  "evidence": "Runner reported: process exited 137 after 90s (OOM). Retry may succeed on a fresh runner. Prior runs of this same commit passed on identical runner hardware.",
+  "recommended_action": "Requeue (cockpit resume)",
+  "confidence": "high"
+}
