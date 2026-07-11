@@ -744,6 +744,185 @@ describe("400 — clarification batch parser + directive grammar", () => {
   });
 });
 
+// -----------------------------------------------------------------------------
+// 402 — playbook AskUserQuestion invocation contract audit
+//
+// Structural check that commands/auto.md carries the load-bearing architecture:
+// top-level `## AskUserQuestion invocation contract` section (Q1=B/Q4=C), ≤4
+// harness ceiling stated in that section's body (finding #57 root cause),
+// and cross-references from every gate contract G.1-G.5 (Q3=C). Prose-sniffing
+// (fusion-vocabulary regex) is explicitly rejected; the audit is structural.
+//
+// 402-1: positive drift audit on current auto.md
+// 402-2: negative-fixture regression against 402-drift-auto.md
+// -----------------------------------------------------------------------------
+
+const FIXTURE_402_DRIFT_AUTO = resolve(FIXTURES, "402-drift-auto.md");
+
+type AuditSection = {
+  depth: number;
+  header: string;
+  startLine: number;
+  endLine: number;
+  body: string;
+};
+
+type AuditReport = {
+  sectionExists: boolean;
+  boundPresent: boolean;
+  gateReferences: Array<{ gate: string; hasReference: boolean }>;
+};
+
+function parseSections(content: string): AuditSection[] {
+  const lines = content.split("\n");
+  type Open = { depth: number; header: string; startLine: number; bodyStart: number };
+  const sections: AuditSection[] = [];
+  const open: Open[] = [];
+
+  const closeUntil = (depth: number, endLine: number) => {
+    while (open.length > 0 && open[open.length - 1]!.depth >= depth) {
+      const o = open.pop()!;
+      const body = lines.slice(o.bodyStart, endLine).join("\n");
+      sections.push({
+        depth: o.depth,
+        header: o.header,
+        startLine: o.startLine,
+        endLine,
+        body,
+      });
+    }
+  };
+
+  let inFence = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (line.trim().startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    const match = /^(#{1,6})\s+(.*)$/.exec(line);
+    if (!match) continue;
+    const depth = match[1]!.length;
+    if (depth < 2 || depth > 3) continue;
+    closeUntil(depth, i);
+    open.push({
+      depth,
+      header: line,
+      startLine: i + 1,
+      bodyStart: i + 1,
+    });
+  }
+  closeUntil(0, lines.length);
+  return sections;
+}
+
+function findContractSection(sections: AuditSection[]): AuditSection | null {
+  for (const s of sections) {
+    if (s.depth !== 2) continue;
+    if (/askuserquestion invocation contract/i.test(s.header)) return s;
+  }
+  return null;
+}
+
+function findGateSections(sections: AuditSection[]): AuditSection[] {
+  return sections.filter(
+    (s) => s.depth === 3 && /^###\s+G\.\d(a|b|c|d)?\s+—\s+/.test(s.header),
+  );
+}
+
+function extractGateName(header: string): string {
+  const m = /^###\s+(G\.\d(?:a|b|c|d)?)\s+—/.exec(header);
+  return m ? m[1]! : header;
+}
+
+function boundPresent(body: string): boolean {
+  if (/≤\s?4\s?items?\s?per\s?call/i.test(body)) return true;
+  const lines = body.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const next = lines[i + 1] ?? "";
+    if (line.includes("4 items") && line.includes("per call")) return true;
+    if (line.includes("4 items") && next.includes("per call")) return true;
+    if (line.includes("per call") && next.includes("4 items")) return true;
+  }
+  return false;
+}
+
+const EXPECTED_GATES = ["G.1", "G.2", "G.3", "G.4a", "G.4b", "G.4c", "G.4d", "G.5"] as const;
+
+function auditContract(filePath: string): AuditReport {
+  const content = readFileSync(filePath, "utf-8");
+  const sections = parseSections(content);
+  const contract = findContractSection(sections);
+  if (!contract) {
+    return {
+      sectionExists: false,
+      boundPresent: false,
+      gateReferences: EXPECTED_GATES.map((gate) => ({ gate, hasReference: false })),
+    };
+  }
+  const gateSections = findGateSections(sections);
+  const observedGateNames = new Set(gateSections.map((s) => extractGateName(s.header)));
+  const referenceByGate = new Map<string, boolean>();
+  for (const gate of gateSections) {
+    const name = extractGateName(gate.header);
+    const has = gate.body.includes("AskUserQuestion invocation contract");
+    referenceByGate.set(name, (referenceByGate.get(name) ?? false) || has);
+  }
+  // G.4a-d references may be carried by the shared G.4 section body (placement 1
+  // per contracts/gate-contract-references.md); propagate G.4's reference to any
+  // G.4<sub> subtypes present.
+  const g4Ref = referenceByGate.get("G.4") ?? false;
+  const gateReferences = EXPECTED_GATES.map((gate) => {
+    let hasReference = referenceByGate.get(gate) ?? false;
+    if (!hasReference && /^G\.4(a|b|c|d)$/.test(gate) && g4Ref) hasReference = true;
+    // If a specific subtype section isn't present at H3 depth, fall back to the
+    // shared G.4 section's reference — G.4a/b/c/d are documented in G.4's Options
+    // table row rather than as separate H3 sections in the shipped auto.md.
+    if (!observedGateNames.has(gate) && /^G\.4(a|b|c|d)$/.test(gate)) {
+      hasReference = g4Ref;
+    }
+    return { gate, hasReference };
+  });
+  return {
+    sectionExists: true,
+    boundPresent: boundPresent(contract.body),
+    gateReferences,
+  };
+}
+
+describe("402 — playbook AskUserQuestion invocation contract audit", () => {
+  it("402-1 (structural drift audit): auto.md has the contract section, the ≤4 bound, and cross-references from every gate contract", () => {
+    const report = auditContract(AUTO_MD_PATH);
+    const missingGates = report.gateReferences
+      .filter((g) => !g.hasReference)
+      .map((g) => g.gate);
+    const failureMessage = [
+      `Contract-audit drift detected:`,
+      `  sectionExists: ${report.sectionExists}`,
+      `  boundPresent: ${report.boundPresent}`,
+      `  gateReferences:`,
+      ...report.gateReferences.map((g) => `    ${g.gate}: ${g.hasReference}`),
+      missingGates.length > 0
+        ? `  missing references from: ${missingGates.join(", ")}`
+        : ``,
+    ].join("\n");
+
+    expect(report.sectionExists, failureMessage).toBe(true);
+    expect(report.boundPresent, failureMessage).toBe(true);
+    expect(missingGates, failureMessage).toEqual([]);
+  });
+
+  it("402-2 (regression check): audit reports missing-contract-section on 402-drift-auto.md fixture", () => {
+    const report = auditContract(FIXTURE_402_DRIFT_AUTO);
+    expect(
+      report.sectionExists,
+      `expected sectionExists:false; fixture: 402-drift-auto.md; observed report: ${JSON.stringify(report)}`,
+    ).toBe(false);
+  });
+});
+
 // Silence TS unused-import warning if only used for type narrowing.
 const _typeGuardParsedBatch = (b: ParsedBatch) => b.questions.length;
 void _typeGuardParsedBatch;
