@@ -1801,3 +1801,228 @@ describe("408 — auto.md § step 5 cursor-error class split + circuit breaker",
   });
 });
 
+// -----------------------------------------------------------------------------
+// 410 — auto.md D.7 repeat-failure dispatch fresh-evidence rule + verdict-schema
+// addendum + G.4(b) sixth-element row
+// -----------------------------------------------------------------------------
+
+const FIXTURE_410_DRIFT_AUTO = resolve(FIXTURES, "410-drift-auto.md");
+
+type D7AuditReport = {
+  d7Present: boolean;
+  firstDispatchSubPath: boolean;
+  repeatDispatchSubPath: boolean;
+  failureClassChangedField: boolean;
+  failureClassesSeenField: boolean;
+  noParentCharacterizationRule: boolean;
+  g4bSixthElementRow: boolean;
+};
+
+const FIRST_DISPATCH_ANCHOR = /first[\s-]dispatch/i;
+const REPEAT_DISPATCH_ANCHOR = /repeat[\s-]dispatch/i;
+const NO_PARENT_CHARACTERIZATION_PATTERN =
+  /parent\s+MUST\s+NOT\s+(characterize|summarize|assert\s+similarity)|MUST\s+NOT\s+characterize|no\s+parent-authored|not\s+the\s+parent'?s\s+role\s+to\s+(characterize|summarize)/i;
+
+function extractDispatchSteps(sectionBody: string): Map<number, string> {
+  const lines = sectionBody.split("\n");
+  const steps = new Map<number, string>();
+  const stepRe = /^(\d+)\.\s+\*\*/;
+  let currentStep = -1;
+  let currentLines: string[] = [];
+  for (const line of lines) {
+    const m = line.match(stepRe);
+    if (m) {
+      if (currentStep >= 0) steps.set(currentStep, currentLines.join("\n"));
+      currentStep = parseInt(m[1]!, 10);
+      currentLines = [line];
+    } else if (currentStep >= 0) {
+      currentLines.push(line);
+    }
+  }
+  if (currentStep >= 0) steps.set(currentStep, currentLines.join("\n"));
+  return steps;
+}
+
+function indentOf(line: string): number {
+  return line.length - line.trimStart().length;
+}
+
+function anchorHasCockpitContext(bodyLines: string[], anchorLine: number): boolean {
+  const line = bodyLines[anchorLine]!;
+  if (line.includes("cockpit_context")) return true;
+  const baseIndent = indentOf(line);
+  for (let j = anchorLine + 1; j < bodyLines.length; j++) {
+    const next = bodyLines[j]!;
+    if (next.trim() === "") break;
+    if (indentOf(next) <= baseIndent) break;
+    if (next.includes("cockpit_context")) return true;
+  }
+  return false;
+}
+
+function anchorsAtBulletOrParagraphSeparation(
+  bodyLines: string[],
+  a: number,
+  b: number,
+): boolean {
+  if (a === b) return false;
+  const [lo, hi] = a <= b ? [a, b] : [b, a];
+  for (let i = lo + 1; i < hi; i++) {
+    if (bodyLines[i]!.trim() === "") return true;
+  }
+  const aTrim = bodyLines[lo]!.trimStart();
+  const bTrim = bodyLines[hi]!.trimStart();
+  const bulletRe = /^(?:-|\*|\d+\.)\s+/;
+  if (bulletRe.test(aTrim) && bulletRe.test(bTrim)) return true;
+  return false;
+}
+
+function findAnchorLines(bodyLines: string[], anchor: RegExp): number[] {
+  const hits: number[] = [];
+  for (let i = 0; i < bodyLines.length; i++) {
+    if (anchor.test(bodyLines[i]!)) hits.push(i);
+  }
+  return hits;
+}
+
+function extractG4bBlock(g4SectionBody: string): string {
+  const lines = g4SectionBody.split("\n");
+  const startIdx = lines.findIndex((l) => /^\*\*\(b\)\s/.test(l));
+  if (startIdx === -1) return "";
+  let endIdx = lines.length;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    if (/^\*\*\([a-e]\)\s/.test(lines[i]!)) {
+      endIdx = i;
+      break;
+    }
+  }
+  return lines.slice(startIdx, endIdx).join("\n");
+}
+
+function auditD7(filePath: string): D7AuditReport {
+  const emptyReport: D7AuditReport = {
+    d7Present: false,
+    firstDispatchSubPath: false,
+    repeatDispatchSubPath: false,
+    failureClassChangedField: false,
+    failureClassesSeenField: false,
+    noParentCharacterizationRule: false,
+    g4bSixthElementRow: false,
+  };
+
+  const content = readFileSync(filePath, "utf-8");
+  const sections = parseSections(content);
+
+  const d7Section = sections.find(
+    (s) => s.depth === 3 && /^###\s+D\.7\s+—/.test(s.header),
+  );
+  if (!d7Section) return emptyReport;
+
+  const stepBodies = extractDispatchSteps(d7Section.body);
+  const step1 = stepBodies.get(1) ?? "";
+  const step2 = stepBodies.get(2) ?? "";
+  const step1Lines = step1.split("\n");
+
+  const firstLines = findAnchorLines(step1Lines, FIRST_DISPATCH_ANCHOR);
+  const repeatLines = findAnchorLines(step1Lines, REPEAT_DISPATCH_ANCHOR);
+
+  let firstDispatchSubPath = false;
+  let repeatDispatchSubPath = false;
+  outer: for (const fLine of firstLines) {
+    for (const rLine of repeatLines) {
+      if (!anchorsAtBulletOrParagraphSeparation(step1Lines, fLine, rLine)) continue;
+      if (
+        anchorHasCockpitContext(step1Lines, fLine) &&
+        anchorHasCockpitContext(step1Lines, rLine)
+      ) {
+        firstDispatchSubPath = true;
+        repeatDispatchSubPath = true;
+        break outer;
+      }
+    }
+  }
+
+  const failureClassChangedField = step2.includes("failure_class_changed");
+  const failureClassesSeenField = step2.includes("failure_classes_seen");
+  const noParentCharacterizationRule =
+    NO_PARENT_CHARACTERIZATION_PATTERN.test(step1) ||
+    NO_PARENT_CHARACTERIZATION_PATTERN.test(step2);
+
+  const g4Section = sections.find(
+    (s) => s.depth === 3 && /^###\s+G\.4\s+—/.test(s.header),
+  );
+  const g4bBlock = g4Section ? extractG4bBlock(g4Section.body) : "";
+  const g4bSixthElementRow = g4bBlock.includes("Failure class changed since prior");
+
+  return {
+    d7Present: true,
+    firstDispatchSubPath,
+    repeatDispatchSubPath,
+    failureClassChangedField,
+    failureClassesSeenField,
+    noParentCharacterizationRule,
+    g4bSixthElementRow,
+  };
+}
+
+describe("410 — auto.md D.7 repeat-failure dispatch fetches fresh evidence + failure_class_changed verdict field", () => {
+  it("410-1 (structural drift audit): D.7 has first-vs-repeat sub-path split, verdict-schema addendum, no-parent-characterization rule, and G.4(b) sixth-element row", () => {
+    const report = auditD7(AUTO_MD_PATH);
+    const failureMessage = [
+      `D.7 drift detected in auto.md § D.7:`,
+      `  d7Present: ${report.d7Present}`,
+      `  firstDispatchSubPath: ${report.firstDispatchSubPath}`,
+      `  repeatDispatchSubPath: ${report.repeatDispatchSubPath}`,
+      `  failureClassChangedField: ${report.failureClassChangedField}`,
+      `  failureClassesSeenField: ${report.failureClassesSeenField}`,
+      `  noParentCharacterizationRule: ${report.noParentCharacterizationRule}`,
+      `  g4bSixthElementRow: ${report.g4bSixthElementRow}`,
+    ].join("\n");
+
+    expect(report.d7Present, `D.7 extraction failed\n${failureMessage}`).toBe(true);
+    expect(
+      report.firstDispatchSubPath,
+      `first-dispatch sub-path anchor missing\n${failureMessage}`,
+    ).toBe(true);
+    expect(
+      report.repeatDispatchSubPath,
+      `repeat-dispatch sub-path anchor missing\n${failureMessage}`,
+    ).toBe(true);
+    expect(
+      report.failureClassChangedField,
+      `failure_class_changed field missing from D.7 step 2\n${failureMessage}`,
+    ).toBe(true);
+    expect(
+      report.failureClassesSeenField,
+      `failure_classes_seen field missing from D.7 step 2\n${failureMessage}`,
+    ).toBe(true);
+    expect(
+      report.noParentCharacterizationRule,
+      `no-parent-characterization rule anchor missing\n${failureMessage}`,
+    ).toBe(true);
+    expect(
+      report.g4bSixthElementRow,
+      `G.4(b) 'Failure class changed since prior' row missing\n${failureMessage}`,
+    ).toBe(true);
+  });
+
+  it("410-2 (negative-fixture regression): audit reports at least one structural failure on 410-drift-auto.md", () => {
+    const report = auditD7(FIXTURE_410_DRIFT_AUTO);
+    expect(
+      report.d7Present,
+      `expected d7Present:true on fixture; observed report: ${JSON.stringify(report)}`,
+    ).toBe(true);
+    const anyFailure =
+      !report.firstDispatchSubPath ||
+      !report.repeatDispatchSubPath ||
+      !report.failureClassChangedField ||
+      !report.failureClassesSeenField ||
+      !report.noParentCharacterizationRule ||
+      !report.g4bSixthElementRow;
+    expect(
+      anyFailure,
+      `expected at least one structural check to fail on 410-drift-auto.md; observed report: ${JSON.stringify(report)}`,
+    ).toBe(true);
+  });
+});
+

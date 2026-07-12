@@ -261,16 +261,29 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Trigger**: An issue enters `agent:error` or any `failed:*` state. Verbatim event strings: `agent:error` and `failed:` (matching any `failed:<subtype>`).
 
+**Dispatch classification**: A D.7 event is a **first dispatch** iff it is the issue's first `agent:error` / `failed:*` event within the current contiguous auto invocation. A D.7 event is a **repeat dispatch** iff it is the issue's second-and-subsequent `agent:error` / `failed:*` event within the current contiguous auto invocation, regardless of `failed:<subtype>` match (any second failure-class event on the same issue in one auto invocation is a repeat — subtype match not required). Session restart resets first-vs-repeat state (session-local grain per #406 Q2).
+
 **Dispatch**:
 1. **Fetch evidence** — the parent's sole evidence-fetch tool is `cockpit_context(issue=<issue-ref>)`. **No ad-hoc `gh` chains, no link-following, no `gh issue view --comments` inline in the parent.** The return payload is whatever the engine bundle returns — if the diagnosis subagent routinely needs a specific artifact (e.g., the primary CI log), fix the engine bundle (server-side, generacy-side), not the per-session parent envelope.
-2. **Spawn diagnosis subagent** — for any further work (reproducing, reading logs, bisecting versions, inspecting branches, downstream artifact fetch), dispatch to a diagnosis subagent. Invocation:
-   ```
-   subagent_type: "general-purpose"
-   description: "Diagnose <issue-ref> failure"
-   prompt: <issue-ref + failure-context payload + gate-option-set directive + return-schema directive>
-   ```
-   The subagent MUST NOT invoke any slash command. Return contract: a single JSON value `{root_cause: string, evidence: string, recommended_action: string, confidence: "low"|"medium"|"high"}` where `recommended_action` is exactly one of the target gate's option strings (`Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)` — verbatim). No prose, no fenced block. On unrecoverable error the subagent returns `{"error": "<description>"}`.
-3. **Present escalation gate** (see § Gate contract G.4b). In one assistant response: presentation block per § Gate contract G.4b (subtype b) — five-element block populated verbatim from the verdict (`root_cause`/`evidence` fill the context and evidence rows; `recommended_action` renders as a "Suggested decision" line with `confidence` beside it) + single `AskUserQuestion` with the unchanged D.7 option set (`Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)`), header `Escalate`, `multiSelect: false`. No in-parent re-analysis.
+   - **First dispatch**: call `cockpit_context(issue=<issue-ref>)`; the engine bundle payload is the first-dispatch evidence, forwarded to the subagent per step 2.
+   - **Repeat dispatch**: call `cockpit_context(issue=<issue-ref>)` again — same evidence verb as first-dispatch. **No dispatch of a repeat D.7 without the new alert body in hand.** The parent's role at this boundary is pure transport: fetch the fresh alert, and hand it to the subagent verbatim (step 2). **The parent MUST NOT characterize the fresh failure** with a phrase like "requeue failed identically", "same as before", "another `<subtype>`", or any other parent-authored summary of similarity; the subagent — not the parent — determines same-or-different from the evidence. Parent-authored summaries of evidence are forbidden in diagnosis prompts (the loop-trust-boundary principle applied to the parent itself: assertions are advisory, evidence is authoritative).
+2. **Spawn diagnosis subagent** — for any further work (reproducing, reading logs, bisecting versions, inspecting branches, downstream artifact fetch), dispatch to a diagnosis subagent. The subagent MUST NOT invoke any slash command. On unrecoverable error the subagent returns `{"error": "<description>"}`.
+   - **First dispatch invocation** (unchanged from pre-fix):
+     ```
+     subagent_type: "general-purpose"
+     description: "Diagnose <issue-ref> failure"
+     prompt: <issue-ref + failure-context payload + gate-option-set directive + return-schema directive>
+     ```
+     Return contract on first dispatch: a single JSON value `{root_cause: string, evidence: string, recommended_action: string, confidence: "low"|"medium"|"high"}` where `recommended_action` is exactly one of the target gate's option strings (`Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)` — verbatim). No prose, no fenced block. `failure_class_changed` and `failure_classes_seen` are absent (or explicitly `null`) on first dispatch — there is no prior evidence to compare against.
+   - **Repeat dispatch invocation** — SendMessage to the existing diagnosis subagent if it is still live; **fresh spawn** (same invocation shape as first-dispatch) with **both** the verbatim prior alert body AND the fresh alert body in the prompt if the subagent has already returned or been disposed across the Requeue window. The prior alert is a persistent engine-marked comment on the issue (mechanically identifiable as the previous failure-alert comment) — never lost even when the subagent dies. The parent's job on continuation-miss is pure transport. In either form, the continuation prompt contains:
+     - The verbatim **new alert body** (from the fresh `cockpit_context` return payload's failure-alert comment).
+     - Either the prior-context reference ("continuing from earlier diagnosis" — SendMessage form; the subagent still holds the prior alert body in-context) OR the verbatim **prior alert body** (fresh-spawn form; the subagent needs the prior evidence in-prompt).
+     - **No parent-authored summary of similarity** between fresh and prior. The subagent — not the parent — determines `failure_class_changed` from the two evidences it now holds. Feeding the fresh subagent a prior *verdict* (read from the ledger) instead of the prior *alert body* is also forbidden: a distilled verdict is a diluted form of parent-authored characterization.
+     - The verdict-return-schema addendum instruction (see below).
+   - **Verdict return-schema addendum on repeat dispatches**: the JSON return payload's shape grows two required fields on repeat dispatches (both absent or `null` on first dispatch). Absence of either field on a repeat dispatch is a contract violation the parent MUST detect and treat as a subagent error (return `{"error": "verdict missing failure_class_changed and/or failure_classes_seen on repeat dispatch"}` to G.4(b) as a subagent-error class).
+     - **`failure_class_changed: boolean`** — computed by the subagent from the fresh and **immediately-prior** alert bodies (not the original first-dispatch alert). `failure_class_changed = true` iff *any* of three dimensions differs: (1) `classifier_reason` field (engine-authored, exact string match, absent-vs-present differs); (2) `error_taxonomy` field (engine-authored, exact string match, absent-vs-present differs); (3) canonical failing-test/step identifier (`<file>::<name>` form for test failures; equivalent stable identifier for non-test failing steps — **never raw line text**, which drifts with line numbers and durations across runs of the same failure; absent-vs-present differs).
+     - **`failure_classes_seen: string[]`** — running list of failure classifier identifiers observed across this issue's repeat dispatches in the current session. On the second dispatch (first repeat), initialized as `[<class1>, <class2>]` where `<class1>` is the first-dispatch alert's classifier identifier and `<class2>` is the fresh alert's. On the N-th dispatch (N ≥ 3), the subagent takes the running list from the immediately-prior verdict's `failure_classes_seen` and appends the fresh alert's classifier identifier. The `classifier_id` derivation priority: `classifier_reason` if present, else `error_taxonomy` if present, else the canonical failing-test identifier, else the placeholder `<unclassified>`. Rendered at the G.4(b) gate as a "classes this session: `<class1>` → `<class2>` → …" line — cycles like A → B → A are visible in one row.
+3. **Present escalation gate** (see § Gate contract G.4b). In one assistant response: presentation block per § Gate contract G.4b (subtype b) — five-element block populated verbatim from the verdict (`root_cause`/`evidence` fill the context and evidence rows; `recommended_action` renders as a "Suggested decision" line with `confidence` beside it) + single `AskUserQuestion` with the unchanged D.7 option set (`Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)`), header `Escalate`, `multiSelect: false`. **On repeat dispatches**, the presentation block gains a sixth element between "Evidence" and "Current state": `**Failure class changed since prior:** <yes | no>  (classes this session: <class1> → <class2> → …)`, populated verbatim from the verdict's `failure_class_changed` and `failure_classes_seen` fields. No in-parent re-analysis.
 4. **Apply verdict**:
    - `Requeue` → `cockpit_resume(issue=<issue-ref>)` (engine action per Assumption A2 — clears `agent:error` / `failed:*`, restores the phase's `waiting-for:` / `completed:` resume pair).
    - `Skip` → add `<issue-ref>` to session mute set; ledger line; continue.
@@ -567,7 +580,9 @@ Failing checks: <check names>
 
 **(b) `agent:error` / `failed:*`**:
 
-Populated verbatim from the diagnosis subagent's verdict (D.7 step 2). No in-parent re-analysis; the operator still chooses from the full option set; the option set itself is unchanged.
+Populated verbatim from the diagnosis subagent's verdict (D.7 step 2). No in-parent re-analysis; the operator still chooses from the full option set; the option set itself is unchanged. On **repeat dispatches** (D.7 dispatch classification), the block gains a sixth element between "Evidence" and "Current state" populated verbatim from the verdict's `failure_class_changed` and `failure_classes_seen` fields.
+
+First-dispatch presentation:
 
 ```markdown
 Agent error on <issue-ref>:
@@ -577,6 +592,20 @@ Agent error on <issue-ref>:
 **Current state:** <observed state from `cockpit_context(issue=<issue-ref>)`>
 **Suggested decision:** <verdict.recommended_action> (confidence: <verdict.confidence>)
 ```
+
+Repeat-dispatch presentation (adds the "Failure class changed since prior" row between Evidence and Current state):
+
+```markdown
+Agent error on <issue-ref> (repeat dispatch):
+
+**Root cause:** <verdict.root_cause verbatim>
+**Evidence:** <verdict.evidence verbatim>
+**Failure class changed since prior:** <yes | no>  (classes this session: <class1> → <class2> → …)
+**Current state:** <observed state from `cockpit_context(issue=<issue-ref>)`>
+**Suggested decision:** <verdict.recommended_action> (confidence: <verdict.confidence>)
+```
+
+The `Failure class changed since prior` row is populated verbatim from the verdict's `failure_class_changed` (as `yes` if `true`, `no` if `false`) and `failure_classes_seen` (as a `→`-joined running list). A `yes` value usually means the prior Requeue *made progress* — the recommendation calculus at the gate should reflect that (this incident's Skip recommendations inverted it). The row is absent on first-dispatch presentations (there is no prior evidence to compare against).
 
 **(d) Merge-conflicts**:
 
