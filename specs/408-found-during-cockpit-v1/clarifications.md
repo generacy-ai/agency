@@ -10,7 +10,7 @@
 - B: Story 3 SC #2 is authoritative — the count is per-class (each class has its own consecutive counter); rewrite FR-006 accordingly.
 - C: Report a single per-line count for the class of *that* line, but only the `invalid-cursor` counter drives the escalation gate (i.e., non-`invalid-cursor` classes get their own count for the ledger but never escalate).
 
-**Answer**: *Pending*
+**Answer**: C — each ledger line carries its own class's consecutive count; only the `invalid-cursor` counter drives the escalation gate. This reconciles both texts with the least rewrite (Story 3's `resetFrom · 1` reads naturally as "first consecutive resetFrom") and it's strictly more informative: A's flat `resetFrom · 0` throws away the very signal that would distinguish routine resets from reset *churn* — which is tomorrow's version of this same finding, and the ledger is where it would first become visible. Escalation semantics stay exactly as specified: one class escalates, the others are accounting.
 
 ---
 
@@ -22,7 +22,7 @@
 - B: Only a call that both accepts the presented cursor *and* returns ≥1 event counts as success (empty batches leave the counter unchanged).
 - C: Only a call that returns a fresh continuation cursor for the *next* poll counts as success (i.e., the cursor round-tripped).
 
-**Answer**: *Pending*
+**Answer**: A — success is the presented cursor being accepted (no cursor-error signal), empty batches included. The counter measures consecutive failures of the *cursor mechanism*; an accepted cursor returning zero events is the mechanism working perfectly on a quiet epic. B's ≥1-event requirement makes streak state hostage to epic traffic — a low-traffic epic could carry a stale count across hours and then false-escalate on a routine restart, the question's own warning realized. C describes the same acceptance event as A but phrased around the continuation token every non-error response carries anyway — A is the crisp form of the same test.
 
 ---
 
@@ -35,7 +35,7 @@
 - C: Timeout to `Stop (exit auto)` — no operator means no supervised session, so degradation should not be silently entered.
 - D: Out of scope for this feature — timeout policy belongs to the G.4/AskUserQuestion contract (per #402) and this spec inherits whatever that contract does.
 
-**Answer**: *Pending*
+**Answer**: D — inherit the gate contract; no per-row timeout. This is an altitude question. Every gate in auto.md blocks awaiting the operator — that's the gate contract, and it's load-bearing: "auto mode automates transport, not judgment" is the plan's standing invariant, and B is literally auto-approve-after-N-minutes, i.e. the autonomy policy the plan explicitly defers. If timeout policy ever ships, it ships for *all* gates via the § AskUserQuestion invocation contract (agency#402's home for exactly this kind of rule), not as a fifth semantics unique to one row. Note the unattended-run worry inverts here: while the gate blocks, no recovery loop spins — a blocked gate is the *cheapest* state the degraded session can be in, and the pending question is the first thing a returning operator sees.
 
 ---
 
@@ -47,4 +47,4 @@
 - B: No — `Continue degraded` is sticky for the whole session; the gate never fires a second time regardless of subsequent streaks (counter still resets for ledger accounting only).
 - C: Sticky for a bounded window (e.g., N successful reuses since the decision), then eligible to re-fire — specify N.
 
-**Answer**: *Pending*
+**Answer**: A — a new streak after an intervening successful reuse is a new decision; the gate re-fires at count 2. `Continue degraded` answered *that* fault episode. Once reuse succeeds, the system observably healed — a subsequent streak is a distinct episode with possibly a distinct cause, and staying silent about it (B) rebuilds the exact silent-degradation hole this issue closes, just behind a one-time consent screen. The anti-nag property falls out of A's own definition: within one unhealed streak the gate never re-asks (decide-once holds), so re-fire frequency is bounded by actual heal-then-break cycles, not by batch count. C's bounded window adds a tunable with no principle behind the number.
