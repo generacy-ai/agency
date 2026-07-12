@@ -1623,3 +1623,181 @@ describe("406 — cockpit MCP tool migration + await-events loop", () => {
   });
 });
 
+// -----------------------------------------------------------------------------
+// 408 — auto.md § step 5 cursor-error class split + circuit breaker
+//
+// The runtime is playbook prose interpreted by the model at slash-command
+// time. Pre-#408, § step 5 collapses all three cursor-error signals
+// (`invalid-cursor`, `resetFrom`, cursor expiry) onto ONE unconditional
+// recovery path — silent sweep-per-batch degradation with no operator
+// escalation. The #408 fix restores the class split (post-#924 taxonomy):
+//   - Branch A (`resetFrom` / expiry / `discarded`) → recover + per-class
+//     ledger accounting.
+//   - Branch B (`invalid-cursor`) → recover once, escalate at count ≥ 2
+//     via a new G.4(e) gate whose options are
+//     `Continue degraded (sweep-per-batch)` and `Stop (exit auto)`.
+// New ledger-line shape: `<epic-ref> · cursor-recovery · <class> · <N>`.
+//
+// The audit is STRUCTURAL, not prose-sniffing (per #402's Q3=C precedent):
+// it checks anchors (branches, verbatim option strings, code-span shape)
+// rather than the vocabulary of "class split", "circuit breaker", etc.
+// -----------------------------------------------------------------------------
+
+const FIXTURE_408_DRIFT_AUTO = resolve(FIXTURES, "408-drift-auto.md");
+
+type Step5AuditReport = {
+  step5Present: boolean;
+  branchAResetFrom: boolean;
+  branchBInvalidCursor: boolean;
+  optionContinueDegraded: boolean;
+  optionStopExit: boolean;
+  ledgerShapePresent: boolean;
+};
+
+const BRANCH_A_CLASSES = ["resetFrom", "expiry", "discarded"] as const;
+
+function findTokenLines(bodyLines: string[], token: string): number[] {
+  const hits: number[] = [];
+  for (let i = 0; i < bodyLines.length; i++) {
+    if (bodyLines[i]!.includes(token)) hits.push(i);
+  }
+  return hits;
+}
+
+// Two occurrences are on "distinct branches" iff between them appears a
+// paragraph break (blank line), a bold-heading separator (`**Branch …**`),
+// or a separate list bullet at the same depth. Structural — never
+// regexes fusion vocabulary.
+function onDistinctBranch(bodyLines: string[], aLine: number, bLine: number): boolean {
+  const [lo, hi] = aLine <= bLine ? [aLine, bLine] : [bLine, aLine];
+  if (lo === hi) return false;
+  for (let i = lo + 1; i < hi; i++) {
+    const line = bodyLines[i]!;
+    if (line.trim() === "") return true;
+    if (/\*\*Branch\s+[A-Z]/i.test(line)) return true;
+    if (/^\s*(?:-|\*|\d+\.)\s+/.test(line)) {
+      const aTrimmed = bodyLines[lo]!.trimStart();
+      const bTrimmed = bodyLines[hi]!.trimStart();
+      const iTrimmed = line.trimStart();
+      const aIsBullet = /^(?:-|\*|\d+\.)\s+/.test(aTrimmed);
+      const bIsBullet = /^(?:-|\*|\d+\.)\s+/.test(bTrimmed);
+      const iIndent = line.length - line.trimStart().length;
+      const aIndent = bodyLines[lo]!.length - aTrimmed.length;
+      const bIndent = bodyLines[hi]!.length - bTrimmed.length;
+      if (aIsBullet && bIsBullet && iIndent === aIndent && iIndent === bIndent) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function auditStep5(filePath: string): Step5AuditReport {
+  const md = readFileSync(filePath, "utf-8");
+  let steps: Map<number, string>;
+  try {
+    steps = extractInstructionsSteps(md);
+  } catch {
+    return {
+      step5Present: false,
+      branchAResetFrom: false,
+      branchBInvalidCursor: false,
+      optionContinueDegraded: false,
+      optionStopExit: false,
+      ledgerShapePresent: false,
+    };
+  }
+  const step5 = steps.get(5);
+  if (step5 === undefined || !/^5\.\s+\*\*Cursor recovery/.test(step5)) {
+    return {
+      step5Present: false,
+      branchAResetFrom: false,
+      branchBInvalidCursor: false,
+      optionContinueDegraded: false,
+      optionStopExit: false,
+      ledgerShapePresent: false,
+    };
+  }
+
+  const bodyLines = step5.split("\n");
+
+  const invalidLines = findTokenLines(bodyLines, "invalid-cursor");
+  let branchAResetFrom = false;
+  let branchBInvalidCursor = false;
+  for (const cls of BRANCH_A_CLASSES) {
+    const clsLines = findTokenLines(bodyLines, cls);
+    for (const cLine of clsLines) {
+      for (const iLine of invalidLines) {
+        if (onDistinctBranch(bodyLines, cLine, iLine)) {
+          branchAResetFrom = true;
+          branchBInvalidCursor = true;
+          break;
+        }
+      }
+      if (branchAResetFrom) break;
+    }
+    if (branchAResetFrom) break;
+  }
+
+  const optionContinueDegraded =
+    step5.includes("Continue degraded (sweep-per-batch)") ||
+    md.includes("Continue degraded (sweep-per-batch)");
+  const optionStopExit =
+    step5.includes("Stop (exit auto)") || md.includes("Stop (exit auto)");
+
+  const ledgerCodeSpanRe =
+    /`[^`]*cursor-recovery\s+·\s+[a-zA-Z-]+\s+·\s+(?:<[^>`]+>|\d+)[^`]*`/;
+  const ledgerFencedRe =
+    /cursor-recovery\s+·\s+[a-zA-Z-]+\s+·\s+(?:<[^>]+>|\d+)/;
+  const ledgerShapePresent =
+    ledgerCodeSpanRe.test(step5) ||
+    ledgerCodeSpanRe.test(md) ||
+    ledgerFencedRe.test(step5) ||
+    ledgerFencedRe.test(md);
+
+  return {
+    step5Present: true,
+    branchAResetFrom,
+    branchBInvalidCursor,
+    optionContinueDegraded,
+    optionStopExit,
+    ledgerShapePresent,
+  };
+}
+
+describe("408 — auto.md § step 5 cursor-error class split + circuit breaker", () => {
+  it("408-1 (structural drift audit): auto.md § step 5 has the class split, both G.4(e) options, and the cursor-recovery ledger-line shape", () => {
+    const report = auditStep5(AUTO_MD_PATH);
+    const failureMessage = [
+      `Cursor-recovery drift detected in auto.md § step 5:`,
+      `  step5Present: ${report.step5Present}`,
+      `  branchAResetFrom: ${report.branchAResetFrom}`,
+      `  branchBInvalidCursor: ${report.branchBInvalidCursor}`,
+      `  optionContinueDegraded: ${report.optionContinueDegraded}`,
+      `  optionStopExit: ${report.optionStopExit}`,
+      `  ledgerShapePresent: ${report.ledgerShapePresent}`,
+    ].join("\n");
+
+    expect(report.step5Present, failureMessage).toBe(true);
+    expect(report.branchAResetFrom, failureMessage).toBe(true);
+    expect(report.branchBInvalidCursor, failureMessage).toBe(true);
+    expect(report.optionContinueDegraded, failureMessage).toBe(true);
+    expect(report.optionStopExit, failureMessage).toBe(true);
+    expect(report.ledgerShapePresent, failureMessage).toBe(true);
+  });
+
+  it("408-2 (negative-fixture regression): audit reports at least one structural failure on 408-drift-auto.md", () => {
+    const report = auditStep5(FIXTURE_408_DRIFT_AUTO);
+    const anyFailure =
+      !report.branchAResetFrom ||
+      !report.branchBInvalidCursor ||
+      !report.optionContinueDegraded ||
+      !report.optionStopExit ||
+      !report.ledgerShapePresent;
+    expect(
+      anyFailure,
+      `expected at least one structural check to fail on 408-drift-auto.md; observed report: ${JSON.stringify(report)}`,
+    ).toBe(true);
+  });
+});
+

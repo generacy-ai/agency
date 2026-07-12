@@ -49,14 +49,26 @@ $ARGUMENTS
 
    Issue-history footnote: pre-#406, the T-S4 run's `cockpit watch` produced 17 NDJSON lines and 1 reached the loop; the other 16 legacy per-issue events were dropped by an improvised field-based filter (see agency#394). Post-#406, the failure class the field-based filter tried to solve (an ill-shaped consumer of the NDJSON stream) is retired at the boundary — the typed batch is not a stream, and the tool server owns event shape.
 
-5. **Cursor recovery.** There is no watch process to re-arm; the cursor is in-memory only, held for the lifetime of the current dispatch loop. On any of the following signals from `cockpit_await_events`, converge on the same recovery path — run the startup sweep (step 3) again and re-arm the cursor from the tool server's connect-time position (cursor-less):
-   1. **`invalid-cursor` typed error** — the cursor the parent passed is stale/corrupted (fail loud — this is a caller bug on this side of the boundary; the parent must not swallow it). Log the typed error's `code`/`message`/`details` verbatim, then trigger recovery.
-   2. **`resetFrom` reset signal in the returned batch** — the tool server signaled a reset in the batch metadata (e.g., server-side event-log rotation). Trigger recovery.
-   3. **Cursor expiry** — a typed error indicating the cursor is past the server's retention window. Trigger recovery.
+5. **Cursor recovery.** There is no watch process to re-arm; the cursor is in-memory only, held for the lifetime of the current dispatch loop. Each cursor-error signal returned from `cockpit_await_events` is classified per the post-#924 hardened taxonomy and routed onto one of two branches. The parent maintains a **per-class consecutive-fault counter** — one counter each for `invalid-cursor`, `resetFrom`, `expiry`, `discarded`. Every counter resets to 0 on any **successful cursor reuse**: any `cockpit_await_events` call presenting a non-null cursor and returning no cursor-error signal (empty batches included — an accepted cursor returning zero events is the cursor mechanism working perfectly on a quiet epic). All counters reset together; the `streakOperatorAcknowledged` flag (see Branch B) resets to `false` on the same event.
 
-   All three signals converge on the same recovery convergence path: **re-run step 3's startup sweep + re-arm cursor-less from connect-time position.** Both the sweep (per § Ledger L.5 idempotency rule) and the re-arm are idempotent — the live-state re-check in step 4a catches events already dispatched (state moved on), so no duplicate action can result. **The cursor is in-memory only** — session restart, `invalid-cursor`, `resetFrom`, and cursor expiry all converge on this same recovery path, and no filesystem persistence of the cursor exists (no on-disk cursor file, no ledger re-derivation).
+   **Branch A — recover (unchanged semantics; per-class ledger accounting only):**
+   - `resetFrom` reset signal in the returned batch — the tool server signaled a reset in the batch metadata (e.g., server-side event-log rotation). Increment `resetFrom` counter; recover; ledger `<epic-ref> · cursor-recovery · resetFrom · <resetFrom-counter>`.
+   - Cursor expiry typed error — the cursor is past the server's retention window. Increment `expiry` counter; recover; ledger `<epic-ref> · cursor-recovery · expiry · <expiry-counter>`.
+   - `discarded` signal — post-#924 hardened taxonomy for server restart / eviction. Increment `discarded` counter; recover; ledger `<epic-ref> · cursor-recovery · discarded · <discarded-counter>`.
 
-   The compound-liveness cross-check (N=4 empty reads + actionable live state) retires with this step. The `maxWaitMs=55000` at the tool boundary bounds the "no events" case at each iteration, and the tool server owns the "silent stall" detection (a stalled server returns a typed error or fails the tool call, both of which the recovery path handles above).
+   None of Branch A's classes ever fires the escalation gate. Their counters are ledger accounting only — the run summary § L.6 identifies reset-churn / expiry-churn / discarded-churn for future finding investigations, but no runtime escalation is triggered from these classes.
+
+   **Branch B — recover once, then escalate on consecutive fault:**
+   - `invalid-cursor` typed error — the cursor the parent passed is malformed / never-issued / wrong-epic (post-#924, a reliable caller-bug signal; the class also covers server-restart artifacts that present as `invalid-cursor` before the recovery sweep). Log the typed error's `code`/`message`/`details` verbatim; increment `invalid-cursor` counter; ledger `<epic-ref> · cursor-recovery · invalid-cursor · <invalid-cursor-counter>` (e.g., first consecutive fault writes `cursor-recovery · invalid-cursor · 1`).
+     - If counter == 1 → recover (sweep + re-arm cursor-less); continue the loop.
+     - If counter ≥ 2 AND the current streak is **not** operator-acknowledged → fire the **G.4(e) escalation gate** (see § Gate contract G.4(e)). The gate's options are `Continue degraded (sweep-per-batch) (Recommended)` and `Stop (exit auto)`.
+     - If counter ≥ 2 AND the current streak IS operator-acknowledged (a prior `Continue degraded` on this unhealed streak) → recover; do **not** re-fire the gate (decide-once for the streak that raised it; per Q4=A of the #408 clarifications). The counter continues to increment for ledger accounting.
+
+   All recoveries — Branch A and Branch B alike — converge on the same recovery path: **re-run step 3's startup sweep + re-arm cursor-less from connect-time position.** Both the sweep (per § Ledger L.5 idempotency rule) and the re-arm are idempotent — the live-state re-check in step 4a catches events already dispatched (state moved on), so no duplicate action can result. **The cursor is in-memory only** — session restart, `invalid-cursor`, `resetFrom`, cursor expiry, and `discarded` all converge on this same recovery path, and no filesystem persistence of the cursor exists (no on-disk cursor file, no ledger re-derivation).
+
+   Q2=A reset semantics (verbatim): any successful cursor reuse resets **ALL** counters to 0 and clears `streakOperatorAcknowledged`. A fresh 2-in-a-row `invalid-cursor` streak after a healed period is a **new** escalation decision — the gate re-fires at count == 2 again (per Q4=A).
+
+   The compound-liveness cross-check (N=4 empty reads + actionable live state) retires with this step. The `maxWaitMs=55000` at the tool boundary bounds the "no events" case at each iteration, and the tool server owns the "silent stall" detection (a stalled server returns a typed error or fails the tool call, both of which the recovery branches above handle).
 
 6. **Exit.** On `epic-complete`, print the run summary per § Ledger L.6 (including the absolute path of the run's `.ledger` file), and exit zero. Non-`epic-complete` exits (Stop from an escalation gate, unrecoverable error) print an abbreviated summary with the exit reason.
 
@@ -537,6 +549,7 @@ The scenarios and acceptance_checks lists come **only** from the subagent hop �
 - (b) `agent:error` / `failed:*` (D.7).
 - (d) `waiting-for:merge-conflicts` (D.11).
 - (c) Unrecognized / ambiguous state (D.10).
+- (e) Consecutive `invalid-cursor` fault (§ step 5 Branch B; counter ≥ 2, streak not yet operator-acknowledged).
 
 **Presentation** (in the same response as the `AskUserQuestion` call) — evidence formatted per subtype.
 
@@ -615,8 +628,8 @@ Observed: <raw state from cockpit status --json>
 Streamed event: <original transition line>
 ```
 
-**Gate invocation**: Per § AskUserQuestion invocation contract — one call per escalation gate (single-item `questions` array); when multiple escalation gates fuse into one response, fire one call per gate. The reference applies uniformly to each of the four subtypes G.4a/G.4b/G.4c/G.4d listed in the Options table below. Parameters:
-- **Question text**: `How to proceed on <issue-ref>?`
+**Gate invocation**: Per § AskUserQuestion invocation contract — one call per escalation gate (single-item `questions` array); when multiple escalation gates fuse into one response, fire one call per gate. The reference applies uniformly to each of the five subtypes G.4a/G.4b/G.4c/G.4d/G.4(e) listed in the Options table below. Parameters:
+- **Question text**: `How to proceed on <issue-ref>?` (subtypes a/b/c/d) or `How to proceed on the consecutive invalid-cursor fault on <epic-ref>?` (subtype (e); operates on an epic, not an issue).
 - **Header**: `Escalate` (≤ 12 chars)
 - **Options** (subtype-specific, in the listed order):
 
@@ -626,6 +639,7 @@ Streamed event: <original transition line>
   | (b) agent:error / failed:* | `Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)` |
   | (d) merge-conflicts | `I've resolved it — advance the gate` / `Skip (session-local mute)` / `Stop (exit auto)` |
   | (c) unrecognized state | `Skip (session-local mute) (Recommended)` / `Stop (exit auto)` — **NEVER Retry** |
+  | (e) consecutive `invalid-cursor` fault | `Continue degraded (sweep-per-batch) (Recommended)` / `Stop (exit auto)` — **NEVER Retry** (single call; per-epic, not per-issue) |
 
 - **multiSelect**: `false`
 
@@ -633,8 +647,48 @@ Streamed event: <original transition line>
 - `Retry` (subtype a only) → re-run the fixer subagent **once**. If `{fixed: true}`, loop back to D.5; if `{fixed: false}`, re-present the escalation gate.
 - `Requeue` (subtype b only) → `cockpit_resume(issue=<issue-ref>)` (Assumption A2). If tool missing, degrade to Skip with explicit ledger note.
 - `I've resolved it — advance the gate` (subtype d only) → `cockpit_advance(issue=<issue-ref>, gate="merge-conflicts")`. On success, ledger `advanced` and continue. On typed-error return, re-present the D.11 gate with the tool's `code`/`message` prepended verbatim to the presentation block (see § D.11 dispatch step 3).
-- `Skip` (all subtypes) → add `<issue-ref>` to the in-memory **session mute set**; ledger line; continue. **Labels untouched.**
+- `Continue degraded (sweep-per-batch)` (subtype (e) only) → mark the current unhealed `invalid-cursor` streak as operator-acknowledged; the loop continues; § step 5 Branch B recovers on each subsequent `invalid-cursor` (incrementing the counter and writing a `cursor-recovery · invalid-cursor · <N>` ledger line for accounting), but the G.4(e) gate does **not** re-fire within the same streak (decide-once). On any successful cursor reuse the streak-acknowledged flag AND all counters reset (per § step 5); a fresh 2-in-a-row streak re-fires the gate at count == 2 (Q4=A: new streak = new decision).
+- `Skip` (subtypes a/b/c/d) → add `<issue-ref>` to the in-memory **session mute set**; ledger line; continue. **Labels untouched.** Subtype (e) does NOT expose `Skip` — the fault is per-epic (cursor mechanism), not per-issue.
 - `Stop` (all subtypes) → kill watch process; print run summary; exit auto cleanly. **No label writes.**
+
+### G.4(e) — Escalation: consecutive `invalid-cursor` fault
+
+**Trigger**: § step 5 Branch B evaluates: `invalid-cursor` counter ≥ 2 AND the current streak has not yet been operator-acknowledged (per Q4=A decide-once). Verbatim state anchor: the `invalid-cursor` consecutive-fault counter has reached 2 on the second consecutive `invalid-cursor` typed error from `cockpit_await_events` with no intervening successful cursor reuse (per § step 5's successful-reuse definition — any call presenting a non-null cursor and returning no cursor-error signal, empty batches included). The gate fires exactly once per unhealed streak (at count == 2); subsequent `invalid-cursor` occurrences within the same streak recover silently (with ledger lines) once the streak is operator-acknowledged.
+
+**Presentation** (in the same response as the `AskUserQuestion` call):
+
+```markdown
+Consecutive `invalid-cursor` fault on <epic-ref> (consecutive-count: <N>):
+
+**Most recent typed errors** (verbatim from `cockpit_await_events`):
+- Occurrence <N-1>: `code`=<code-1>, `message`=<message-1>, `details`=<details-1>
+- Occurrence <N>: `code`=<code-2>, `message`=<message-2>, `details`=<details-2>
+
+**Recovery state**: The loop has been running startup-sweep-per-batch since the first `invalid-cursor` occurrence at <timestamp>. Each recovery is idempotent (sweeps see already-dispatched state and no-op), but the dispatch-round reduction the MCP path exists to deliver (SC-003) is not being realized — every batch pays the full startup-sweep cost.
+
+**Options**:
+- `Continue degraded (sweep-per-batch) (Recommended)` — accept the degraded loop; decide-once for the current unhealed streak (the gate does NOT re-fire on subsequent `invalid-cursor` within the same streak). The counter continues to increment for ledger accounting.
+- `Stop (exit auto)` — kill the auto loop cleanly; print the run summary per § L.6 with the ledger file's absolute path. The operator may investigate offline (server-side incident, epic-configuration mismatch, caller-side race) and restart auto later.
+```
+
+**Gate invocation**: Per § AskUserQuestion invocation contract — one `AskUserQuestion` call per G.4(e) fire (single-item `questions` array). When G.4(e) co-fires with another gate class (rare — cursor recovery is a per-loop event, not per-issue; the only realistic co-fire is a batch-boundary event that also happens to end with an `invalid-cursor`), the standing multi-gate fanout rule applies: one call per gate, never a fused questions array. Parameters:
+- **Question text**: `How to proceed on the consecutive invalid-cursor fault on <epic-ref>?`
+- **Header**: `Escalate` (≤ 12 chars)
+- **multiSelect**: `false`
+- **Options** (exactly two, discrete, in this order):
+  1. `Continue degraded (sweep-per-batch) (Recommended)` — accept degraded loop for the current unhealed streak.
+  2. `Stop (exit auto)` — kill loop; print run summary; exit.
+
+**Post-gate behavior**:
+- `Continue degraded (sweep-per-batch)` → set `streakOperatorAcknowledged = true` for the current unhealed streak; loop continues; § step 5 Branch B recovers on each subsequent `invalid-cursor` (incrementing the counter and writing a ledger line, but NOT re-firing the gate). Once any successful cursor reuse occurs, `streakOperatorAcknowledged` resets to `false` and all counters reset to 0 (per Q4=A).
+- `Stop (exit auto)` → kill the auto loop cleanly; print the run summary per § L.6 (including the persistent ledger file's absolute path); exit cleanly. No label writes.
+
+**Ledger line contract**: two ledger lines per G.4(e) fire — the fault accounting is written by § step 5 Branch B before the gate fires (`<epic-ref> · cursor-recovery · invalid-cursor · <N>` where `<N>` is the counter value that triggered the gate); the operator decision is written by G.4(e) after the response (`<epic-ref> · invalid-cursor-streak · escalation-gate · <continue-degraded | stop>`). Together they form the "streak reached N, operator decided X" record.
+
+**Failure modes**:
+- `Continue degraded` (operator selected) → no failure mode; the loop continues in degraded state. The ledger records the decision.
+- `Stop` (operator selected) → no failure mode; the loop exits cleanly. The ledger records the decision. The run summary § L.6 prints an abbreviated form (non-`epic-complete` exit).
+- No operator response → the gate blocks indefinitely per the standing gate contract (§ AskUserQuestion invocation contract, Q3=D). No per-row timeout policy. The block is cheap — no recovery loop spins while waiting — so the cost is bounded by operator return time, not by an arbitrary N.
 
 ### G.5 — Phase-queue confirmation gate
 
@@ -734,6 +788,9 @@ Stable strings per dispatch table row, so `grep` recipes on `<action>` / `<outco
 | D.9d phase:* | `(no-op)` | `engine-owned phase transition` |
 | D.11 merge-conflicts | `escalation-gate` | `advanced`, `advance failed: <description>`, `skip (session-local mute)`, `stop (exit)` |
 | D.10 unrecognized | `unrecognized-state` | `skip (session-local mute)`, `stop (exit)` |
+| § step 5 cursor recovery (Branch A) | `cursor-recovery` | `resetFrom · <N>`, `expiry · <N>`, `discarded · <N>` |
+| § step 5 cursor recovery (Branch B) | `cursor-recovery` | `invalid-cursor · <N>` (e.g., `cursor-recovery · invalid-cursor · 1`) |
+| § step 5 Branch B escalation | `escalation-gate` | `continue-degraded`, `stop (exit)` — G.4(e) operator decision; transition class is `invalid-cursor-streak` |
 | mute-set hit | `(muted)` | `skip (session-local mute active)` |
 
 ### L.4 — Status table policy
@@ -762,6 +819,8 @@ Events dispatched: <N>
   · Phase-queue confirmations: <k4>
   · Merges: <k5> (<green>/<red>, <fixer runs>)
   · Escalations: <k6>
+  · Cursor recoveries: <k7> (by class: invalid-cursor=<a>, resetFrom=<b>, expiry=<c>, discarded=<d>)
+  · Cursor-recovery escalations: <k8> (continue-degraded=<x>, stop=<y>)
 Muted issues (session-local): <s>
 Ledger file: <absolute path to .ledger file>
 ```
