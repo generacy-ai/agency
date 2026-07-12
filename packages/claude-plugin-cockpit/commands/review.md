@@ -8,7 +8,7 @@ arguments:
 
 # Review Command
 
-Review the current epic's progress at one gate. For `--gate implementation-review`, run the code review inside a subagent (Agent tool boundary, `general-purpose` type) and consume its structured JSON return. For every other accepted gate, read the corresponding artifact and produce a terse review summary. On approval, advance the gate by calling `generacy cockpit advance --gate <gate>` directly through the Bash tool. On `request-changes`, post a `event: COMMENT` PR review with one inline anchored comment per finding, which trips the existing `PrFeedbackMonitorService` handler.
+Review the current epic's progress at one gate. For `--gate implementation-review`, run the code review inside a subagent (Agent tool boundary, `general-purpose` type) and consume its structured JSON return. For every other accepted gate, read the corresponding artifact and produce a terse review summary. On approval, advance the gate by calling the `cockpit_advance` MCP tool with `gate=<gate>`. On `request-changes`, post a `event: COMMENT` PR review with one inline anchored comment per finding, which trips the existing `PrFeedbackMonitorService` handler.
 
 ## User Input
 
@@ -27,7 +27,7 @@ $ARGUMENTS
 
    Exit non-zero. Do not read files, do not call any CLI, do not call `gh api`.
 
-2. **Pre-flight** — `command -v generacy >/dev/null 2>&1`. If the pre-flight returns non-zero, apply the **Error handling** block below with class `MISSING_BINARY` and stop.
+2. **Pre-flight** — `command -v gh >/dev/null 2>&1` (the sole remaining Bash CLI in this playbook, used at steps 4/5 for PR review posting). If the pre-flight returns non-zero, apply the **Error handling** block below with class `MISSING_BINARY` and stop.
 
 3. **Fused analysis + approval prompt** —
 
@@ -112,7 +112,7 @@ $ARGUMENTS
    - If the gate is `implementation-review` AND non-blocking findings were present in step 3's table, POST an `event: COMMENT` PR review via `gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews` with a `body` that lists the non-blocking findings as human-readable text (one paragraph per finding: `- <file>:<line> — <finding text>`). Do NOT include `comments[]`. <!-- Rationale: event: APPROVE is forbidden by GitHub on one's own PR (422 "Can not approve your own pull request") and is semantically empty on a self-PR anyway — approval on your own PR does not count toward branch-protection thresholds. event: COMMENT is permitted on one's own PR and, with no comments[], produces zero review threads, so PrFeedbackMonitorService stays quiet: the #382 semantic contract "inline threads = actionable feedback; body text = information" is preserved verbatim. self-APPROVE is forbidden by GitHub and semantically empty; revisit if multi-credential reviewer identities ever ship. -->
    - If the gate is `implementation-review` AND no findings were present, no PR review is posted (the CLI advance below is the only side effect).
    - For non-`implementation-review` gates, no PR review is posted (there is no PR at these gates).
-   - Run `generacy cockpit advance --gate <name>` via the Bash tool. On exit `0`, print one line `Labels: waiting-for:<name> → completed:<name>`. On non-zero CLI exit, apply the **Error handling** block below.
+   - Call `cockpit_advance(issue=<issue-ref>, gate=<name>)` via the MCP tool binding. On success, print one line `Labels: waiting-for:<name> → completed:<name>`. On typed error, apply the **Error handling** block below with class `OTHER`.
 
 5. **Post feedback on `request-changes`** — Only when the user selects `request-changes` AND the gate is `implementation-review`:
    - Construct a `gh api repos/{owner}/{repo}/pulls/{pull_number}/reviews` POST body:
@@ -120,36 +120,36 @@ $ARGUMENTS
      - `body`: the literal string `N finding(s) requiring changes; see inline comments.` with `N` interpolated to the total finding count (both `Blocking? Yes` and `Blocking? No` count — the operator chose to request changes on the whole set).
      - `comments[]`: one entry per finding, each with `path` (the file, from the finding's `file` field), `line` (the line number, from the finding's `line` field), and `body` (the finding text, from the finding's `summary` field). Side defaults to `RIGHT` (the head SHA's version); do not set `side` or `start_line` (the subagent's return schema is single-line anchors).
    - Run the POST via the Bash tool. On exit `0`, print one line `Feedback posted: N inline comment(s) on PR #<pull_number>`. On non-zero exit, apply the **Error handling** block below.
-   - Do NOT run `generacy cockpit advance`. Do NOT emit a `Labels:` line. <!-- The unresolved review threads posted by this step trip PrFeedbackMonitorService, which applies waiting-for:address-pr-feedback and enqueues fix work. That handler owns the label transition; this command must not race it. -->
+   - Do NOT call `cockpit_advance`. Do NOT emit a `Labels:` line. <!-- The unresolved review threads posted by this step trip PrFeedbackMonitorService, which applies waiting-for:address-pr-feedback and enqueues fix work. That handler owns the label transition; this command must not race it. -->
 
    For gates other than `implementation-review`, `request-changes` is a no-op post-review-body: emit one line `Changes requested at <gate>; artifact reviewer will address feedback and re-request review.` and exit zero (no CLI, no `gh api`).
 
 6. **No-op on `abort`** — On `abort`, emit no `Labels:` line, mutate no state, post no PR review, print a literal single line `Aborted: no changes to gate <gate>; no PR review posted.` (with `<gate>` interpolated to the argument's value), and exit zero. <!-- The `Aborted:` line is the Terminal Outcome Check's marker for the abort branch (FR-005); it is emitted only on this code path, so its presence transitively verifies the abort outcome without any state probe. -->
 
-7. On any non-zero CLI exit, apply the **Error handling** block below.
+7. On any non-zero Bash CLI exit (from `gh` at steps 4/5) or unhandled MCP tool typed error, apply the **Error handling** block below.
 
 <!-- BEGIN error-conv -->
-**Error handling** — When the CLI exit code is non-zero (or the pre-flight failed), classify the failure into exactly one of three classes (first match wins, all matches case-insensitive) and emit the matching response. Every class MUST print something — never silently no-op. Exit non-zero on every class.
+**Error handling** — When a Bash CLI exit code is non-zero (or the pre-flight failed), classify the failure into exactly one of three classes (first match wins, all matches case-insensitive) and emit the matching response. Every class MUST print something — never silently no-op. Exit non-zero on every class.
 <!-- Canonical source of truth: packages/claude-plugin-cockpit/README.md § Error Handling -->
-- **MISSING_BINARY** — pre-flight `command -v generacy` returned non-zero. Print: `The generacy CLI is required but is not on $PATH. In a Generacy cluster session it is already installed — add it to your PATH: \`export PATH="/shared-packages/node_modules/.bin:$PATH"\` (persist it in ~/.bashrc). Standalone: install it with \`npm install -g @generacy-ai/generacy\`.`
-- **AUTH_FAILURE** — exit ≠ 0 AND captured stderr matches `/auth|unauthorized|401|gh auth/i`. Print: `Authentication failed. The generacy CLI uses gh for GitHub access — run gh auth login and retry.`
-- **OTHER** — anything else. Print `CLI failed with exit code <N>.` on one line, followed by captured stderr inside a triple-backtick fenced code block.
+- **MISSING_BINARY** — pre-flight `command -v gh` returned non-zero (a required CLI — `gh` for PR review posting — is not installed). Print: `A required CLI (\`gh\` for PR review posting) is required but is not on $PATH. In a Generacy cluster session it is already installed — add it to your PATH: \`export PATH="/shared-packages/node_modules/.bin:$PATH"\` (persist it in ~/.bashrc). Standalone: install it via your platform's package manager (e.g., \`brew install gh\`).`
+- **AUTH_FAILURE** — exit ≠ 0 AND captured stderr matches `/auth|unauthorized|401|gh auth/i`. Print: `Authentication failed. \`gh\` requires GitHub access — run gh auth login and retry.`
+- **OTHER** — anything else, including unhandled MCP tool typed errors. Print `CLI failed with exit code <N>.` (or, for typed errors, `Tool returned typed error <code>.`) on one line, followed by captured stderr / the typed error's `code`/`message`/`details` inside a triple-backtick fenced code block.
 <!-- END error-conv -->
 
 ## Examples
 
-`/cockpit:review --gate implementation-review` — invokes the Agent tool with `subagent_type: "general-purpose"`, passing only the PR reference `<owner>/<repo>#<n>` and the review-scope prompt (which instructs the subagent to fetch its own diff via `gh pr diff`, verify each finding empirically, and return a single JSON value — either an array of `{file, line, summary, failure_scenario}` objects, or `{"error": "<description>"}`). The subagent's terminal contract ends the sub-turn (out of the parent's shared context). The parent then, in a single response, parses the JSON return, classifies each finding as blocking / non-blocking, renders the findings-summary table as prose, appends the `Suggested decision:` line, AND invokes `AskUserQuestion` with the three options — all in the SAME turn (never split across turns; analysis and prompt arrive together). On `approve` with no findings, runs `generacy cockpit advance --gate implementation-review` via Bash. On `approve` with only non-blocking findings, POSTs an `event: COMMENT` PR review whose body lists those findings (no inline threads, so `PrFeedbackMonitorService` stays quiet) AND runs the CLI advance.
+`/cockpit:review --gate implementation-review` — invokes the Agent tool with `subagent_type: "general-purpose"`, passing only the PR reference `<owner>/<repo>#<n>` and the review-scope prompt (which instructs the subagent to fetch its own diff via `gh pr diff`, verify each finding empirically, and return a single JSON value — either an array of `{file, line, summary, failure_scenario}` objects, or `{"error": "<description>"}`). The subagent's terminal contract ends the sub-turn (out of the parent's shared context). The parent then, in a single response, parses the JSON return, classifies each finding as blocking / non-blocking, renders the findings-summary table as prose, appends the `Suggested decision:` line, AND invokes `AskUserQuestion` with the three options — all in the SAME turn (never split across turns; analysis and prompt arrive together). On `approve` with no findings, calls `cockpit_advance(issue=<issue-ref>, gate="implementation-review")`. On `approve` with only non-blocking findings, POSTs an `event: COMMENT` PR review whose body lists those findings (no inline threads, so `PrFeedbackMonitorService` stays quiet) AND calls `cockpit_advance` via the MCP tool.
 
 On the `request-changes` decision from that same invocation, POSTs an `event: COMMENT` PR review with `N finding(s) requiring changes; see inline comments.` and one inline anchored comment per finding, then STOPS without advancing (the resulting unresolved threads trip `PrFeedbackMonitorService`).
 
-`/cockpit:review --gate plan-review` — in a single response, reads `plan.md`, produces the Blockers / Open questions / Suggested decision three-section summary as prose, appends the `Suggested decision:` line, AND invokes `AskUserQuestion` with the three options in the SAME response (never in a follow-up turn). On `approve` runs `generacy cockpit advance --gate plan-review` via Bash.
+`/cockpit:review --gate plan-review` — in a single response, reads `plan.md`, produces the Blockers / Open questions / Suggested decision three-section summary as prose, appends the `Suggested decision:` line, AND invokes `AskUserQuestion` with the three options in the SAME response (never in a follow-up turn). On `approve` calls `cockpit_advance(issue=<issue-ref>, gate="plan-review")`.
 
 `/cockpit:review --gate impl` (or any value outside the accepted set) — emits `Usage: /cockpit:review --gate <spec-review|clarification-review|plan-review|tasks-review|implementation-review>` followed by `For \`clarification\`, use \`/cockpit:clarify\` — the answering gate is a different verb.`, and exits non-zero. No file read, no CLI call, no `gh api` call.
 
 ## Terminal Outcome Check
 
 <!-- BEGIN terminal-check -->
-**Terminal Outcome Check** — Before this command ends, exactly one of the following three markers MUST have been emitted in this session's output. Detection is text-emission-only: no `gh api` calls, no `generacy cockpit status` calls, no `gh pr view` calls, no state probes of any kind. Each marker is emitted by its own step only after that step's real side effect succeeds (or, in the abort case, only when the abort branch is taken), so verifying the emission verifies the outcome transitively.
+**Terminal Outcome Check** — Before this command ends, exactly one of the following three markers MUST have been emitted in this session's output. Detection is text-emission-only: no `gh api` calls, no `cockpit_status` tool calls, no `gh pr view` calls, no state probes of any kind. Each marker is emitted by its own step only after that step's real side effect succeeds (or, in the abort case, only when the abort branch is taken), so verifying the emission verifies the outcome transitively.
 
 - **approve** — Step 4 executed and printed a line matching `Labels: waiting-for:<gate> → completed:<gate>`.
 - **request-changes** — Step 5 executed and printed a line matching `Feedback posted: N inline comment(s) on PR #<pull_number>`.

@@ -502,7 +502,10 @@ function auditInvocations(
 
 describe("398 — playbook invocations match generacy cockpit <verb> --help", () => {
   it("398-1 (drift audit): every commands/*.md invocation matches its --help snapshot argument-kind token", () => {
-    const { verbs, snapshots } = loadKnownVerbSnapshots();
+    // post-#406 the drift audit only covers the `watch` verb; the other six moved to
+    // the 406-1 tool-contract audit.
+    const { verbs: allVerbs, snapshots } = loadKnownVerbSnapshots();
+    const verbs = allVerbs.filter((v) => v === "watch");
     const playbookFiles = readdirSync(COMMANDS_DIR)
       .filter((f) => f.endsWith(".md"))
       .map((f) => resolve(COMMANDS_DIR, f));
@@ -1154,7 +1157,9 @@ describe("403 — auto.md ledger-only contract + phase:* row + subagent diagnosi
     }
   });
 
-  it("403-4: D.7 and D.11 state `generacy cockpit context <issue>` as sole evidence-fetch verb and dispatch further work to a subagent (no gh issue view --comments)", () => {
+  it("403-4: D.7 and D.11 state `cockpit_context(issue=<issue-ref>)` as sole evidence-fetch tool and dispatch further work to a subagent (no gh issue view --comments)", () => {
+    // Post-#406: the sole evidence-fetch mechanism migrated from the Bash `generacy cockpit context`
+    // form to the `cockpit_context` MCP tool. Assertion updated to match the migrated form.
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const d7Block = extractSubheadingBlock(
       autoMd,
@@ -1165,9 +1170,9 @@ describe("403 — auto.md ledger-only contract + phase:* row + subagent diagnosi
       "D.11 — `waiting-for:merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
     );
 
-    // Positive: sole-verb contract.
-    expect(d7Block).toContain("generacy cockpit context <issue>");
-    expect(d11Block).toContain("generacy cockpit context <issue>");
+    // Positive: sole-tool contract (post-#406 form).
+    expect(d7Block).toContain("cockpit_context(issue=<issue-ref>)");
+    expect(d11Block).toContain("cockpit_context(issue=<issue-ref>)");
 
     // Negative: no ad-hoc `gh issue view` INVOCATION in the step-1 prose.
     // The prose is allowed (and required) to name `gh issue view --comments`
@@ -1233,15 +1238,18 @@ describe("403 — auto.md ledger-only contract + phase:* row + subagent diagnosi
     }
   });
 
-  it("403-6: § Invariants section contains exactly eight numbered items; §8's opening substring is the cost-contract line", () => {
+  it("403-6: § Invariants section contains at least eight numbered items; §8's opening substring is the cost-contract line", () => {
+    // Post-#406: §9 (MCP-tool-only invariant) is appended without renumbering §1–§8.
+    // Total item count is asserted at exactly nine by 406-6; this test verifies §8's
+    // cost-contract line survived the append (defense-in-depth against renumbering).
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const invariants = extractInvariantsSection(autoMd);
 
     const numberedItems = invariants.match(/^\d+\.\s+\*\*/gm) ?? [];
     expect(
       numberedItems.length,
-      `§ Invariants must have exactly 8 numbered items; observed: ${numberedItems.length}\n${numberedItems.join("\n")}`,
-    ).toBe(8);
+      `§ Invariants must have at least 8 numbered items; observed: ${numberedItems.length}\n${numberedItems.join("\n")}`,
+    ).toBeGreaterThanOrEqual(8);
 
     const item8Match = invariants.match(/^8\.\s+\*\*[^*]+\*\*\s+([^\n]+)/m);
     expect(item8Match, "§ Invariants must have a numbered §8 with the cost-contract line").toBeTruthy();
@@ -1288,6 +1296,330 @@ describe("403 — auto.md ledger-only contract + phase:* row + subagent diagnosi
       offenders,
       `full epic status table anchor appeared in non-permitted sections: ${offenders.join(", ")}`,
     ).toEqual([]);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// 406 — cockpit MCP tool migration + `cockpit_await_events` loop
+//
+// The runtime is Claude interpreting the six migrated playbooks (auto, clarify,
+// review, merge, queue, status) and calling `cockpit_*` MCP tools instead of
+// Bash `generacy cockpit <verb>`. The tool-call classifier + typed-error parser
+// below are the machine-checkable reference implementations of the audit shapes
+// described in `specs/406-follow-up-generacy-ai/data-model.md`. Both live inline
+// per the #396/#403 pattern — no runtime module.
+// -----------------------------------------------------------------------------
+
+type CockpitToolName =
+  | "cockpit_status"
+  | "cockpit_context"
+  | "cockpit_queue"
+  | "cockpit_advance"
+  | "cockpit_resume"
+  | "cockpit_merge"
+  | "cockpit_await_events";
+
+interface ToolCall {
+  file: string;
+  line: number;
+  tool: CockpitToolName;
+  declaredParams: readonly string[];
+}
+
+interface ToolSchema {
+  name: CockpitToolName;
+  requiredParams: readonly string[];
+  optionalParams: readonly string[];
+}
+
+interface TypedError {
+  code: string;
+  message: string;
+  details: Record<string, unknown>;
+}
+
+const COCKPIT_TOOL_NAMES: readonly CockpitToolName[] = [
+  "cockpit_status",
+  "cockpit_context",
+  "cockpit_queue",
+  "cockpit_advance",
+  "cockpit_resume",
+  "cockpit_merge",
+  "cockpit_await_events",
+];
+
+const MIGRATED_VERBS = ["status", "context", "queue", "advance", "resume", "merge"] as const;
+
+const MIGRATED_PLAYBOOK_NAMES = ["auto", "clarify", "review", "merge", "queue", "status"] as const;
+
+function parseToolCalls(file: string, fileContent: string): ToolCall[] {
+  const calls: ToolCall[] = [];
+  const lines = fileContent.split("\n");
+  const toolRe =
+    /cockpit_(status|context|queue|advance|resume|merge|await_events)\s*\(([^)]*)\)/g;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    toolRe.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = toolRe.exec(line)) !== null) {
+      const tool = `cockpit_${m[1]}` as CockpitToolName;
+      const argsRaw = m[2]!;
+      const declaredParams: string[] = [];
+      for (const part of argsRaw.split(",")) {
+        const trimmed = part.trim();
+        if (trimmed.length === 0) continue;
+        const eq = trimmed.indexOf("=");
+        const nameToken = (eq === -1 ? trimmed : trimmed.slice(0, eq)).trim();
+        const idMatch = nameToken.match(/^[a-zA-Z_][a-zA-Z0-9_]*/);
+        if (idMatch) declaredParams.push(idMatch[0]);
+      }
+      calls.push({ file, line: i + 1, tool, declaredParams });
+    }
+  }
+  return calls;
+}
+
+function parseTypedError(input: string): TypedError | { errorKind: "parse" | "shape"; raw: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    return { errorKind: "parse", raw: input };
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    return { errorKind: "shape", raw: input };
+  }
+  const obj = parsed as Record<string, unknown>;
+  if (
+    typeof obj.code !== "string" ||
+    typeof obj.message !== "string" ||
+    typeof obj.details !== "object" ||
+    obj.details === null
+  ) {
+    return { errorKind: "shape", raw: input };
+  }
+  return {
+    code: obj.code,
+    message: obj.message,
+    details: obj.details as Record<string, unknown>,
+  };
+}
+
+function extractInstructionsSteps(md: string): Map<number, string> {
+  const marker = "\n## Instructions\n";
+  const start = md.indexOf(marker);
+  if (start === -1) throw new Error("§ Instructions heading not found in auto.md");
+  const rest = md.slice(start + marker.length);
+  const nextH2 = rest.indexOf("\n## ");
+  const body = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+
+  const steps = new Map<number, string>();
+  const lines = body.split("\n");
+  const stepRe = /^(\d+)\.\s+\*\*/;
+  let currentStep = -1;
+  let currentLines: string[] = [];
+  for (const line of lines) {
+    const m = line.match(stepRe);
+    if (m) {
+      if (currentStep >= 0) steps.set(currentStep, currentLines.join("\n"));
+      currentStep = parseInt(m[1]!, 10);
+      currentLines = [line];
+    } else {
+      currentLines.push(line);
+    }
+  }
+  if (currentStep >= 0) steps.set(currentStep, currentLines.join("\n"));
+  return steps;
+}
+
+const FIXTURE_406_TOOL_SCHEMAS = resolve(FIXTURES, "406-tool-schemas.json");
+const FIXTURE_406_MALFORMED_INPUT = resolve(FIXTURES, "406-malformed-ref-input.json");
+const FIXTURE_406_MALFORMED_EXPECTED = resolve(FIXTURES, "406-malformed-ref-expected-error.json");
+
+describe("406 — cockpit MCP tool migration + await-events loop", () => {
+  it("406-1 (tool-contract audit): every cockpit_* call in migrated playbooks names a tool and params from the #917 schema snapshot", () => {
+    const schemas = JSON.parse(readFileSync(FIXTURE_406_TOOL_SCHEMAS, "utf-8")) as ToolSchema[];
+    const schemaByName = new Map(schemas.map((s) => [s.name, s]));
+    const validToolNames = new Set(schemas.map((s) => s.name));
+
+    const migratedPlaybooks = MIGRATED_PLAYBOOK_NAMES.map((n) => resolve(COMMANDS_DIR, `${n}.md`));
+
+    const problems: string[] = [];
+    for (const file of migratedPlaybooks) {
+      const content = readFileSync(file, "utf-8");
+      const calls = parseToolCalls(file, content);
+      for (const call of calls) {
+        if (!validToolNames.has(call.tool)) {
+          problems.push(`${call.file}:${call.line} unknown tool ${call.tool}`);
+          continue;
+        }
+        const schema = schemaByName.get(call.tool)!;
+        const validParams = new Set<string>([...schema.requiredParams, ...schema.optionalParams]);
+        for (const p of call.declaredParams) {
+          if (!validParams.has(p)) {
+            problems.push(
+              `${call.file}:${call.line} tool ${call.tool} unknown param '${p}' (declared: [${call.declaredParams.join(", ")}]; valid: [${[...validParams].join(", ")}])`,
+            );
+          }
+        }
+        if (call.declaredParams.length > 0) {
+          const declared = new Set(call.declaredParams);
+          for (const req of schema.requiredParams) {
+            if (!declared.has(req)) {
+              problems.push(
+                `${call.file}:${call.line} tool ${call.tool} missing required param '${req}' (declared: [${call.declaredParams.join(", ")}])`,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    expect(problems, `\nTool-contract audit failures:\n${problems.join("\n")}`).toEqual([]);
+  });
+
+  it("406-2 (no residual CLI verb): migrated playbooks have zero `generacy cockpit <migrated-verb>` invocations; watch.md retains `generacy cockpit watch`", () => {
+    const cliVerbRe = new RegExp(`generacy cockpit (${MIGRATED_VERBS.join("|")})\\b`);
+    const migratedPlaybooks = MIGRATED_PLAYBOOK_NAMES.map((n) => resolve(COMMANDS_DIR, `${n}.md`));
+    const hits: string[] = [];
+    for (const file of migratedPlaybooks) {
+      const lines = readFileSync(file, "utf-8").split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        if (cliVerbRe.test(lines[i]!)) {
+          hits.push(`${file}:${i + 1}  ${lines[i]!.trim()}`);
+        }
+      }
+    }
+    expect(hits, `\nResidual CLI verbs found:\n${hits.join("\n")}`).toEqual([]);
+
+    // Positive-inverse: watch.md must retain the `watch` verb (it is out-of-scope for #406).
+    const watchContent = readFileSync(resolve(COMMANDS_DIR, "watch.md"), "utf-8");
+    expect(/generacy cockpit watch\b/.test(watchContent)).toBe(true);
+  });
+
+  it("406-3 (`cockpit_await_events` loop shape): auto.md step 4 uses cockpit_await_events; step 2 has no run_in_background:true; step 4 has no Monitor primitive", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const steps = extractInstructionsSteps(autoMd);
+    const step2 = steps.get(2) ?? "";
+    const step4 = steps.get(4) ?? "";
+
+    expect(step4, "auto.md step 4 must contain `cockpit_await_events` at least once").toContain(
+      "cockpit_await_events",
+    );
+    expect(step2.includes("run_in_background: true")).toBe(false);
+    expect(step4.includes("Monitor")).toBe(false);
+  });
+
+  it("406-4 (in-memory cursor): auto.md steps 4/5 state cursor is in-memory only, reference the recovery convergence, and carry no on-disk cursor path", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const steps = extractInstructionsSteps(autoMd);
+    const step4And5 = (steps.get(4) ?? "") + "\n" + (steps.get(5) ?? "");
+
+    expect(/cursor.*in.?memory only/i.test(step4And5)).toBe(true);
+    expect(/\.cockpit\/cursor|state\/cursor|cursor\.json/.test(step4And5)).toBe(false);
+    // Recovery convergence: invalid-cursor / resetFrom / expiry all trigger startup sweep + re-arm cursor-less.
+    expect(step4And5).toContain("invalid-cursor");
+    expect(step4And5).toContain("resetFrom");
+    expect(step4And5.toLowerCase()).toContain("startup sweep");
+    expect(/re-arm/i.test(step4And5)).toBe(true);
+  });
+
+  it("406-5 (startup sweep tool-presence check): auto.md step 3 names the seven cockpit_* tools, has the load-bearing ledger line + guidance verbatim, and no AskUserQuestion in the fail-loud paragraph", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const steps = extractInstructionsSteps(autoMd);
+    const step3 = steps.get(3) ?? "";
+
+    const LEDGER_LINE_ON_MISSING =
+      "startup · cockpit-mcp-tools-missing · abort · see cluster-base#75";
+    const GUIDANCE_ON_MISSING =
+      "cockpit MCP tools not available — upgrade the cluster / verify registration; see cluster-base#75";
+
+    expect(step3).toContain(LEDGER_LINE_ON_MISSING);
+    expect(step3).toContain(GUIDANCE_ON_MISSING);
+    for (const tool of COCKPIT_TOOL_NAMES) {
+      expect(step3, `step 3 must name the ${tool} tool in the presence check`).toContain(tool);
+    }
+
+    // No AskUserQuestion in the ±10-line window around the fail-loud paragraph.
+    const step3Lines = step3.split("\n");
+    const failLoudIdx = step3Lines.findIndex((l) => l.includes("cockpit-mcp-tools-missing"));
+    expect(failLoudIdx).toBeGreaterThanOrEqual(0);
+    const windowStart = Math.max(0, failLoudIdx - 10);
+    const windowEnd = Math.min(step3Lines.length, failLoudIdx + 11);
+    const failLoudWindow = step3Lines.slice(windowStart, windowEnd).join("\n");
+    expect(failLoudWindow.includes("AskUserQuestion")).toBe(false);
+  });
+
+  it("406-6 (invariant §9): auto.md § Invariants has exactly nine numbered items; §9 opens verbatim; §1–§8 opening substrings survive", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const invariants = extractInvariantsSection(autoMd);
+
+    const numberedItems = invariants.match(/^\d+\.\s+\*\*/gm) ?? [];
+    expect(
+      numberedItems.length,
+      `§ Invariants must have exactly 9 numbered items; observed: ${numberedItems.length}`,
+    ).toBe(9);
+
+    // Extract §n opening lines (line beginning with `<n>. `) into a map.
+    const openings = new Map<number, string>();
+    const openingRe = /^(\d+)\.\s+(.+)$/gm;
+    let om: RegExpExecArray | null;
+    while ((om = openingRe.exec(invariants)) !== null) {
+      openings.set(parseInt(om[1]!, 10), om[2]!);
+    }
+
+    const expectations: ReadonlyArray<{ n: number; includes: string }> = [
+      { n: 1, includes: "Never merge on red." },
+      { n: 2, includes: "Cockpit comments marked." },
+      { n: 3, includes: "Add-only advance." },
+      { n: 4, includes: "No cross-slash-command invocation" },
+      { n: 5, includes: "Analysis in subagents" },
+      { n: 6, includes: "Autonomy" },
+      { n: 7, includes: "Stream consumption is unfiltered." },
+      { n: 8, includes: "Ledger-only rows are cheap by contract." },
+    ];
+    for (const { n, includes } of expectations) {
+      const opening = openings.get(n);
+      expect(opening, `§${n} must exist in § Invariants`).toBeDefined();
+      expect(
+        opening!.includes(includes),
+        `§${n} opening should include '${includes}'; got: '${opening}'`,
+      ).toBe(true);
+    }
+
+    // §9 opening substring verbatim (the load-bearing rule a future rewrite has to survive).
+    const item9Opening = openings.get(9);
+    expect(item9Opening, "§9 must exist in § Invariants").toBeDefined();
+    const item9Anchor =
+      "**MCP-tool-only invariant.** After the migration, `auto.md` invokes no `generacy cockpit <migrated-verb>` Bash form —";
+    expect(item9Opening!.startsWith(item9Anchor)).toBe(true);
+  });
+
+  it("406-7 (typed-ref error shape): parseTypedError preserves code/message/details verbatim from the malformed-ref fixture — no CLI-stderr re-wrapping", () => {
+    const inputRaw = readFileSync(FIXTURE_406_MALFORMED_INPUT, "utf-8");
+    const expectedRaw = readFileSync(FIXTURE_406_MALFORMED_EXPECTED, "utf-8");
+
+    const parsed = parseTypedError(expectedRaw);
+    expect("code" in parsed, `expected fixture must parse into a TypedError; got: ${JSON.stringify(parsed)}`).toBe(true);
+    if ("code" in parsed) {
+      expect(parsed.code).toBe("invalid-ref");
+      expect(parsed.message).toBe(
+        "Ref 'generacy-ai/agency!403' does not match the expected shape 'owner/repo#N'.",
+      );
+      expect(parsed.details).toMatchObject({
+        input: "generacy-ai/agency!403",
+        expectedShape: "owner/repo#N",
+        suggestedFix: "Replace '!' with '#'.",
+      });
+    }
+
+    // Sanity: the input fixture describes a malformed-ref call site (cockpit_context with bang-instead-of-hash).
+    const input = JSON.parse(inputRaw) as {
+      tool: string;
+      declaredParams: { issue: string };
+    };
+    expect(input.tool).toBe("cockpit_context");
+    expect(input.declaredParams.issue).toBe("generacy-ai/agency!403");
   });
 });
 

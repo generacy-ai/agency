@@ -8,7 +8,7 @@ arguments:
 
 # Clarify Command
 
-Drive the assist loop for open clarification questions on an epic child issue: fetch grounded context via `generacy cockpit context`, draft one answer per question, present them together for batched approval via a single `AskUserQuestion`, post the approved subset as one marker-prefixed GitHub comment, then — when every question has an approved answer — advance the clarification gate via `generacy cockpit advance`.
+Drive the assist loop for open clarification questions on an epic child issue: fetch grounded context via the `cockpit_context` MCP tool, draft one answer per question, present them together for batched approval via a single `AskUserQuestion`, post the approved subset as one marker-prefixed GitHub comment, then — when every question has an approved answer — advance the clarification gate via the `cockpit_advance` MCP tool.
 
 ## User Input
 
@@ -18,14 +18,14 @@ $ARGUMENTS
 
 ## Instructions
 
-1. **Resolve target issue** — Trim `$ARGUMENTS`; strip a leading `#`. If it parses to a positive integer, use it. Otherwise fall back to `git branch --show-current` and take the leading `<digits>-` prefix. If neither yields an integer, print `no child issue resolvable; pass <issue>` and exit non-zero. Qualify with the current repo's `nameWithOwner` (via `gh repo view --json nameWithOwner -q .nameWithOwner`) so downstream `generacy` calls are unambiguous.
+1. **Resolve target issue** — Trim `$ARGUMENTS`; strip a leading `#`. If it parses to a positive integer, use it. Otherwise fall back to `git branch --show-current` and take the leading `<digits>-` prefix. If neither yields an integer, print `no child issue resolvable; pass <issue>` and exit non-zero. Qualify with the current repo's `nameWithOwner` (via `gh repo view --json nameWithOwner -q .nameWithOwner`) so downstream tool calls are unambiguous.
 
-2. **Pre-flight** — `command -v generacy >/dev/null 2>&1`. If the pre-flight returns non-zero, apply the **Error handling** block below with class `MISSING_BINARY` and stop.
+2. **Pre-flight** — `command -v gh >/dev/null 2>&1` (the sole remaining Bash CLI in this playbook, used at step 6 for comment posting). If the pre-flight returns non-zero, apply the **Error handling** block below with class `MISSING_BINARY` and stop.
 
-3. **Fetch context** — Invoke `generacy cockpit context <issue>` via the Bash tool. This is the renamed successor to `clarify-context`; the old verb no longer exists. Handle:
-   - Exit `0` → parse stdout as the JSON payload (open-question list, spec/plan bodies, touched files, and the raw `clarificationComment.body` — the engine-authored batch template).
-   - CLI reports "no open clarifications" (gate refusal, empty question list) → print `no open clarification questions for <issue-ref>` and exit zero without posting or advancing.
-   - Any other non-zero exit → apply the **Error handling** block below.
+3. **Fetch context** — Call `cockpit_context(issue=<issue-ref>)` via the MCP tool binding. Handle:
+   - Success → consume the tool's return payload (open-question list, spec/plan bodies, touched files, and the raw `clarificationComment.body` — the engine-authored batch template).
+   - Typed error `code: "no-open-clarifications"` → print `no open clarification questions for <issue-ref>` and exit zero without posting or advancing.
+   - Any other typed error → apply the **Error handling** block below with class `OTHER`, quoting the tool's `code`/`message`/`details` inside a triple-backtick fenced code block.
 
 4. **Draft answers** — For each open question, produce one drafted answer grounded in the fetched context (question's own context → spec body → plan body → touched files). Return one entry per open question with the shape `{question_id, recommendation, justification, provenance}`:
    - `recommendation` — the chosen letter + its text (for lettered-option questions) OR the drafted free-form response (for free-form questions), ~1-3 sentences of prose.
@@ -78,16 +78,16 @@ $ARGUMENTS
 
    Use `--body-file` exclusively — never `-b "…"` or `--body "…"` (shell quoting risks stripping the marker). If every decision was `Skip this batch` (or every question was skipped via directives), print `all answers were skipped; no comment posted` and exit zero without posting or advancing.
 
-7. **Advance gate** — Only when every open question has an approved (or edited-then-approved) answer AND step 6 posted successfully, run `generacy cockpit advance --gate clarification <issue-ref>` via the Bash tool. On exit `0`, print `posted <k> answers; clarification gate advanced for <issue-ref>` and exit zero. On non-zero, apply the **Error handling** block below (the comment stays live on the issue — do not attempt retraction). If some questions were skipped, print a status summary listing the pending question numbers with their verdicts and exit zero without advancing.
+7. **Advance gate** — Only when every open question has an approved (or edited-then-approved) answer AND step 6 posted successfully, call `cockpit_advance(issue=<issue-ref>, gate="clarification")` via the MCP tool binding. On success, print `posted <k> answers; clarification gate advanced for <issue-ref>` and exit zero. On typed error, apply the **Error handling** block below with class `OTHER` (the comment stays live on the issue — do not attempt retraction). If some questions were skipped, print a status summary listing the pending question numbers with their verdicts and exit zero without advancing.
 
-8. On any non-zero CLI exit, apply the **Error handling** block below.
+8. On any non-zero Bash CLI exit (from `gh` at step 6) or unhandled MCP tool typed error, apply the **Error handling** block below.
 
 <!-- BEGIN error-conv -->
-**Error handling** — When the CLI exit code is non-zero (or the pre-flight failed), classify the failure into exactly one of three classes (first match wins, all matches case-insensitive) and emit the matching response. Every class MUST print something — never silently no-op. Exit non-zero on every class.
+**Error handling** — When a Bash CLI exit code is non-zero (or the pre-flight failed), classify the failure into exactly one of three classes (first match wins, all matches case-insensitive) and emit the matching response. Every class MUST print something — never silently no-op. Exit non-zero on every class.
 <!-- Canonical source of truth: packages/claude-plugin-cockpit/README.md § Error Handling -->
-- **MISSING_BINARY** — pre-flight `command -v generacy` returned non-zero. Print: `The generacy CLI is required but is not on $PATH. In a Generacy cluster session it is already installed — add it to your PATH: \`export PATH="/shared-packages/node_modules/.bin:$PATH"\` (persist it in ~/.bashrc). Standalone: install it with \`npm install -g @generacy-ai/generacy\`.`
-- **AUTH_FAILURE** — exit ≠ 0 AND captured stderr matches `/auth|unauthorized|401|gh auth/i`. Print: `Authentication failed. The generacy CLI uses gh for GitHub access — run gh auth login and retry.`
-- **OTHER** — anything else. Print `CLI failed with exit code <N>.` on one line, followed by captured stderr inside a triple-backtick fenced code block.
+- **MISSING_BINARY** — pre-flight `command -v gh` returned non-zero (a required CLI — `gh` for issue comment posting — is not installed). Print: `A required CLI (\`gh\` for issue comment posting) is required but is not on $PATH. In a Generacy cluster session it is already installed — add it to your PATH: \`export PATH="/shared-packages/node_modules/.bin:$PATH"\` (persist it in ~/.bashrc). Standalone: install it via your platform's package manager (e.g., \`brew install gh\`).`
+- **AUTH_FAILURE** — exit ≠ 0 AND captured stderr matches `/auth|unauthorized|401|gh auth/i`. Print: `Authentication failed. \`gh\` requires GitHub access — run gh auth login and retry.`
+- **OTHER** — anything else, including unhandled MCP tool typed errors. Print `CLI failed with exit code <N>.` (or, for typed errors, `Tool returned typed error <code>.`) on one line, followed by captured stderr / the typed error's `code`/`message`/`details` inside a triple-backtick fenced code block.
 <!-- END error-conv -->
 
 ### Directive grammar

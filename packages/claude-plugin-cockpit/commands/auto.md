@@ -1,5 +1,5 @@
 ---
-description: Drive an epic to epic-complete — auto-transport over cockpit watch events with fused human gates
+description: Drive an epic to epic-complete — long-poll cockpit_await_events with fused human gates
 arguments:
   - name: epic-ref
     description: "Epic reference (owner/repo#N). Required. No flags in v1."
@@ -8,7 +8,7 @@ arguments:
 
 # Auto Command
 
-Drive the named epic to `epic-complete` by watching state transitions and dispatching to the six existing assist commands' *actions* (CLI verbs + subagent hops), never the assist commands themselves. The loop shape is: **pre-flight → spawn `cockpit watch` → per event: re-check live state → dispatch → write one ledger line → exit on `epic-complete`.** Two hard boundaries are load-bearing: **never merge on red** (validate + green is mechanical; anything red routes through the bounded-fixer branch and, if still red, an escalation gate) and **every gate prompts** (per-gate auto-approve / "full auto" is explicitly out of scope). Analysis lives in subagents (`subagent_type: "general-purpose"`) whose contracts return strict JSON per hop; the parent loop stays thin.
+Drive the named epic to `epic-complete` by long-polling `cockpit_await_events` and dispatching to the six existing assist commands' *actions* (MCP tool calls + subagent hops), never the assist commands themselves. The loop shape is: **pre-flight → startup sweep (tool-presence check + synthetic-event dispatch) → per iteration: `cockpit_await_events(epic, cursor, …)` → consume batch in stream order → per event: re-check live state → dispatch → write one ledger line → advance in-memory cursor → exit on `epic-complete`.** Two hard boundaries are load-bearing: **never merge on red** (validate + green is mechanical; anything red routes through the bounded-fixer branch and, if still red, an escalation gate) and **every gate prompts** (per-gate auto-approve / "full auto" is explicitly out of scope). Analysis lives in subagents (`subagent_type: "general-purpose"`) whose contracts return strict JSON per hop; the parent loop stays thin.
 
 ## User Input
 
@@ -20,38 +20,45 @@ $ARGUMENTS
 
 1. **Parse arguments + pre-flight.** Require exactly one positional `<epic-ref>` (`owner/repo#N`). On usage error, print `Usage: /cockpit:auto <epic-ref>` and exit non-zero. Pre-flight: `command -v generacy` (on failure → **Error handling** class `MISSING_BINARY`); `gh auth status` (on failure → **Error handling** class `AUTH_FAILURE`); confirm the operator's cwd is a writable git repo; create the ledger directory with `mkdir -p .generacy/cockpit/auto-runs` (on failure → **Error handling** class `OTHER`). Compute the run's ledger filename: `.generacy/cockpit/auto-runs/<epic-ref-slug>-<timestamp>.ledger`, where `<epic-ref-slug>` is the epic reference with `/` replaced by `-` and `#` stripped, and `<timestamp>` is `YYYYMMDD-HHMMSS` in the operator's local time captured now.
 
-2. **Spawn `generacy cockpit watch <epic-ref>` in the background.** Use the Bash tool with `run_in_background: true` and capture the process handle. This is the event stream for step 4.
+2. **No background watcher to spawn.** Post-#406, there is no `cockpit watch` background process to arm — the event source is `cockpit_await_events`, called per iteration in step 4's main loop. The initial state of the loop is cursor-less; the first `cockpit_await_events` call in step 4 arms the in-memory cursor from the tool server's connect-time position. Step number retained for stability.
 
-3. **Startup sweep.** Call `generacy cockpit status --json <epic-ref>` and treat every issue whose current transition class is one of D.1–D.9 (below) as a synthetic event. Dispatch each one by one (per § Dispatch and § Ledger) before entering the main loop. This handles the case where the epic already has open work when `/cockpit:auto` is invoked.
+3. **Startup sweep.**
 
-4. **Main loop.** New lines from the background watch process output are read **unfiltered**. Every non-empty line (trim leading/trailing whitespace, then any remaining content — including malformed or truncated JSON) is an event; whitespace-only lines are dropped as line-framing hygiene. Content-shape heuristics (must-start-with-`{`, must-parse-as-JSON, or similar) are prohibited — a truncated flush would be dropped silently, which is under-delivery, the failure class this fix exists to kill.
+   **Tool-presence check (fail-loud on missing cockpit MCP tools).** At the top of the sweep, before dispatching anything, verify that the seven `cockpit_*` MCP tools are present in the session's tool binding: `cockpit_status`, `cockpit_context`, `cockpit_queue`, `cockpit_advance`, `cockpit_resume`, `cockpit_merge`, `cockpit_await_events`. If any of the seven is absent from the tool binding:
+   - Append the load-bearing ledger line verbatim: `startup · cockpit-mcp-tools-missing · abort · see cluster-base#75`.
+   - Print the load-bearing guidance verbatim: `cockpit MCP tools not available — upgrade the cluster / verify registration; see cluster-base#75`.
+   - Exit non-zero.
 
-   **Never construct field- or content-based filters over the stream.** The stream carries more than one event shape: legacy per-issue transitions use the envelope `{ts, repo, kind, number, event, labels}` and have **no `type` field**; only S8 synthetic aggregates (`phase-complete`/`epic-complete`) carry `type`. Filtering on `type` would drop every real transition event. The T-S4 anti-pattern — `tail -n 0 -f <watch-output> | grep --line-buffered '"type"'` — is prohibited. Over-delivery is harmless (step 4a re-check absorbs it); under-delivery is silent loop death — this asymmetry is the entire justification for the no-filter rule.
+   The fail path is **ledger + print + exit only** — no operator prompt is fired. The operator can do nothing in-session about missing tool registration; a prompt whose every option means "abort" is not a decision. The correct response class for "environment doesn't support the operation" is `Print + exit`. Registration is owned by cluster-base#75 (runtime-registered per cluster); a cluster without registration hard-fails here by contract, not by bug.
 
-   If the harness's stream-monitor primitive requires a match pattern to arm a reader, the sanctioned pattern is any non-empty line (regex `.+`, or the newline-delimited-read equivalent) — never a JSON field, JSON key, `type`/`event` substring, or any schema-shape discriminator.
+   **Synthetic-event dispatch (only reached when all seven tools are present).** Call `cockpit_status(epic=<epic-ref>, json=true)` and treat every issue whose current transition class is one of D.1–D.9 (below) as a synthetic event. Dispatch each one by one (per § Dispatch and § Ledger) before entering the main loop. This handles the case where the epic already has open work when `/cockpit:auto` is invoked. The sweep ends with exactly one full status table (per § Ledger L.4 policy) and then hands off to step 4.
 
-   Each read from the background watch process output is bounded to **30 seconds** per iteration. The 30-second bounded read is the sole new detection mechanism admitted by this fix: a dead reader cannot event-drive its own diagnosis, so a bounded read is required to make the empty-read counter observable at step 5's liveness cross-check.
+4. **Main loop.** Per iteration, call `cockpit_await_events(epic=<epic-ref>, cursor=<in-memory-cursor>, maxWaitMs=55000, coalesceWindowMs=3000, maxBatchSize=256)` via the MCP tool binding. The initial iteration passes `cursor=null` (cursor-less — the tool server arms from its connect-time position). Each successful return is a **batch of typed events** with a `nextCursor` field; the batch's events are already parsed by the tool server (no NDJSON stream, no per-line filtering).
 
-   For each event line consumed:
-   - **(a) Re-check live state** via `generacy cockpit status --json <epic-ref>`. The streamed line is advisory; the live JSON is authoritative (spec § Loop). If the epic's live state is `epic-complete`, go to step 6.
+   Consume every event in the returned batch **in stream order**. There is no content- or field-based filter over the batch; the batch's ordering IS the dispatch order. Preserving § Invariants #7's intent — no content-based filter that could silently drop legitimate events — is by construction here: the tool server owns event parsing, and the parent consumes the typed batch as-is.
+
+   After the batch is fully consumed, advance the in-memory cursor to `batch.nextCursor` and loop back to the top of the iteration (issue the next `cockpit_await_events` call).
+
+   For each event in the batch (in stream order):
+   - **(a) Re-check live state** via `cockpit_status(epic=<epic-ref>, json=true)` for actionable dispatch classes (D.1–D.8, D.10, D.11). The batch event is advisory; the live return is authoritative (spec § Loop). Ledger-only rows (D.9, D.9a, D.9b, D.9c, D.9d) skip the re-check per § Invariants #8's cost contract — a batch containing only ledger-only events is one ledger append per event and zero other tool calls. If the epic's live state is `epic-complete`, go to step 6.
    - **(b) Dispatch** per § Dispatch below, branching on the *live* transition class.
    - **(c) Write one ledger line** per § Ledger (transcript print + append to the run's `.ledger` file). A dispatch without a ledger line is a protocol violation.
-   - **(d) Continue** the loop.
+   - **(d) Continue** with the next event in the batch.
 
-   Issue-history footnote: on the T-S4 run, `cockpit watch` produced 17 NDJSON lines and 1 reached the loop; the other 16 legacy per-issue events were dropped by an improvised field-based filter (see agency#394). This is an instance of the "instruction gap → improvisation" class that #384 (Terminal Outcome Check) and #388 (fusion) instanced at the review gate; #394 instances it at the mechanism gap in the consumption recipe.
+   The `maxWaitMs=55000` bound at the tool boundary makes each iteration finite even on an idle epic; the tool server owns the "silent stall" detection (a stalled server does not return successful empty batches indefinitely — see step 5's cursor-recovery paragraph for the failure surface). An empty batch return (`nextCursor` advances, no events dispatched) simply loops back for the next long-poll; ledger-only cost accounting sees zero appends for that iteration.
 
-5. **Watch re-arm.** If the background `cockpit watch` process dies while the epic is incomplete, re-spawn it (repeat step 2's Bash invocation). The **Startup sweep** (step 3) + the live-state re-check (4a) make the re-arm idempotent — spawning `cockpit watch` twice on the same live state produces no duplicate action, because the re-check catches events that are already dispatched (state moved on).
+   Issue-history footnote: pre-#406, the T-S4 run's `cockpit watch` produced 17 NDJSON lines and 1 reached the loop; the other 16 legacy per-issue events were dropped by an improvised field-based filter (see agency#394). Post-#406, the failure class the field-based filter tried to solve (an ill-shaped consumer of the NDJSON stream) is retired at the boundary — the typed batch is not a stream, and the tool server owns event shape.
 
-   **Liveness cross-check.** A live watch process with a dead consumer must be treated as a broken loop — the mechanism-gap defense-in-depth analogue of this step's process-death defense, not a replacement. The cross-check fires only on the conjunction of:
-   1. The background watch process is alive (still running per Bash tool handle status).
-   2. **N=4 consecutive empty reads** have elapsed from step 4's 30-second bounded read (~2 minutes of silence).
-   3. `generacy cockpit status --json <epic-ref>` reports at least one issue in a D.1–D.9 transition class (actionable live state).
+5. **Cursor recovery.** There is no watch process to re-arm; the cursor is in-memory only, held for the lifetime of the current dispatch loop. On any of the following signals from `cockpit_await_events`, converge on the same recovery path — run the startup sweep (step 3) again and re-arm the cursor from the tool server's connect-time position (cursor-less):
+   1. **`invalid-cursor` typed error** — the cursor the parent passed is stale/corrupted (fail loud — this is a caller bug on this side of the boundary; the parent must not swallow it). Log the typed error's `code`/`message`/`details` verbatim, then trigger recovery.
+   2. **`resetFrom` reset signal in the returned batch** — the tool server signaled a reset in the batch metadata (e.g., server-side event-log rotation). Trigger recovery.
+   3. **Cursor expiry** — a typed error indicating the cursor is past the server's retention window. Trigger recovery.
 
-   The `cockpit status --json` call runs **only at the threshold** (after N=4 empty reads), not on every empty read. The cross-check is **compound**: silence alone is normal during long implement stretches and does not fire it — the compound predicate (silence AND actionable live state) is what distinguishes a broken consumer from an idle loop.
+   All three signals converge on the same recovery convergence path: **re-run step 3's startup sweep + re-arm cursor-less from connect-time position.** Both the sweep (per § Ledger L.5 idempotency rule) and the re-arm are idempotent — the live-state re-check in step 4a catches events already dispatched (state moved on), so no duplicate action can result. **The cursor is in-memory only** — session restart, `invalid-cursor`, `resetFrom`, and cursor expiry all converge on this same recovery path, and no filesystem persistence of the cursor exists (no on-disk cursor file, no ledger re-derivation).
 
-   **Recovery** is exactly: re-arm the stream reader (same mechanism as the process-death path above) + re-run step 3 (startup sweep). Both are idempotent per the L.5 rule so no duplicate action can result. **No new recovery machinery is introduced** — this constraint applies to the recovery path only; step 4's 30-second bounded read + N=4 empty-read counter is the only new detection mechanism admitted by this fix.
+   The compound-liveness cross-check (N=4 empty reads + actionable live state) retires with this step. The `maxWaitMs=55000` at the tool boundary bounds the "no events" case at each iteration, and the tool server owns the "silent stall" detection (a stalled server returns a typed error or fails the tool call, both of which the recovery path handles above).
 
-6. **Exit.** On `epic-complete`, kill the background watch process, print the run summary per § Ledger L.6 (including the absolute path of the run's `.ledger` file), and exit zero. Non-`epic-complete` exits (Stop from an escalation gate, unrecoverable error) print an abbreviated summary with the exit reason.
+6. **Exit.** On `epic-complete`, print the run summary per § Ledger L.6 (including the absolute path of the run's `.ledger` file), and exit zero. Non-`epic-complete` exits (Stop from an escalation gate, unrecoverable error) print an abbreviated summary with the exit reason.
 
 ## Dispatch
 
@@ -80,7 +87,7 @@ The following nine event classes are dispatched per this table. The parent **alw
 **Trigger**: An issue enters `waiting-for:clarification` (open clarification questions posted, awaiting operator-authored answers). Verbatim event string: `waiting-for:clarification`.
 
 **Dispatch**:
-1. **Fetch context**: `generacy cockpit context <issue>` (the same CLI verb `/cockpit:clarify` uses — the renamed successor to `clarify-context`). The payload's `clarificationComment.body` field carries the engine-authored batch-comment template (raw). Parse it into per-question `{title, context, question, options}` per the shared batch-comment rule (`### Q<n>: <title>` headers + `**Context**:` / `**Question**:` / `**Options**:` labels; option bullets tolerant of `A:` and `A)` styles; free-form questions with no `**Options**:` label yield `options: null`).
+1. **Fetch context**: `cockpit_context(issue=<issue-ref>)` (the same MCP tool `/cockpit:clarify` uses). The return payload's `clarificationComment.body` field carries the engine-authored batch-comment template (raw). Parse it into per-question `{title, context, question, options}` per the shared batch-comment rule (`### Q<n>: <title>` headers + `**Context**:` / `**Question**:` / `**Options**:` labels; option bullets tolerant of `A:` and `A)` styles; free-form questions with no `**Options**:` label yield `options: null`).
 2. **Spawn clarification drafter subagent** (see § Gate contract G.1 and the SB.1 return schema below). Invocation:
    ```
    subagent_type: "general-purpose"
@@ -117,7 +124,7 @@ The following nine event classes are dispatched per this table. The parent **alw
 
    Built-in "Other" free-text is the **one-turn edit path**: directives typed there are parsed via the same rule (see § Directive grammar) and applied directly (edited answers posted verbatim, individual questions skipped) without the extra `Make changes` round-trip. The change-collection turn following an explicit `Make changes` selection is NOT the same risk as the #388 turn-split concern — the #388 concern was about splitting a gate's presentation from its decision, which allowed the loop to auto-proceed on an implicit-approve default; the `Make changes` re-loop cannot auto-proceed (zero directives is a no-op re-present, not an implicit approve or skip), and every iteration requires an explicit operator choice.
 4. **Assemble comment body**: `<!-- generacy-cockpit:clarification-answers -->` marker + one `### Q<n>` block per approved (or edited) answer, in ascending question-number order, separated by a single blank line. Each block emits `**Answer:** <recommendation>` on one line and `**Rationale:** <justification>` on the next. Read the `recommendation` and `justification` fields from the drafter return (step 2); the assembly step reads the same fields the presentation renders, so display and posted content cannot drift. For bare-letter operator overrides (a directive whose `rationale` is `null` per § Directive grammar), emit NO `**Rationale:**` line — never retain the draft's justification under an operator-overridden answer. Skipped questions do not appear. Write to `/tmp/cockpit-auto-clarify-<issue>-<unix_ts>.md`. Post via `gh issue comment "$ISSUE" --body-file <tmpfile>` — use `--body-file` exclusively (never `-b` / `--body`; shell quoting risks stripping the marker).
-5. **Advance gate**: If every open question received an approved or edited answer, run `generacy cockpit advance --gate clarification <issue-ref>`. If some were skipped, do not advance — write a ledger line noting the partial state (`posted <k>/<N>, skipped <s>`) and continue.
+5. **Advance gate**: If every open question received an approved or edited answer, call `cockpit_advance(issue=<issue-ref>, gate="clarification")`. If some were skipped, do not advance — write a ledger line noting the partial state (`posted <k>/<N>, skipped <s>`) and continue.
 
 **Ledger line**: `<issue-ref> · waiting-for:clarification · clarification-batch · <outcome>` where outcome is one of `advanced` / `posted <k>/<N>, skipped <s>` / `all answers skipped` / `error: <description>`.
 
@@ -142,7 +149,7 @@ The following nine event classes are dispatched per this table. The parent **alw
    The subagent reads the artifact + surrounding context directly and returns a single JSON value — either an array of `[{file, line, summary, failure_scenario}, ...]`, `[]` for zero findings, or `{"error": "<description>"}`. No prose, no fenced block. **MUST NOT print raw JSON under any circumstance.** The parent renders the parsed array as a findings-summary table; it never restates the JSON verbatim.
 3. **Present fused verdict gate** (see § Gate contract G.2). In one assistant response: findings-summary table (per #388 C.3.5 shape) + `Suggested decision: <approve | request-changes>` line + single `AskUserQuestion` with options `approve` / `request-changes` / `abort` (in that order), header `Verdict`, `multiSelect: false`. For zero findings (`[]`), still present the gate — the row is `| (none) | | | |` with `Suggested decision: approve`.
 4. **Apply verdict**:
-   - `approve` → `generacy cockpit advance --gate <gate-name> <issue-ref>`.
+   - `approve` → `cockpit_advance(issue=<issue-ref>, gate=<gate-name>)`.
    - `request-changes` → post a `COMMENT` review with per-finding inline threads (each finding becomes a `Comment` on `file:line` with body `<summary> — <failure_scenario>`); the server-side feedback loop owns the rest — no `advance` call.
    - `abort` → do nothing (no post, no advance).
 
@@ -183,7 +190,7 @@ The following nine event classes are dispatched per this table. The parent **alw
    The subagent reads spec §Success Criteria + the issue's acceptance criteria + the PR title/body, and returns a single JSON value — either `{scenarios: [...], acceptance_checks: [...]}` (one-line entries in each list) or `{"error": "<description>"}`. No prose, no fenced block.
 2. **Present manual-validation gate** (see § Gate contract G.3). In one assistant response: `**Scenarios to test:**` bulleted list + `**Acceptance checks:**` bulleted list (rendered verbatim from the structured return) + single `AskUserQuestion` with options `manually validated` / `not yet`, header `Validated?` (≤ 12 chars), `multiSelect: false`.
 3. **Apply verdict**:
-   - `manually validated` → `generacy cockpit advance --gate manual-validation <issue-ref>`.
+   - `manually validated` → `cockpit_advance(issue=<issue-ref>, gate="manual-validation")`.
    - `not yet` → do nothing (the label stays; the event will re-fire when the operator confirms later or takes another action).
 
 **Ledger line**: `<issue-ref> · waiting-for:manual-validation · manual-validation-summary+<verdict> · <outcome>` — outcomes: `manually validated` / `not yet` / `error: <description>`.
@@ -196,7 +203,7 @@ The following nine event classes are dispatched per this table. The parent **alw
 
 **Dispatch**:
 1. **Confirm state via `cockpit status --json`** — verify `checks_state == "green"` and no infrastructure/runner failures. A `completed:validate` streamed event whose live state shows red falls through to D.6.
-2. **Merge**: `generacy cockpit merge <issue>` (squash, branch delete per the CLI's default; the CLI resolves the issue's linked PR internally — passing a PR ref directly is a distinct failure mode observed in agency#398).
+2. **Merge**: `cockpit_merge(issue=<issue-ref>)` (squash, branch delete per the tool's default; the tool resolves the issue's linked PR internally — passing a PR ref directly is a distinct failure mode observed in agency#398).
 3. **No gate.** The operator's judgment was recorded at `waiting-for:implementation-review` (D.3). `validate` + green checks is mechanical; no additional prompt.
 
 **Never merge on red** — the branch exists here strictly on the `result: merged` outcome (invariant §1).
@@ -222,7 +229,7 @@ The following nine event classes are dispatched per this table. The parent **alw
    ```
    The prompt is **outcome-scoped**, verbatim:
    > "Make this specific red green (the named failing checks: `<check names>`). No refactors, no feature work, no scope expansion, no 'while I'm here' cleanups. If the fix requires design judgment (ambiguous root cause, multiple viable approaches, an architectural decision), stop and return `{fixed: false, reason: '<explanation>'}` instead of guessing."
-   The subagent MAY read surrounding files, run local checks, and iterate on its own fix before returning; it MAY push commits to `pr.head_ref`. It MUST NOT call `generacy cockpit merge` (the parent owns the loop). It MUST NOT invoke any slash command. Return contract: a single JSON value `{fixed: bool, summary, reason?}` — no error shape (errors surface as `{fixed: false, reason: "<error description>"}`).
+   The subagent MAY read surrounding files, run local checks, and iterate on its own fix before returning; it MAY push commits to `pr.head_ref`. It MUST NOT call `cockpit_merge` (the parent owns the loop). It MUST NOT invoke any slash command. Return contract: a single JSON value `{fixed: bool, summary, reason?}` — no error shape (errors surface as `{fixed: false, reason: "<error description>"}`).
 3. **Re-evaluate**:
    - `{fixed: true, summary: …}` → loop back to D.5 (re-run `cockpit merge`; the re-check catches whether the fix actually turned checks green).
    - `{fixed: false, summary: …, reason: …}` → present escalation gate (see § Gate contract G.4a) with options `Retry (re-run fixer)` / `Skip (session-local mute)` / `Stop (exit auto)`.
@@ -243,7 +250,7 @@ The fixer runs **once autonomously** per red event; each further run requires th
 **Trigger**: An issue enters `agent:error` or any `failed:*` state. Verbatim event strings: `agent:error` and `failed:` (matching any `failed:<subtype>`).
 
 **Dispatch**:
-1. **Fetch evidence** — the parent's sole evidence-fetch verb is `generacy cockpit context <issue>`. **No ad-hoc `gh` chains, no link-following, no `gh issue view --comments` inline in the parent.** The payload is whatever the engine bundle returns — if the diagnosis subagent routinely needs a specific artifact (e.g., the primary CI log), fix the engine bundle (server-side, generacy-side), not the per-session parent envelope.
+1. **Fetch evidence** — the parent's sole evidence-fetch tool is `cockpit_context(issue=<issue-ref>)`. **No ad-hoc `gh` chains, no link-following, no `gh issue view --comments` inline in the parent.** The return payload is whatever the engine bundle returns — if the diagnosis subagent routinely needs a specific artifact (e.g., the primary CI log), fix the engine bundle (server-side, generacy-side), not the per-session parent envelope.
 2. **Spawn diagnosis subagent** — for any further work (reproducing, reading logs, bisecting versions, inspecting branches, downstream artifact fetch), dispatch to a diagnosis subagent. Invocation:
    ```
    subagent_type: "general-purpose"
@@ -253,15 +260,15 @@ The fixer runs **once autonomously** per red event; each further run requires th
    The subagent MUST NOT invoke any slash command. Return contract: a single JSON value `{root_cause: string, evidence: string, recommended_action: string, confidence: "low"|"medium"|"high"}` where `recommended_action` is exactly one of the target gate's option strings (`Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)` — verbatim). No prose, no fenced block. On unrecoverable error the subagent returns `{"error": "<description>"}`.
 3. **Present escalation gate** (see § Gate contract G.4b). In one assistant response: presentation block per § Gate contract G.4b (subtype b) — five-element block populated verbatim from the verdict (`root_cause`/`evidence` fill the context and evidence rows; `recommended_action` renders as a "Suggested decision" line with `confidence` beside it) + single `AskUserQuestion` with the unchanged D.7 option set (`Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)`), header `Escalate`, `multiSelect: false`. No in-parent re-analysis.
 4. **Apply verdict**:
-   - `Requeue` → `generacy cockpit resume <issue-ref>` (engine verb per Assumption A2 — clears `agent:error` / `failed:*`, restores the phase's `waiting-for:` / `completed:` resume pair).
+   - `Requeue` → `cockpit_resume(issue=<issue-ref>)` (engine action per Assumption A2 — clears `agent:error` / `failed:*`, restores the phase's `waiting-for:` / `completed:` resume pair).
    - `Skip` → add `<issue-ref>` to session mute set; ledger line; continue.
    - `Stop` → kill watch; summary; exit.
 
-**Degradation clause**: If `generacy cockpit resume` is unavailable (G-S8 did not ship the verb, per Assumption A2), Requeue degrades to Skip with an explicit ledger note: `<issue-ref> · <transition> · escalation-gate · skip (cockpit resume unavailable — G-S8 prerequisite)`.
+**Degradation clause**: If `cockpit_resume` is unavailable (G-S8 did not ship the tool, per Assumption A2), Requeue degrades to Skip with an explicit ledger note: `<issue-ref> · <transition> · escalation-gate · skip (cockpit resume unavailable — G-S8 prerequisite)`.
 
 **Ledger line**: `<issue-ref> · <agent:error | failed:<subtype>> · escalation-gate · <outcome>` — outcomes: `requeue (cockpit resume)` / `requeue failed: <description>` / `skip (session-local mute)` / `skip (cockpit resume unavailable — G-S8 prerequisite)` / `stop (exit)`.
 
-**Failure modes**: `cockpit resume` returns non-zero → **Error handling** class `OTHER`; ledger line; leave the issue in its failed state (do not retry automatically).
+**Failure modes**: `cockpit_resume` returns a typed error → **Error handling** class `OTHER`; ledger line; leave the issue in its failed state (do not retry automatically).
 
 ### D.8 — `phase-complete` → phase-queue confirmation gate
 
@@ -271,7 +278,7 @@ The fixer runs **once autonomously** per red event; each further run requires th
 1. **Compute next phase scope** — from `cockpit status --json`, identify the next phase (P<next>) and its N issues.
 2. **Present phase-queue gate** (see § Gate contract G.5). In one assistant response: presentation block with next-phase issue list numbered with titles + single `AskUserQuestion` with options `Queue P<next> (<N> issues) (Recommended)` / `Cancel`, header `QueueP<next>`, `multiSelect: false`.
 3. **Apply verdict**:
-   - `Queue P<next>` → `generacy cockpit queue <epic-ref> P<next> --yes` (the CLI's `--yes` flag is used because the gate itself is the confirmation).
+   - `Queue P<next>` → `cockpit_queue(epic=<epic-ref>, phase="P<next>")` (the `--yes` flag is retired — the tool has no interactive confirm; the gate itself is the sole confirmation).
    - `Cancel` → ledger line noting the cancellation; continue loop.
 
 **Ledger line**: `<epic-ref> · phase-complete · phase-queue-gate · <queued P<next> (<N> issues) | cancelled>`.
@@ -280,7 +287,7 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Trigger**: An issue enters `waiting-for:address-pr-feedback`. Verbatim event string: `waiting-for:address-pr-feedback`.
 
-**Dispatch**: **Ledger line only.** No CLI verb (in particular, no `generacy cockpit status --json` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned. The ledger line accounts for the event; the loop continues.
+**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned. The ledger line accounts for the event; the loop continues.
 
 **Ledger line**: `<issue-ref> · waiting-for:address-pr-feedback · (no-op) · server-side-owned`.
 
@@ -288,7 +295,7 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Trigger**: An issue enters `waiting-for:pr-feedback`. Verbatim event string: `waiting-for:pr-feedback`. Legacy alias of the engine-owned feedback loop (D.9 `waiting-for:address-pr-feedback` is the modern shape; some pre-migration epics still emit the shorter `pr-feedback` label).
 
-**Dispatch**: **Ledger line only.** No CLI verb (in particular, no `generacy cockpit status --json` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned.
+**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned.
 
 **Ledger line**: `<issue-ref> · waiting-for:pr-feedback · (no-op) · server-side-owned`.
 
@@ -296,7 +303,7 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Trigger**: An epic-container issue enters `waiting-for:children-complete`. Verbatim event string: `waiting-for:children-complete`. Epic-container state — the running auto loop *is* its resolution (children dispatch as they transition; on the last child's completion, this label transitions naturally to `epic-complete` without operator input).
 
-**Dispatch**: **Ledger line only.** No CLI verb (in particular, no `generacy cockpit status --json` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned.
+**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned.
 
 **Ledger line**: `<issue-ref> · waiting-for:children-complete · (no-op) · server-side-owned`.
 
@@ -304,7 +311,7 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Trigger**: An issue enters `waiting-for:dependencies`. Verbatim event string: `waiting-for:dependencies`. Engine-owned cross-issue wait — resolved server-side when the depended-on issue transitions.
 
-**Dispatch**: **Ledger line only.** No CLI verb (in particular, no `generacy cockpit status --json` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned.
+**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned.
 
 **Ledger line**: `<issue-ref> · waiting-for:dependencies · (no-op) · server-side-owned`.
 
@@ -312,7 +319,7 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Trigger**: An issue enters any `phase:*` state. **Prefix-match**: any transition class whose token begins with the literal `phase:` prefix matches this row (`phase:specify`, `phase:clarify`, `phase:plan`, `phase:tasks`, `phase:implement`, `phase:validate`, and any future workflow-phase addition). The phase set is workflow-dependent and open-ended — speckit-feature and speckit-bugfix already differ; enumeration would break the day a workflow adds a phase.
 
-**Dispatch**: **Ledger line only.** No CLI verb (in particular, no `generacy cockpit status --json` re-check), no subagent, no gate, no status table, no prose recap — engine-owned transient transition. Never surface a D.10 escalation gate on a `phase:*` token; D.10 remains the catch-all for genuinely unknown, non-`phase:` labels (per § Dispatch D.10's tightened trigger — an unrecognized `waiting-for:*` still fires D.10).
+**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — engine-owned transient transition. Never surface a D.10 escalation gate on a `phase:*` token; D.10 remains the catch-all for genuinely unknown, non-`phase:` labels (per § Dispatch D.10's tightened trigger — an unrecognized `waiting-for:*` still fires D.10).
 
 **Ledger line**: `<issue-ref> · <phase:*-token> · (no-op) · engine-owned phase transition`.
 
@@ -321,7 +328,7 @@ The fixer runs **once autonomously** per red event; each further run requires th
 **Trigger**: An issue enters `waiting-for:merge-conflicts` (base-sync produced a merge conflict; the branch cannot be advanced without an operator-authored resolution). Verbatim event string: `waiting-for:merge-conflicts`.
 
 **Dispatch**:
-1. **Fetch context.** The parent's sole evidence-fetch verb is `generacy cockpit context <issue>`; the payload includes the pause-alert comment content and the list of conflicted paths. **No ad-hoc `gh` chains, no link-following, no `gh issue view --comments` inline in the parent.**
+1. **Fetch context.** The parent's sole evidence-fetch tool is `cockpit_context(issue=<issue-ref>)`; the return payload includes the pause-alert comment content and the list of conflicted paths. **No ad-hoc `gh` chains, no link-following, no `gh issue view --comments` inline in the parent.**
 1.5. **Spawn diagnosis subagent** — for any conflict-triage work beyond the engine bundle (repro, log reads, `git status` / `git diff` / branch inspection, downstream artifact fetch), dispatch to a diagnosis subagent. Invocation:
    ```
    subagent_type: "general-purpose"
@@ -331,13 +338,13 @@ The fixer runs **once autonomously** per red event; each further run requires th
    The subagent MUST NOT invoke any slash command. Return contract: a single JSON value `{root_cause: string, evidence: string, recommended_action: string, confidence: "low"|"medium"|"high"}` where `recommended_action` is exactly one of the target gate's option strings (`I've resolved it — advance the gate` / `Skip (session-local mute)` / `Stop (exit auto)` — verbatim). No prose, no fenced block. On unrecoverable error the subagent returns `{"error": "<description>"}`.
 2. **Present escalation gate** (see § Gate contract G.4d). In one assistant response: presentation block per § Gate contract G.4d — five-element block populated verbatim from the verdict (`root_cause`/`evidence` fill the context and evidence rows; conflicted paths shown; `recommended_action` renders as a "Suggested decision" line with `confidence` beside it) + single `AskUserQuestion` with options `I've resolved it — advance the gate` / `Skip (session-local mute)` / `Stop (exit auto)`, header `Escalate`, `multiSelect: false`. No in-parent re-analysis.
 3. **Apply verdict**:
-   - `I've resolved it — advance the gate` → run `generacy cockpit advance --gate merge-conflicts <issue-ref>`. On zero exit: ledger `advanced`; continue. **On non-zero exit: re-present the D.11 gate with the CLI stderr prepended verbatim to the presentation block** (see § Gate contract G.4d re-present shape). The operator may retry, skip, or stop from the re-presented gate.
+   - `I've resolved it — advance the gate` → call `cockpit_advance(issue=<issue-ref>, gate="merge-conflicts")`. On success: ledger `advanced`; continue. **On typed-error return: re-present the D.11 gate with the tool's `code`/`message` prepended verbatim to the presentation block** (see § Gate contract G.4d re-present shape). The operator may retry, skip, or stop from the re-presented gate.
    - `Skip (session-local mute)` → add `<issue-ref>` to session mute set; ledger line `skip (session-local mute)`; continue.
    - `Stop (exit auto)` → kill watch; summary; exit.
 
 **Future degradation**: Once the engine-side merge-conflicts resolver ships (companion finding in generacy dead-end-gate), this row degrades to ledger-only (D.9-shape) — the label becomes server-side-owned. Until then, this escalation gate is the operator's resolution surface.
 
-**Ledger line**: `<issue-ref> · waiting-for:merge-conflicts · escalation-gate · <advanced | advance failed: <description> | skip (session-local mute) | stop (exit)>`.
+**Ledger line**: `<issue-ref> · waiting-for:merge-conflicts · escalation-gate · <advanced | advance failed: <code>: <message> | skip (session-local mute) | stop (exit)>`.
 
 ### D.10 — Unrecognized / ambiguous state → escalation gate (Skip / Stop only)
 
@@ -487,7 +494,7 @@ Suggested decision: approve
 - **multiSelect**: `false`
 
 **Post-gate behavior**:
-- `approve` → `generacy cockpit advance --gate <gate-name> <issue-ref>`.
+- `approve` → `cockpit_advance(issue=<issue-ref>, gate=<gate-name>)`.
 - `request-changes` → post a `COMMENT` review with per-finding inline threads.
 - `abort` → do nothing.
 
@@ -554,7 +561,7 @@ Agent error on <issue-ref>:
 
 **Root cause:** <verdict.root_cause verbatim>
 **Evidence:** <verdict.evidence verbatim>
-**Current state:** <observed state from `generacy cockpit context <issue>`>
+**Current state:** <observed state from `cockpit_context(issue=<issue-ref>)`>
 **Suggested decision:** <verdict.recommended_action> (confidence: <verdict.confidence>)
 ```
 
@@ -575,15 +582,15 @@ Merge conflicts on <issue-ref>:
 - ...
 **Suggested decision:** <verdict.recommended_action> (confidence: <verdict.confidence>)
 
-The branch cannot advance until the conflicts are resolved and the branch is pushed conflict-free. Resolve locally (e.g., `git checkout <branch>; git rebase origin/main; git mergetool; git push --force-with-lease`), then select `I've resolved it — advance the gate` to run `generacy cockpit advance --gate merge-conflicts <issue-ref>`.
+The branch cannot advance until the conflicts are resolved and the branch is pushed conflict-free. Resolve locally (e.g., `git checkout <branch>; git rebase origin/main; git mergetool; git push --force-with-lease`), then select `I've resolved it — advance the gate` to call `cockpit_advance(issue=<issue-ref>, gate="merge-conflicts")`.
 ```
 
-Re-presentation on non-zero CLI exit (Q3=A shape):
+Re-presentation on typed-error return (Q3=A shape):
 
 ```markdown
 Advance failed for <issue-ref>:
 
-<CLI stderr verbatim, from `generacy cockpit advance --gate merge-conflicts <issue-ref>`>
+<typed-error `code`/`message`/`details` verbatim, from `cockpit_advance(issue=<issue-ref>, gate="merge-conflicts")`>
 
 Merge conflicts on <issue-ref>:
 
@@ -595,7 +602,7 @@ Merge conflicts on <issue-ref>:
 - ...
 **Suggested decision:** <verdict.recommended_action> (confidence: <verdict.confidence>)
 
-The branch cannot advance until the conflicts are resolved and the branch is pushed conflict-free. Resolve locally (e.g., `git checkout <branch>; git rebase origin/main; git mergetool; git push --force-with-lease`), then select `I've resolved it — advance the gate` to run `generacy cockpit advance --gate merge-conflicts <issue-ref>`.
+The branch cannot advance until the conflicts are resolved and the branch is pushed conflict-free. Resolve locally (e.g., `git checkout <branch>; git rebase origin/main; git mergetool; git push --force-with-lease`), then select `I've resolved it — advance the gate` to call `cockpit_advance(issue=<issue-ref>, gate="merge-conflicts")`.
 ```
 
 **(c) Unrecognized state**:
@@ -624,8 +631,8 @@ Streamed event: <original transition line>
 
 **Post-gate mechanism sentences** (verbatim per Q3=D):
 - `Retry` (subtype a only) → re-run the fixer subagent **once**. If `{fixed: true}`, loop back to D.5; if `{fixed: false}`, re-present the escalation gate.
-- `Requeue` (subtype b only) → `generacy cockpit resume <issue-ref>` (Assumption A2). If verb missing, degrade to Skip with explicit ledger note.
-- `I've resolved it — advance the gate` (subtype d only) → `generacy cockpit advance --gate merge-conflicts <issue-ref>`. On zero exit, ledger `advanced` and continue. On non-zero exit, re-present the D.11 gate with the CLI stderr prepended verbatim to the presentation block (see § D.11 dispatch step 3).
+- `Requeue` (subtype b only) → `cockpit_resume(issue=<issue-ref>)` (Assumption A2). If tool missing, degrade to Skip with explicit ledger note.
+- `I've resolved it — advance the gate` (subtype d only) → `cockpit_advance(issue=<issue-ref>, gate="merge-conflicts")`. On success, ledger `advanced` and continue. On typed-error return, re-present the D.11 gate with the tool's `code`/`message` prepended verbatim to the presentation block (see § D.11 dispatch step 3).
 - `Skip` (all subtypes) → add `<issue-ref>` to the in-memory **session mute set**; ledger line; continue. **Labels untouched.**
 - `Stop` (all subtypes) → kill watch process; print run summary; exit auto cleanly. **No label writes.**
 
@@ -770,7 +777,8 @@ Counts are derived from the ledger file (or the in-memory count if the file is u
 5. **Analysis in subagents** whose contracts end with the subagent — the #390 pattern. All four analysis workloads (clarification drafting, review verdict, manual-validation summary, bounded fixer) live inside `subagent_type: "general-purpose"` hops with strict-JSON returns.
 6. **Autonomy *policy* out of scope.** Per-gate auto-approve and "full auto" mode are explicitly out of scope in v1. Every gate prompts; none auto-proceed.
 7. **Stream consumption is unfiltered.** Every non-empty line from `cockpit watch` is an event; content-based filters over the stream are prohibited. If the harness requires a match pattern to arm a reader, it matches any non-empty line, never a JSON field.
-8. **Ledger-only rows are cheap by contract.** A transition that dispatches to a ledger-only row (D.9, D.9a, D.9b, D.9c, D.9d) must add no tool calls beyond the ledger append and no prose. Playbook edits that add per-event output — a `cockpit status --json` re-check, an epic status table, a prose recap — on a ledger-only row are efficiency regressions.
+8. **Ledger-only rows are cheap by contract.** A transition that dispatches to a ledger-only row (D.9, D.9a, D.9b, D.9c, D.9d) must add no tool calls beyond the ledger append and no prose. Playbook edits that add per-event output — a `cockpit_status` re-check, an epic status table, a prose recap — on a ledger-only row are efficiency regressions.
+9. **MCP-tool-only invariant.** After the migration, `auto.md` invokes no `generacy cockpit <migrated-verb>` Bash form — every dispatch of the six migrated verbs (`status`, `context`, `queue`, `advance`, `resume`, `merge`) goes through its `cockpit_*` MCP tool. Playbook edits that reintroduce the Bash form are drift regressions.
 
 ## Examples
 
@@ -780,23 +788,23 @@ Command: `/cockpit:auto christrudelpw/epic#42`
 
 Run shape:
 
-1. **Startup sweep** — the parent calls `cockpit status --json christrudelpw/epic#42` and finds P1 has three actionable children: `#43` in `waiting-for:clarification`, `#44` in `waiting-for:implementation-review`, `#45` in `waiting-for:manual-validation`. Each is dispatched in order.
-2. **D.1 for #43** — clarification drafter subagent → fused batch gate with N=3 questions (`ceil(3/4) = 1` `AskUserQuestion` call in one response) → all approved → post + `cockpit advance --gate clarification`.
+1. **Startup sweep** — the parent verifies the seven `cockpit_*` MCP tools are present, then calls `cockpit_status(epic="christrudelpw/epic#42", json=true)` and finds P1 has three actionable children: `#43` in `waiting-for:clarification`, `#44` in `waiting-for:implementation-review`, `#45` in `waiting-for:manual-validation`. Each is dispatched in order.
+2. **D.1 for #43** — clarification drafter subagent → fused batch gate with N=3 questions (`ceil(3/4) = 1` `AskUserQuestion` call in one response) → all approved → post + `cockpit_advance(issue="christrudelpw/epic#43", gate="clarification")`.
    - Ledger: `christrudelpw/epic#43 · waiting-for:clarification · clarification-batch · advanced`.
-3. **D.3 for #44** — review analyzer subagent (`gh pr diff` inside the subagent) → zero findings → fused verdict gate with `Suggested decision: approve` → operator selects `approve` → `cockpit advance --gate implementation-review`.
+3. **D.3 for #44** — review analyzer subagent (`gh pr diff` inside the subagent) → zero findings → fused verdict gate with `Suggested decision: approve` → operator selects `approve` → `cockpit_advance(issue="christrudelpw/epic#44", gate="implementation-review")`.
    - Ledger: `christrudelpw/epic#44 · waiting-for:implementation-review · review-analysis+advance · approved`.
-4. **D.4 for #45** — manual-validation summarizer subagent → confirm gate (scenarios + acceptance_checks) → operator selects `manually validated` → `cockpit advance --gate manual-validation`.
+4. **D.4 for #45** — manual-validation summarizer subagent → confirm gate (scenarios + acceptance_checks) → operator selects `manually validated` → `cockpit_advance(issue="christrudelpw/epic#45", gate="manual-validation")`.
    - Ledger: `christrudelpw/epic#45 · waiting-for:manual-validation · manual-validation-summary+advance · manually validated`.
-5. **Main loop begins** — the watcher streams `christrudelpw/epic#44 · completed:validate` (checks all green).
-6. **D.5 for #44** — `cockpit merge` → `result: merged` → PR #<n> merged (squash, branch delete).
+5. **Main loop begins** — `cockpit_await_events` returns a batch containing `christrudelpw/epic#44 · completed:validate` (checks all green).
+6. **D.5 for #44** — `cockpit_merge(issue="christrudelpw/epic#44")` → `result: merged` → PR #<n> merged (squash, branch delete).
    - Ledger: `christrudelpw/epic#44 · completed:validate · merge · merged (PR #46)`.
 7. Similar for #43, #45.
-8. Watcher streams `christrudelpw/epic#42 · phase-complete`.
-9. **D.8 phase-queue confirmation** — presentation shows P2 with 4 issues → operator selects `Queue P2 (4 issues)` → `cockpit queue christrudelpw/epic#42 P2 --yes`.
+8. `cockpit_await_events` returns a batch containing `christrudelpw/epic#42 · phase-complete`.
+9. **D.8 phase-queue confirmation** — presentation shows P2 with 4 issues → operator selects `Queue P2 (4 issues)` → `cockpit_queue(epic="christrudelpw/epic#42", phase="P2")`.
    - Ledger: `christrudelpw/epic#42 · phase-complete · phase-queue-gate · queued P2 (4 issues)`.
 10. P2 runs to completion the same way.
-11. Watcher streams `christrudelpw/epic#42 · epic-complete`.
-12. **Exit** — parent kills the watch process, prints the run summary per L.6 with the ledger file's absolute path, exits zero.
+11. `cockpit_await_events` returns a batch containing `christrudelpw/epic#42 · epic-complete`.
+12. **Exit** — parent prints the run summary per L.6 with the ledger file's absolute path, exits zero.
 
 ### Example 2 — Clarification batch gate with N=6 open questions
 
@@ -868,13 +876,13 @@ Flow:
 5. Operator selects `Retry`. Fixer re-runs once (new dispatch, new ledger line).
 6. Ledger: `christrudelpw/epic#44 · completed:validate:red · fixer+escalation-gate · retry`.
 
-### Example 4 — `agent:error` with G.4b Requeue → `cockpit resume`
+### Example 4 — `agent:error` with G.4b Requeue → `cockpit_resume`
 
 Trigger: `christrudelpw/epic#47` enters `agent:error` (bot-authored alert comment posted with failure trace per #865's shape).
 
 Flow:
 
-1. **D.7** — fetch evidence via `gh issue view christrudelpw/epic#47 --comments --json comments`.
+1. **D.7** — fetch evidence via `cockpit_context(issue="christrudelpw/epic#47")`.
 2. **G.4b escalation gate** presentation:
    ```markdown
    Agent error on christrudelpw/epic#47:
@@ -883,15 +891,15 @@ Flow:
    ```
    Single `AskUserQuestion` with options `Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)`.
 3. Operator selects `Requeue`.
-4. Parent calls `generacy cockpit resume christrudelpw/epic#47`.
+4. Parent calls `cockpit_resume(issue="christrudelpw/epic#47")`.
 5. Ledger: `christrudelpw/epic#47 · agent:error · escalation-gate · requeue (cockpit resume)`.
 
-If `cockpit resume` were not available (G-S8 didn't ship the verb, per Assumption A2), Requeue would degrade to Skip with an explicit ledger note: `christrudelpw/epic#47 · agent:error · escalation-gate · skip (cockpit resume unavailable — G-S8 prerequisite)`.
+If `cockpit_resume` were not available (G-S8 didn't ship the tool, per Assumption A2), Requeue would degrade to Skip with an explicit ledger note: `christrudelpw/epic#47 · agent:error · escalation-gate · skip (cockpit resume unavailable — G-S8 prerequisite)`.
 
 <!-- BEGIN error-conv -->
-**Error handling** — When the CLI exit code is non-zero (or the pre-flight failed), classify the failure into exactly one of three classes (first match wins, all matches case-insensitive) and emit the matching response. Every class MUST print something — never silently no-op. Exit non-zero on every class.
+**Error handling** — When a Bash CLI exit code is non-zero (or a pre-flight failed), classify the failure into exactly one of three classes (first match wins, all matches case-insensitive) and emit the matching response. Every class MUST print something — never silently no-op. Exit non-zero on every class. This block covers the remaining Bash CLI invocations (`gh` for issue comment posting; `git` for local ledger writes). Cockpit MCP tool typed errors surface at their call sites (`code`/`message`/`details` structured fields), not through this regex classifier — the tool-presence check in step 3 handles tool absence with its own load-bearing ledger line.
 <!-- Canonical source of truth: packages/claude-plugin-cockpit/README.md § Error Handling -->
-- **MISSING_BINARY** — pre-flight `command -v generacy` returned non-zero. Print: `The generacy CLI is required but is not on $PATH. In a Generacy cluster session it is already installed — add it to your PATH: \`export PATH="/shared-packages/node_modules/.bin:$PATH"\` (persist it in ~/.bashrc). Standalone: install it with \`npm install -g @generacy-ai/generacy\`.`
-- **AUTH_FAILURE** — exit ≠ 0 AND captured stderr matches `/auth|unauthorized|401|gh auth/i`. Print: `Authentication failed. The generacy CLI uses gh for GitHub access — run gh auth login and retry.`
+- **MISSING_BINARY** — pre-flight for a required Bash CLI (`gh` for issue comment posting, `git` for local ledger writes) returned non-zero. Print: `A required CLI (\`gh\`, \`git\`) is required but is not on $PATH. In a Generacy cluster session common CLIs are already installed — add them to your PATH: \`export PATH="/shared-packages/node_modules/.bin:$PATH"\` (persist it in ~/.bashrc). Standalone: install the specific CLI via your platform's package manager.`
+- **AUTH_FAILURE** — exit ≠ 0 AND captured stderr matches `/auth|unauthorized|401|gh auth/i`. Print: `Authentication failed. The required CLI needs GitHub access — run gh auth login and retry.`
 - **OTHER** — anything else. Print `CLI failed with exit code <N>.` on one line, followed by captured stderr inside a triple-backtick fenced code block.
 <!-- END error-conv -->
