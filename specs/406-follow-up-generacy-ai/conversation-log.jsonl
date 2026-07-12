@@ -6,3 +6,5 @@
 {"timestamp":"2026-07-11T23:57:43.094Z","phase":"clarify","session_id":"","event_type":"phase_complete"}
 {"timestamp":"2026-07-11T23:57:54.580Z","phase":"plan","session_id":"","event_type":"phase_start"}
 {"timestamp":"2026-07-12T00:11:32.286Z","phase":"plan","session_id":"","event_type":"phase_complete"}
+{"timestamp":"2026-07-12T00:11:43.238Z","phase":"tasks","session_id":"","event_type":"phase_start"}
+{"timestamp":"2026-07-12T00:14:03.527Z","phase":"tasks","session_id":"","event_type":"phase_complete"}
