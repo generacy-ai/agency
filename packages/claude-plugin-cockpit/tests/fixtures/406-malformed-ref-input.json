@@ -1,0 +1,5 @@
+{
+  "tool": "cockpit_context",
+  "declaredParams": { "issue": "generacy-ai/agency!403" },
+  "note": "Bang instead of hash — the ref-layer parser should reject before the engine sees it."
+}

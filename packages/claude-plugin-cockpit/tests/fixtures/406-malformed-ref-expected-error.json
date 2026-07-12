@@ -1,0 +1,9 @@
+{
+  "code": "invalid-ref",
+  "message": "Ref 'generacy-ai/agency!403' does not match the expected shape 'owner/repo#N'.",
+  "details": {
+    "input": "generacy-ai/agency!403",
+    "expectedShape": "owner/repo#N",
+    "suggestedFix": "Replace '!' with '#'."
+  }
+}
