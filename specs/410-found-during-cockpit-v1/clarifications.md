@@ -11,7 +11,7 @@
 - C: Per-issue AND per-subtype AND across restarts within the same epic run — subtype must match, but the parent recovers first-vs-repeat state from ledger inspection so a Stop → restart still recognizes a repeat.
 - D: Per-issue (any `failed:*` or `agent:error`) AND across restarts — any second failure event on the same issue is a repeat forever within the epic's active auto sessions.
 
-**Answer**: *Pending*
+**Answer**: B — per-issue, any failure class, per contiguous invocation. The repeat rule's payload is "hand the subagent prior evidence and compute the delta" — and that comparison is informative whenever *any* prior failure exists on the issue, subtype match or not (a `failed:validate` → `failed:implement` shift is itself high-signal evidence of movement; A would throw the prior context away exactly when the story got interesting). On restart semantics: per-contiguous-invocation is the established grain — session mutes, cursors, and sweep state are all session-local by prior decisions (#406 Q2's whole argument), and a restart's startup sweep does a fresh first-dispatch with fresh evidence, which is *safe by construction* against this spec's failure mode (assumed similarity can't happen when there's no assumption). C and D buy cross-restart memory at the cost of ledger-as-database reconstruction machinery the restart-is-fresh design deliberately avoids.
 
 ---
 
@@ -24,7 +24,7 @@
 - C: All-of-three must differ → `true`. Any single matching dimension yields `false` — reserving `true` for the case that all three shift together, treating single-dimension shifts as "same class, different instance."
 - D: Classifier reason alone is authoritative (engine-owned, stable, always present in #915). Taxonomy and failing test/step become supporting evidence in the verdict text but do not enter the boolean — `failure_class_changed = (fresh.classifier_reason != prior.classifier_reason)`.
 
-**Answer**: *Pending*
+**Answer**: B — any-of-three, with the canonical test identifier; absent-vs-present counts as differing. D is disqualified by the motivating incident itself: both of run 11's failures were *process* failures (exit 1), and #915 deliberately gives process paths no classifier reason — under D, `failure_class_changed` for npm-ci-EUSAGE → vitest-prisma-failure evaluates over two absent fields and misses the exact change this field exists to expose. C is backwards — a single-dimension shift is usually the signal, not noise. Between A and B: raw failing-step line text (A) drifts across runs of the *same* failure (line numbers, durations, temp workspace paths), manufacturing false "changed" verdicts; B's `<file>::<name>` canonicalization compares identity, not formatting. Keep exact-match for the two engine-authored fields when present, and specify that absent-on-one-side vs present-on-the-other differs by definition.
 
 ---
 
@@ -37,7 +37,7 @@
 - C: Both — extend the verdict schema to `failure_class_changed_since_prior: boolean` AND `failure_class_changed_since_first: boolean`, presented as two rows at the gate.
 - D: Compare against the immediately-prior failure, but expose in the verdict text (not the boolean) a running list of the failure classes seen so far in this session so the operator can spot cycles.
 
-**Answer**: *Pending*
+**Answer**: D — compare against the immediately-prior failure, plus a running list of failure classes in the verdict text. The boolean's job at the gate is the per-decision question — "did the last Requeue change anything?" — which is A's framing and the one the operator is actually deciding on. But cycles are real (class-A → B → A), and D's running list ("classes this session: npm-ci-EUSAGE → prisma-missing → npm-ci-EUSAGE") tells that story in one human-readable line, which is strictly clearer than C's two-boolean encoding that the operator has to decode (`since_first=false, since_prior=true` = …a cycle? every reader does that arithmetic at gate time). One schema field with per-decision semantics, history as evidence text — fields for decisions, prose for context.
 
 ---
 
@@ -50,7 +50,7 @@
 - C: The parent MUST keep the first-dispatch subagent alive across the Requeue window (design constraint on the parent), so this case does not arise. If it does, that is a session bug and the parent aborts D.7 with a ledger `error` line.
 - D: Persist first-dispatch verdicts (root_cause / evidence / classifier_reason / taxonomy / failing_test-step) in the session ledger; on a repeat with no live subagent, the parent reads the prior verdict from the ledger and hands it to a fresh subagent as prior evidence alongside the fresh alert — no parent characterization added.
 
-**Answer**: *Pending*
+**Answer**: A — fresh spawn with both alert bodies verbatim. The premise that matters: the prior *evidence* is never actually lost when the subagent dies — failure alerts are persistent engine-marked comments on the issue. So the parent's job on a continuation-miss is pure transport: fetch the prior alert (identified mechanically as the previous failure-alert comment, no characterization involved) and the fresh one, hand both to a fresh subagent, which computes `failure_class_changed` from evidence it now holds. B declares a baseline "unavailable" that's sitting on the issue in plain sight. C legislates against harness reality (subagents return by design; several-minute Requeue windows guarantee this case arises) and converts a routine condition into an abort. D feeds the prior *verdict* instead of prior *evidence* — conclusions in place of evidence is a diluted form of the exact sin this spec abolishes, plus it grows the ledger into a database.
 
 ---
 
@@ -63,4 +63,4 @@
 - C: The suite is the general playbook-verification checks run in `packages/claude-plugin-cockpit`'s existing test target (whatever `pnpm test` resolves to there); both fixtures are ordinary tests — positive passes on the shipped `auto.md`, negative uses a fixture file with the anti-pattern and asserts the checker rejects it.
 - D: Out of scope for spec-level clarification — resolve at plan time by inspecting the current test layout in `packages/claude-plugin-cockpit`; FR-008/FR-009 stand as intent.
 
-**Answer**: *Pending*
+**Answer**: C — the existing playbook-verification suite, both fixtures as ordinary passing tests. This is settled house convention from #402's Q2: issue-numbered describe block (`410-1: …`) in `packages/claude-plugin-cockpit`'s existing playbook-verification suite, a positive assertion against the shipped auto.md, and a negative fixture file carrying the anti-pattern (a D.7 variant whose repeat path passes a similarity assertion) with an ordinary test asserting the checker *rejects* it. A's expected-to-fail test is an anti-pattern of its own — a suite with a permanently red member normalizes red; "the checker rejects the fixture" expressed as a green assertion carries the same information with none of the noise. B builds a second harness beside an existing one; D defers what convention has already answered twice.
