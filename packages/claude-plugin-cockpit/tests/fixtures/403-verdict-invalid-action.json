@@ -1,0 +1,6 @@
+{
+  "root_cause": "The subagent produced a recommendation that is not in either D.7 or D.11's option set. This fixture exists to exercise the string-set constraint at parse time.",
+  "evidence": "N/A — this fixture is a load-bearing negative test for parseVerdict.",
+  "recommended_action": "Merge it",
+  "confidence": "high"
+}

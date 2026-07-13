@@ -1,0 +1,11 @@
+# captured from: generacy --version 0.0.1
+Usage: generacy cockpit context [options] <issue>
+
+Classify the issue gate and emit the bundle that gate needs (single JSON line
+on stdout).
+
+Arguments:
+  issue       Issue ref — <owner>/<repo>#<n> or full URL.
+
+Options:
+  -h, --help  display help for command
