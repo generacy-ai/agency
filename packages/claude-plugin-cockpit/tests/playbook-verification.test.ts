@@ -18,6 +18,12 @@ import {
   type ParsedBatch,
   type ParsedQuestion,
 } from "../lib/clarification-batch-parser.js";
+import {
+  parseAddExistingIntent,
+  parseFileNewIntent,
+  type AddExistingIntent,
+  type FileNewIntent,
+} from "../lib/intent-recognition.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, "fixtures");
@@ -2025,4 +2031,217 @@ describe("410 — auto.md D.7 repeat-failure dispatch fetches fresh evidence + f
     ).toBe(true);
   });
 });
+
+// -----------------------------------------------------------------------------
+// 416 — operator-requested capability: intent-class recognition, filing-gate
+// iterative edit shape, D.8 ad-hoc enumeration, scope-drained gate defaults
+//
+// The runtime is Claude interpreting the § Add-issue flow prose (add-existing
+// + file-new intents), § Gate contract G.6 (filing gate), § Gate contract G.7
+// (scope-drained gate), and § Dispatch D.8's extended presentation. The tests
+// below feed fixtures through the pure `parseAddExistingIntent` /
+// `parseFileNewIntent` reference parsers (416-1/416-2) and assert the
+// structural shape of the G.6 filing-gate iterative edit (416-3) and the D.8
+// ad-hoc enumeration + G.7 scope-drained gate defaults (416-4).
+// -----------------------------------------------------------------------------
+
+const FILING_GATE_FIELD_LABELS = [
+  "**Title:**",
+  "**Labels:**",
+  "**Body:**",
+  "**Filing target:**",
+  "**Parent tracking ref:**",
+] as const;
+
+const G7_OPTION_LABELS = [
+  "Keep watching (Recommended)",
+  "Add more work",
+  "Finish (close tracking issue + summary)",
+] as const;
+
+describe("416 — operator-requested capability", () => {
+  it("416-1: parseAddExistingIntent returns the expected ref for full/shorthand/multi phrasings and null on non-ref chat", () => {
+    const fullRef = readFileSync(
+      resolve(FIXTURES, "416-add-existing-full-ref.txt"),
+      "utf-8",
+    );
+    const shorthand = readFileSync(
+      resolve(FIXTURES, "416-add-existing-shorthand.txt"),
+      "utf-8",
+    );
+    const multiRefs = readFileSync(
+      resolve(FIXTURES, "416-add-existing-multiple-refs.txt"),
+      "utf-8",
+    );
+    const nonrefChat = readFileSync(
+      resolve(FIXTURES, "416-add-existing-nonref-chat.txt"),
+      "utf-8",
+    );
+
+    expect(parseAddExistingIntent(fullRef)).toEqual({
+      ref: "generacy-ai/agency#420",
+    } as AddExistingIntent);
+    expect(parseAddExistingIntent(shorthand)).toEqual({
+      ref: "#420",
+    } as AddExistingIntent);
+
+    // Multiple refs — first parseable ref wins.
+    const multi = parseAddExistingIntent(multiRefs);
+    expect(
+      multi,
+      `expected first-parseable ref win on multi-ref input; got: ${JSON.stringify(multi)}`,
+    ).toEqual({ ref: "#420" } as AddExistingIntent);
+
+    expect(
+      parseAddExistingIntent(nonrefChat),
+      `expected null on non-ref chat (confirm-intent path); got: ${JSON.stringify(parseAddExistingIntent(nonrefChat))}`,
+    ).toBeNull();
+  });
+
+  it("416-2: parseFileNewIntent returns a non-null topic for canonical trigger patterns and null for ambiguous chat", () => {
+    const fileAnIssue = readFileSync(
+      resolve(FIXTURES, "416-file-new-file-an-issue.txt"),
+      "utf-8",
+    );
+    const openABug = readFileSync(
+      resolve(FIXTURES, "416-file-new-open-a-bug.txt"),
+      "utf-8",
+    );
+    const createAnIssue = readFileSync(
+      resolve(FIXTURES, "416-file-new-create-an-issue.txt"),
+      "utf-8",
+    );
+    const ambiguousLookAt = readFileSync(
+      resolve(FIXTURES, "416-file-new-ambiguous-look-at.txt"),
+      "utf-8",
+    );
+
+    const fileAn = parseFileNewIntent(fileAnIssue);
+    expect(fileAn, `expected non-null on canonical "file an issue" phrasing`).not.toBeNull();
+    expect((fileAn as FileNewIntent).topic.length).toBeGreaterThan(0);
+    // Trailing "and process it" clause is stripped so the topic is
+    // recognizable; the canonical fixture's leading topic is preserved.
+    expect((fileAn as FileNewIntent).topic).toContain("the flaky test in module X");
+
+    const openBug = parseFileNewIntent(openABug);
+    expect(openBug, `expected non-null on "open a bug for" variant`).not.toBeNull();
+    expect((openBug as FileNewIntent).topic).toContain("the timeout regression");
+
+    const createIssue = parseFileNewIntent(createAnIssue);
+    expect(createIssue, `expected non-null on "create an issue about" variant`).not.toBeNull();
+    expect((createIssue as FileNewIntent).topic).toContain("the missing loading state");
+
+    expect(
+      parseFileNewIntent(ambiguousLookAt),
+      `expected null on ambiguous "look at X" chat — MUST NOT auto-trigger G.6`,
+    ).toBeNull();
+  });
+
+  it("416-3: filing-gate first-draft and revised presentation share the five-element block layout", () => {
+    const firstDraft = readFileSync(
+      resolve(FIXTURES, "416-filing-gate-first-draft.md"),
+      "utf-8",
+    );
+    const revised = readFileSync(
+      resolve(FIXTURES, "416-filing-gate-revised.md"),
+      "utf-8",
+    );
+
+    for (const label of FILING_GATE_FIELD_LABELS) {
+      expect(
+        firstDraft.includes(label),
+        `first-draft fixture missing five-element label '${label}'`,
+      ).toBe(true);
+      expect(
+        revised.includes(label),
+        `revised-draft fixture missing five-element label '${label}'`,
+      ).toBe(true);
+    }
+
+    // Both fixtures share the header framing ("Filing new issue for <tracking-ref>:").
+    const HEADER_RE = /^Filing new issue for [^\s]+:/m;
+    expect(
+      HEADER_RE.test(firstDraft),
+      `first-draft header must match "Filing new issue for <tracking-ref>:"`,
+    ).toBe(true);
+    expect(
+      HEADER_RE.test(revised),
+      `revised-draft header must match "Filing new issue for <tracking-ref>:" (full-draft re-present, not a diff view)`,
+    ).toBe(true);
+
+    // Field contents differ between rounds (guards against a fixture that
+    // accidentally duplicated the first draft — the 416-3 invariant is that
+    // contents may differ, but the shape is identical).
+    expect(
+      firstDraft,
+      `first-draft and revised fixtures should differ in field contents`,
+    ).not.toEqual(revised);
+  });
+
+  it("416-4: D.8 ad-hoc enumeration block presence/absence + recommendation flip; G.7 shows Keep watching (Recommended) and per-ref disposition", () => {
+    const ADHOC_HEADER = "Open ad-hoc issues in scope (added mid-run):";
+
+    const d8None = readFileSync(resolve(FIXTURES, "416-d8-adhoc-none.md"), "utf-8");
+    const d8One = readFileSync(resolve(FIXTURES, "416-d8-adhoc-one.md"), "utf-8");
+    const d8Two = readFileSync(resolve(FIXTURES, "416-d8-adhoc-two.md"), "utf-8");
+
+    // Empty ad-hoc list: block omitted; two-option gate with Queue P<next> recommended.
+    expect(d8None.includes(ADHOC_HEADER)).toBe(false);
+    expect(d8None).toContain("Queue P2 (4 issues) (Recommended)");
+    expect(d8None).not.toContain("Hold — ");
+
+    // One ad-hoc issue: block present; three-option gate with Hold recommended.
+    expect(d8One).toContain(ADHOC_HEADER);
+    expect(d8One).toContain("Hold — 1 open ad-hoc issue(s) in scope (Recommended)");
+    expect(d8One).toContain("Queue P2 (4 issues)");
+    expect(d8One).not.toContain("Queue P2 (4 issues) (Recommended)");
+
+    // Two ad-hoc issues: block enumerates both; Hold recommended.
+    expect(d8Two).toContain(ADHOC_HEADER);
+    expect(d8Two).toContain("Hold — 2 open ad-hoc issue(s) in scope (Recommended)");
+    expect(d8Two).toContain("generacy-ai/agency#420");
+    expect(d8Two).toContain("generacy-ai/agency#421");
+
+    // G.7 fixtures — Keep watching (Recommended) present; per-ref disposition rendered.
+    const g7Completed = readFileSync(
+      resolve(FIXTURES, "416-scope-drained-completed-only.md"),
+      "utf-8",
+    );
+    const g7Mixed = readFileSync(
+      resolve(FIXTURES, "416-scope-drained-mixed.md"),
+      "utf-8",
+    );
+    const g7NotPlanned = readFileSync(
+      resolve(FIXTURES, "416-scope-drained-not-planned-only.md"),
+      "utf-8",
+    );
+
+    for (const fixture of [g7Completed, g7Mixed, g7NotPlanned]) {
+      for (const label of G7_OPTION_LABELS) {
+        expect(
+          fixture.includes(label),
+          `G.7 fixture missing option label '${label}'`,
+        ).toBe(true);
+      }
+      expect(fixture).toContain("**Per-ref disposition:**");
+      expect(fixture).toContain("**Tracking ref:**");
+      expect(fixture).toContain("**Refs processed:**");
+    }
+
+    // Q1 anchor — closed-as-not-planned is terminal per the classifier; the
+    // not-planned-only fixture MUST still be a valid G.7 presentation (i.e.,
+    // it fired at all — the terminality decision is the classifier's).
+    expect(g7NotPlanned).toContain(" · not-planned");
+    expect(g7NotPlanned).not.toContain(" · completed"); // sanity: fixture is all-not-planned
+    expect(g7Completed).toContain(" · completed");
+    expect(g7Mixed).toContain(" · completed");
+    expect(g7Mixed).toContain(" · not-planned");
+  });
+});
+
+// Silence TS unused-import warning if only used for type narrowing.
+const _typeGuardAddExisting = (a: AddExistingIntent) => a.ref;
+const _typeGuardFileNew = (a: FileNewIntent) => a.topic;
+void _typeGuardAddExisting;
+void _typeGuardFileNew;
 
