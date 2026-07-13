@@ -1,14 +1,14 @@
 ---
-description: Drive an epic to epic-complete — long-poll cockpit_await_events with fused human gates
+description: Drive an epic (or a tracking issue) to terminal by long-polling cockpit_await_events with fused human gates
 arguments:
-  - name: epic-ref
-    description: "Epic reference (owner/repo#N). Required. No flags in v1."
+  - name: tracking-ref
+    description: "Tracking reference — one of: <epic-ref> positional (`owner/repo#N`), `--tracking <issue-ref>`, or `--new \"<title>\"`. Exactly one form per invocation."
     required: true
 ---
 
 # Auto Command
 
-Drive the named epic to `epic-complete` by long-polling `cockpit_await_events` and dispatching to the six existing assist commands' *actions* (MCP tool calls + subagent hops), never the assist commands themselves. The loop shape is: **pre-flight → startup sweep (tool-presence check + synthetic-event dispatch) → per iteration: `cockpit_await_events(epic, cursor, …)` → consume batch in stream order → per event: re-check live state → dispatch → write one ledger line → advance in-memory cursor → exit on `epic-complete`.** Two hard boundaries are load-bearing: **never merge on red** (validate + green is mechanical; anything red routes through the bounded-fixer branch and, if still red, an escalation gate) and **every gate prompts** (per-gate auto-approve / "full auto" is explicitly out of scope). Analysis lives in subagents (`subagent_type: "general-purpose"`) whose contracts return strict JSON per hop; the parent loop stays thin.
+Drive the named tracking ref (an epic, an existing tracking issue, or a newly filed tracking issue) to terminal state by long-polling `cockpit_await_events` and dispatching to the six existing assist commands' *actions* (MCP tool calls + subagent hops), never the assist commands themselves. The loop shape is: **pre-flight → startup sweep (tool-presence check + synthetic-event dispatch) → per iteration: `cockpit_await_events(epic|issue, cursor, …)` → consume batch in stream order → per event: re-check live state → dispatch → write one ledger line → advance in-memory cursor → exit on terminal state (`epic-complete` in epic mode, G.7 scope-drained `Finish` in epic-less mode).** Two hard boundaries are load-bearing: **never merge on red** (validate + green is mechanical; anything red routes through the bounded-fixer branch and, if still red, an escalation gate) and **every gate prompts** (per-gate auto-approve / "full auto" is explicitly out of scope). Analysis lives in subagents (`subagent_type: "general-purpose"`) whose contracts return strict JSON per hop; the parent loop stays thin.
 
 ## User Input
 
@@ -18,7 +18,19 @@ $ARGUMENTS
 
 ## Instructions
 
-1. **Parse arguments + pre-flight.** Require exactly one positional `<epic-ref>` (`owner/repo#N`). On usage error, print `Usage: /cockpit:auto <epic-ref>` and exit non-zero. Pre-flight: `command -v generacy` (on failure → **Error handling** class `MISSING_BINARY`); `gh auth status` (on failure → **Error handling** class `AUTH_FAILURE`); confirm the operator's cwd is a writable git repo; create the ledger directory with `mkdir -p .generacy/cockpit/auto-runs` (on failure → **Error handling** class `OTHER`). Compute the run's ledger filename: `.generacy/cockpit/auto-runs/<epic-ref-slug>-<timestamp>.ledger`, where `<epic-ref-slug>` is the epic reference with `/` replaced by `-` and `#` stripped, and `<timestamp>` is `YYYYMMDD-HHMMSS` in the operator's local time captured now.
+1. **Parse arguments + pre-flight.** Recognize exactly one of three invocation forms per invocation — the tracking ref is the run's identity under all three forms (see `contracts/invocation-forms.md`):
+
+   - **Form 1 (epic mode)**: `/cockpit:auto <epic-ref>` — one positional matching `<owner>/<repo>#<n>`. `invocationForm: epic`. D.8 phase-queue gate fires on `phase-complete`; run exits on `epic-complete`.
+   - **Form 2 (epic-less: existing tracking)**: `/cockpit:auto --tracking <issue-ref>` — `--tracking` flag with one positional matching `<owner>/<repo>#<n>`. `invocationForm: tracking-existing`. G.7 scope-drained gate fires when every task-list ref is terminal per `cockpit_status`.
+   - **Form 3 (epic-less: new tracking)**: `/cockpit:auto --new "<title>"` — `--new` flag with one quoted free-text title. `invocationForm: tracking-new`. **G.6 filing gate fires immediately** (drafts title/body from the operator-supplied `<title>` — same drafter shape as a mid-run file-new intent — presents G.6; on `Approve & file`, `gh issue create` produces the tracking ref; on `Skip (don't file)`, the run exits cleanly). Subsequent behavior identical to Form 2.
+
+   On ambiguous input (e.g., both `--tracking` and `--new`, or neither flag with a non-parseable positional), print `Usage: /cockpit:auto <epic-ref> | --tracking <issue-ref> | --new "<title>"` and exit non-zero.
+
+   **Print startup line** naming the tracking ref (verbatim `owner/repo#n`) and the resolved `invocationForm`; under Form 3, the startup line prints after G.6 approval, once the new tracking ref exists.
+
+   Pre-flight: `command -v generacy` (on failure → **Error handling** class `MISSING_BINARY`); `gh auth status` (on failure → **Error handling** class `AUTH_FAILURE`); confirm the operator's cwd is a writable git repo; create the ledger directory with `mkdir -p .generacy/cockpit/auto-runs` (on failure → **Error handling** class `OTHER`). Compute the run's ledger filename: `.generacy/cockpit/auto-runs/<tracking-ref-slug>-<timestamp>.ledger`, where `<tracking-ref-slug>` is the tracking reference with `/` replaced by `-` and `#` stripped, and `<timestamp>` is `YYYYMMDD-HHMMSS` in the operator's local time captured now.
+
+   **Ledger header line** — the FIRST line of the ledger file, written above the dispatch stream: `Tracking ref: <tracking-ref> · form: <invocationForm>`. Under Forms 1 and 2 the header is written at step 1 (before the startup sweep). Under Form 3 the header is written after G.6 approval; if G.6 was skipped at the initial fire, the header carries `form: tracking-new (abandoned before creation)` and the run exits.
 
 2. **No background watcher to spawn.** Post-#406, there is no `cockpit watch` background process to arm — the event source is `cockpit_await_events`, called per iteration in step 4's main loop. The initial state of the loop is cursor-less; the first `cockpit_await_events` call in step 4 arms the in-memory cursor from the tool server's connect-time position. Step number retained for stability.
 
@@ -33,6 +45,8 @@ $ARGUMENTS
 
    **Synthetic-event dispatch (only reached when all seven tools are present).** Call `cockpit_status(epic=<epic-ref>, json=true)` and treat every issue whose current transition class is one of D.1–D.9 (below) as a synthetic event. Dispatch each one by one (per § Dispatch and § Ledger) before entering the main loop. This handles the case where the epic already has open work when `/cockpit:auto` is invoked. The sweep ends with exactly one full status table (per § Ledger L.4 policy) and then hands off to step 4.
 
+   Under `--tracking <issue-ref>` / `--new "<title>"` (epic-less mode), the sweep reads the task list from the tracking issue via `cockpit_status(issue=<tracking-ref>, json=true)` and treats each live-state ref as a synthetic event — structurally identical to the epic-ref sweep. This is the restart-safety mechanism: the scope survives restarts because it lives on the tracking issue, not in session state (spec § Changes item 5).
+
 4. **Main loop.** Per iteration, call `cockpit_await_events(epic=<epic-ref>, cursor=<in-memory-cursor>, maxWaitMs=55000, coalesceWindowMs=3000, maxBatchSize=256)` via the MCP tool binding. The initial iteration passes `cursor=null` (cursor-less — the tool server arms from its connect-time position). Each successful return is a **batch of typed events** with a `nextCursor` field; the batch's events are already parsed by the tool server (no NDJSON stream, no per-line filtering).
 
    Consume every event in the returned batch **in stream order**. There is no content- or field-based filter over the batch; the batch's ordering IS the dispatch order. Preserving § Invariants #7's intent — no content-based filter that could silently drop legitimate events — is by construction here: the tool server owns event parsing, and the parent consumes the typed batch as-is.
@@ -44,6 +58,8 @@ $ARGUMENTS
    - **(b) Dispatch** per § Dispatch below, branching on the *live* transition class.
    - **(c) Write one ledger line** per § Ledger (transcript print + append to the run's `.ledger` file). A dispatch without a ledger line is a protocol violation.
    - **(d) Continue** with the next event in the batch.
+
+   **Initial-flagged events** — `issue-transition` events with `initial: true` from `cockpit_await_events`, produced by generacy#935 for connect-time snapshots and mid-run scope joins (e.g., events emitted after `cockpit_scope_add`) — dispatch through the existing table by their carried state class, the same as any other event. The step-4a re-check remains authoritative. **D.10 structurally cannot fire on an initial-flagged event because the state class is known.** No new dispatch row is added; the initial-flag is orthogonal to dispatch (Q5 anchor).
 
    The `maxWaitMs=55000` bound at the tool boundary makes each iteration finite even on an idle epic; the tool server owns the "silent stall" detection (a stalled server does not return successful empty batches indefinitely — see step 5's cursor-recovery paragraph for the failure surface). An empty batch return (`nextCursor` advances, no events dispatched) simply loops back for the next long-poll; ledger-only cost accounting sees zero appends for that iteration.
 
@@ -297,16 +313,24 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 ### D.8 — `phase-complete` → phase-queue confirmation gate
 
-**Trigger**: A phase completes (all its issues reached terminal states). S8 emits `phase-complete` when the epic's next phase is ready to queue. Verbatim event string: `phase-complete`.
+**Trigger**: A phase completes (all its issues reached terminal states). S8 emits `phase-complete` when the epic's next phase is ready to queue. Verbatim event string: `phase-complete`. **Only fires in epic mode (`invocationForm: epic`).**
 
 **Dispatch**:
-1. **Compute next phase scope** — from `cockpit status --json`, identify the next phase (P<next>) and its N issues.
-2. **Present phase-queue gate** (see § Gate contract G.5). In one assistant response: presentation block with next-phase issue list numbered with titles + single `AskUserQuestion` with options `Queue P<next> (<N> issues) (Recommended)` / `Cancel`, header `QueueP<next>`, `multiSelect: false`.
-3. **Apply verdict**:
-   - `Queue P<next>` → `cockpit_queue(epic=<epic-ref>, phase="P<next>")` (the `--yes` flag is retired — the tool has no interactive confirm; the gate itself is the sole confirmation).
+1. **Compute next phase scope** — from `cockpit_status(epic=<epic-ref>, json=true)`, identify the next phase (P<next>) and its N issues.
+2. **Compute open ad-hoc issues** — call `openAdHocIssues(<epic-ref>, ledger)` which filters ledger `scope-add` and `filing-gate+scope-add` action lines (with successful outcomes) to the refs whose live state per `cockpit_status` is non-terminal. Order is scope-add order (chronological).
+3. **Present phase-queue gate** (see § Gate contract G.5). In one assistant response: presentation block with the next-phase issue list numbered with titles, followed — **only when the ad-hoc list is non-empty** — by a `Open ad-hoc issues in scope (added mid-run):` block enumerating each open ad-hoc ref as `<owner>/<repo>#<n> · <title> · <live-state>`. Empty ad-hoc list omits the block entirely (no `(none)` placeholder). Then a single `AskUserQuestion` with options depending on the ad-hoc list:
+   - **Empty ad-hoc list (unchanged behavior)**: options `Queue P<next> (<N> issues) (Recommended)` / `Cancel`.
+   - **Non-empty ad-hoc list**: options `Hold — <M> open ad-hoc issue(s) in scope (Recommended)` / `Queue P<next> (<N> issues)` / `Cancel`, where `<M>` is the count of open ad-hoc issues. The recommendation flips to `Hold`; `Queue P<next>` remains selectable (queueing while ad-hoc work is open stays *possible* but never *silent* — the gate text names the open refs and the operator decides).
+
+   Header `QueueP<next>`, `multiSelect: false`.
+4. **Apply verdict**:
+   - `Queue P<next>` → `cockpit_queue(epic=<epic-ref>, phase="P<next>")` (the `--yes` flag is retired — the tool has no interactive confirm; the gate itself is the sole confirmation). Under a non-empty ad-hoc list, the ledger outcome carries the ad-hoc count.
+   - `Hold` (only under non-empty ad-hoc list) → do NOT call `cockpit_queue`; the `phase-complete` state persists; the loop continues (the operator may add more ad-hoc work, complete existing ad-hoc work, or return to this gate later).
    - `Cancel` → ledger line noting the cancellation; continue loop.
 
-**Ledger line**: `<epic-ref> · phase-complete · phase-queue-gate · <queued P<next> (<N> issues) | cancelled>`.
+**Ledger line**: `<epic-ref> · phase-complete · phase-queue-gate · <queued P<next> (<N> issues) | queued P<next> (<N> issues) with <M> ad-hoc open | held (<M> ad-hoc open) | cancelled>`.
+
+If `cockpit_status` fails for one or more ad-hoc refs during the helper call, omit those refs from the enumeration and write a ledger line noting the omission (`<epic-ref> · phase-complete · openAdHocIssues · error: cockpit_status failed for <ref>: <description>`) before firing the gate; the gate still presents the partial list.
 
 ### D.9 — `waiting-for:address-pr-feedback` → ledger only
 
@@ -387,6 +411,49 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Ledger line**: `<issue-ref> · <observed-state> · unrecognized-state · <skip (session-local mute) | stop (exit)>`.
 
+## Add-issue flow (mid-run)
+
+Between dispatched events, the operator may ask the session to add a ref to the current tracking scope — either an existing issue ("also process X") or a new issue drafted for them ("file an issue for X"). Two **intent classes** are recognized (see `lib/intent-recognition.ts` for the canonical shape used by the fixture-verified reference parser):
+
+1. **Add-existing intent** — the operator's message reads like "also process <ref>", "process <ref> too", "add <ref> to scope", "include <ref>", "queue <ref>", "pull in <ref>", "handle <ref>", or "look at <ref> too", AND contains a parseable explicit ref (`<owner>/<repo>#<n>` or `#<n>` shorthand — the shorthand resolves against the tracking ref's repo at dispatch time).
+2. **File-new intent** — the operator's message reads like "file an issue for <topic>", "open a bug for <topic>", "create an issue about <topic>", "raise an issue for <topic>", or "report an issue for <topic>".
+
+Recognition is **generous by design** because the safety net is structural (spec Q2 anchor):
+
+- The **add-existing path requires a parseable explicit ref** — if no ref is present in a message with add-existing phrasing, the parser returns `null` and the session **confirms intent conversationally** ("do you want me to add an issue to scope? which ref?") before acting. A false-positive add-existing dispatch can only happen when the operator actually referenced a ref, which bounds the blast radius.
+- The **file-new path always lands on the filing gate G.6** — a misread intent surfaces as a skippable gate, never as an unreviewed outward action. On ambiguous chat-adjacent phrasings (`look at X`, `check X out`, `investigate X`, `let's discuss X`), the parser returns `null` and the session confirms intent before drafting.
+
+Multiple refs in one message: the FIRST parseable ref wins. The operator can re-invoke intent per-ref.
+
+### Add-existing path (no gate)
+
+1. Parse the ref via `parseAddExistingIntent`. On `null`, confirm intent conversationally and re-parse on the operator's confirmation.
+2. Resolve shorthand `#<n>` against the tracking ref's `<owner>/<repo>` prefix. The resolved ref is what goes into the ledger and the tool calls.
+3. Call `cockpit_scope_add(scopeRoot=<tracking-ref>, addRef=<resolved-ref>)` (the generacy#935 verb).
+4. Call `cockpit_queue(issue=<resolved-ref>)` (the generacy#935 issue-form of `cockpit_queue`).
+5. Write ledger line: `<resolved-ref> · scope-add · queued` (or `<resolved-ref> · scope-add · error: <description>` on failure).
+6. Return to the main loop. **No gate** — the operator's explicit instruction *is* the approval (Q2 anchor).
+
+On any error from `cockpit_scope_add` or `cockpit_queue`, write the error ledger line and continue the main loop; the operator can retry via a fresh intent.
+
+### File-new path (G.6 filing gate)
+
+1. Parse the topic via `parseFileNewIntent`. On `null`, confirm intent conversationally and re-parse on the operator's confirmation.
+2. Spawn a drafter subagent (`subagent_type: "general-purpose"`, description: `Draft issue for <topic>`, prompt: the operator's topic + a return-schema directive) to draft `{title, body, labels}` for the new issue. Return contract: strict JSON `{title: string, body: string, labels: string[]}`; on error `{"error": "<description>"}`.
+3. Present the **G.6 filing gate** (see § Gate contract G.6) with the drafted content in the five-element block. Loop the edit branch until `Approve & file` or `Skip (don't file)`.
+4. **On `Approve & file`**:
+   - Write the assembled body to `/tmp/cockpit-auto-file-<tracking-ref-slug>-<unix_ts>.md`.
+   - Create the issue: `gh issue create --title "<title>" --body-file <tmpfile> [--label <labels>]` — `--body-file` only (never `-b` / `--body`; shell quoting risks stripping content).
+   - Capture the new ref from `gh issue create` return.
+   - Call `cockpit_scope_add(scopeRoot=<tracking-ref>, addRef=<new-ref>)`.
+   - Call `cockpit_queue(issue=<new-ref>)`.
+   - Write ledger line: `<new-ref> · filing-gate+scope-add · filed + queued (<new-ref>)`.
+5. **On `Skip (don't file)`**: write ledger line `<tracking-ref> · filing-gate · skipped (draft discarded)` (the left slot is the tracking ref because no new ref was ever assigned) and return to the main loop. **No create, no scope-add, no queue.**
+
+On any error from `gh issue create` / `cockpit_scope_add` / `cockpit_queue` after `Approve & file`, write the corresponding error ledger line (`filing-gate+scope-add · error: <description>` / `error: scope-add failed: <description>` / `error: queue failed: <description>`) and continue the main loop. Do **not** attempt retraction on a successful `gh issue create` — closing the just-created issue would compound the failure; the operator can manually add the ref via the add-existing intent flow.
+
+**Restart safety**: scope mutations are ledger-lined and reflected on the tracking issue's task list at the engine boundary. A restarted session re-orients from the tracking ref's live task list (spec § Changes item 5); mutes/cursors stay session-local.
+
 ## Gate contract
 
 Four gate types — **clarification batches, review/validation verdicts, phase-queue confirmations, red/error escalations** — are the exhaustive human-interaction surface. **Nothing else prompts; none of these auto-proceed.** Every gate is fused with its presentation in one assistant response (#388 pattern applied uniformly). Every gate uses `AskUserQuestion` — never a Bash `read` prompt, never a text-only question the operator answers in prose.
@@ -400,7 +467,9 @@ Four gate types — **clarification batches, review/validation verdicts, phase-q
 | G.4 (b) | Escalation: agent:error / failed:* | `Requeue` / `Skip` / `Stop` (single call) | Failure evidence |
 | G.4 (d) | Escalation: Merge-conflicts | `I've resolved it — advance the gate` / `Skip` / `Stop` (single call) | Conflicted paths (+ CLI stderr on re-present) |
 | G.4 (c) | Escalation: unrecognized state | `Skip (Recommended)` / `Stop` (single call, no Retry) | Observed state |
-| G.5 | Phase-queue confirmation | `Queue P<next> (Recommended)` / `Cancel` (single call) | Next-phase issue list |
+| G.5 | Phase-queue confirmation | `Queue P<next> (Recommended)` / `Cancel` — or `Hold — <M> open ad-hoc issue(s) in scope (Recommended)` / `Queue P<next> (<N> issues)` / `Cancel` when open ad-hoc work exists (single call) | Next-phase issue list + optional `Open ad-hoc issues in scope (added mid-run):` block |
+| G.6 | Filing gate (new-issue draft) | `Approve & file (Recommended)` / `Make changes` / `Skip (don't file)` (single call; iterative edit branch) | Five-element block: title, labels, body, filing target, parent tracking ref |
+| G.7 | Scope-drained (epic-less exit) | `Keep watching (Recommended)` / `Add more work` / `Finish (close tracking issue + summary)` (single call) | Tracking ref, refs processed, per-ref disposition (`completed` / `not-planned`) |
 
 ### G.1 — Clarification batch gate
 
@@ -746,6 +815,87 @@ Issues to queue:
 
 On `Queue`, the CLI verb is called with `--yes` — the gate itself is the confirmation.
 
+### G.6 — Filing gate (new-issue draft)
+
+**Trigger**: A file-new intent recognized mid-run (via `parseFileNewIntent` returning a `FileNewIntent`) — see § Add-issue flow. Also fires at step 1 under the `--new "<title>"` invocation form to create the initial tracking issue.
+
+**Presentation** (in the same response as the `AskUserQuestion` call) — the five-element block layout, used verbatim on every re-fire (no diff view — what gets filed is exactly what was last shown):
+
+```markdown
+Filing new issue for <tracking-ref>:
+
+**Title:** <drafted-title>
+**Labels:** <labels or "(none)">
+**Body:**
+
+<drafted-body — full markdown, multi-line, verbatim as it will be filed>
+
+**Filing target:** <owner>/<repo> (from tracking ref)
+**Parent tracking ref:** <tracking-ref>
+```
+
+The five field labels (`**Title:**`, `**Labels:**`, `**Body:**`, `**Filing target:**`, `**Parent tracking ref:**`) are ALWAYS present — even under empty labels (`(none)` placeholder). Missing any label is a presentation-shape drift (416-3 anchor).
+
+**Gate invocation**: Per § AskUserQuestion invocation contract — one `AskUserQuestion` call per G.6 fire (single-item `questions` array). Parameters:
+
+- **Question text**: `File this issue on <owner>/<repo>?`
+- **Header**: `File` (≤ 12 chars)
+- **multiSelect**: `false`
+- **Options** (exactly three, discrete, in this order):
+  1. `Approve & file (Recommended)` — create + scope-add + queue + ledger.
+  2. `Make changes` — enter iterative edit re-loop; the operator provides revised content conversationally, the session redrafts and re-fires this same G.6 gate with the full revised draft.
+  3. `Skip (don't file)` — no create, no scope-add, no queue; ledger line noting the skip.
+
+**Iterative edit branch (Q3 anchor — full-draft re-present each round, never a diff view)**:
+
+- **On `Make changes` selection**: the operator's follow-up turn provides change directives (title, body, labels) as free text. The session redrafts the FULL issue and re-presents the full revised draft plus the same G.6 gate. Loop terminates on `Approve & file` or `Skip (don't file)`.
+- **On built-in "Other" free-text** (one-turn fast path — matches #400's Q1=A pattern): the operator can type revised content directly on the current G.6 fire without selecting `Make changes` first. The session applies the edit, re-fires G.6 once with the revised draft. Further edits require explicit `Make changes` selection.
+- **Zero-directive `Make changes` is a no-op re-present** (matches #400's Q4=A pattern): empty follow-up → the session re-presents the same draft plus the same gate. Never implicit-approve; never implicit-skip. Every iteration requires an explicit operator choice.
+
+**Post-gate behavior**: see § Add-issue flow (file-new path) for the full sequence — `Approve & file` runs `gh issue create --body-file` → `cockpit_scope_add` → `cockpit_queue(issue=…)` → ledger `filing-gate+scope-add · filed + queued (<new-ref>)`; `Skip (don't file)` writes ledger `<tracking-ref> · filing-gate · skipped (draft discarded)`; `Make changes` loops.
+
+Under the `--new "<title>"` invocation form, the initial G.6 fire creates the tracking ref itself. On `Approve & file`, the ledger header is written after the create succeeds. On `Skip (don't file)` at the initial G.6, the run exits cleanly (no tracking ref created; ledger carries `form: tracking-new (abandoned before creation)`).
+
+### G.7 — Scope-drained gate (epic-less exit)
+
+**Trigger**: Under `invocationForm: tracking-existing | tracking-new`, every task-list ref of the tracking issue has a terminal disposition per `cockpit_status`'s classifier (Q1 anchor: `completed | not-planned`). The playbook does NOT re-derive terminality from raw GitHub states. **Does NOT fire under `invocationForm: epic`** — that path exits on `epic-complete`.
+
+**Presentation** (in the same response as the `AskUserQuestion` call). The full epic status table per § L.4 policy is emitted immediately before this block:
+
+```markdown
+Scope drained for <tracking-ref> — every ref is terminal.
+
+**Tracking ref:** <tracking-ref>
+**Refs processed:** <N>
+**Per-ref disposition:**
+1. <owner>/<repo>#<m1> · <completed | not-planned>
+2. <owner>/<repo>#<m2> · <completed | not-planned>
+...
+
+**Session-mute set:** <s> ref(s)
+```
+
+Per-ref disposition ordering is the same as the tracking issue's task-list markdown (first task first). Populated from `cockpit_status(issue=<tracking-ref>, json=true)`'s per-ref classifier.
+
+**Gate invocation**: Per § AskUserQuestion invocation contract — one call per G.7 fire (single-item `questions` array). Parameters:
+
+- **Question text**: `Scope drained on <tracking-ref>. How to proceed?`
+- **Header**: `Drain` (≤ 12 chars)
+- **multiSelect**: `false`
+- **Options** (exactly three, discrete, in this order):
+  1. `Keep watching (Recommended)` — return to main loop; re-arm `cockpit_await_events` on the tracking ref.
+  2. `Add more work` — return to main loop with a follow-up prose prompt inviting the operator to file or add.
+  3. `Finish (close tracking issue + summary)` — close tracking issue via `gh issue close <tracking-ref>`, print run summary per § L.6 (extended with per-ref disposition), exit zero. The G.7 pick IS the outward-facing confirmation (matches G.5's "gate IS the confirmation" pattern — no second gate).
+
+**Default rationale (Q4 anchor)**: `Keep watching` is the reversible option; the mode's premise is that work arrives ad hoc — drained-for-now is not done. `Finish` closes the tracking issue (outward-facing, so gated regardless) and is always one explicit pick away.
+
+**Post-gate behavior**:
+- `Keep watching` → ledger line `<tracking-ref> · scope-drained · scope-drained-gate · keep-watching`; return to step 4.
+- `Add more work` → ledger line `<tracking-ref> · scope-drained · scope-drained-gate · add-more-work`; emit prose prompt `What would you like to add? Reference an existing ref (e.g., "also process <ref>") or ask me to file a new issue (e.g., "file an issue for <topic>").`; return to step 4 (operator's next turn is processed by the intent-class recognizer per § Add-issue flow).
+- `Finish` → ledger line `<tracking-ref> · scope-drained · scope-drained-gate · finish (tracking closed)`; then `gh issue close <tracking-ref>`; then print run summary per § L.6; exit zero. The ledger line is written BEFORE the close so the run summary can read it.
+
+G.7 fires exactly once per drain event; subsequent drains (after `Keep watching` and further ad-hoc work reaching terminal) fire again as fresh gates.
+
 ## AskUserQuestion invocation contract
 
 Every gate contract G.1–G.5 above emits an `AskUserQuestion` call. This section states the three general rules that govern every such invocation, so each gate contract can reference them rather than restating them inline. Every future gate G.6+ MUST reference this section as well.
@@ -820,6 +970,12 @@ Stable strings per dispatch table row, so `grep` recipes on `<action>` / `<outco
 | § step 5 cursor recovery (Branch A) | `cursor-recovery` | `resetFrom · <N>`, `expiry · <N>`, `discarded · <N>` |
 | § step 5 cursor recovery (Branch B) | `cursor-recovery` | `invalid-cursor · <N>` (e.g., `cursor-recovery · invalid-cursor · 1`) |
 | § step 5 Branch B escalation | `escalation-gate` | `continue-degraded`, `stop (exit)` — G.4(e) operator decision; transition class is `invalid-cursor-streak` |
+| Add-issue (add-existing intent) | `scope-add` | `queued`, `error: <description>` |
+| Add-issue (file-new intent) | `filing-gate+scope-add` | `filed + queued (<new-ref>)`, `error: <description>`, `error: scope-add failed: <description>`, `error: queue failed: <description>` |
+| G.6 filing gate (skip only — no ref filed) | `filing-gate` | `skipped (draft discarded)` |
+| G.7 scope-drained gate | `scope-drained-gate` | `keep-watching`, `add-more-work`, `finish (tracking closed)`, `error: close failed: <description>` |
+| D.8 phase-queue hold / queued-with-ad-hoc (non-empty ad-hoc list) | `phase-queue-gate` | `held (<M> ad-hoc open)`, `queued P<next> (<N> issues) with <M> ad-hoc open` |
+| D.8 `openAdHocIssues` helper (failure only) | `openAdHocIssues` | `error: cockpit_status failed for <ref>: <description>` |
 | mute-set hit | `(muted)` | `skip (session-local mute active)` |
 
 ### L.4 — Status table policy
@@ -830,8 +986,9 @@ The full epic status table (anchor: header row `| Issue | Phase | State |`) is e
 2. **`epic-complete` exit** (step 6, § Ledger L.6 run-summary paragraph).
 3. **Escalation-gate presentations** (D.6 G.4a, D.7 G.4b, D.10 G.4c, D.11 G.4d) — the operator needs orientation before an escalation decision.
 4. **Startup-sweep summary** (step 3) — session-start orientation is a real operator need; every resumed run starts with "where are things?". The sweep ends with exactly one full status table, then enters the main loop.
+5. **Scope-drained gate G.7 presentation** — operator orientation before an exit decision in epic-less mode. Matches the escalation-gate rationale in surface 3.
 
-Between phase boundaries, the ledger line is the sole record of a dispatch. No status table is emitted after D.1–D.5, D.9/D.9a/D.9b/D.9c/D.9d, or any actionable dispatch that is not one of the four surfaces above.
+Between phase boundaries, the ledger line is the sole record of a dispatch. No status table is emitted after D.1–D.5, D.9/D.9a/D.9b/D.9c/D.9d, or any actionable dispatch that is not one of the five surfaces above.
 
 ### L.6 — Run summary at exit
 
@@ -850,11 +1007,23 @@ Events dispatched: <N>
   · Escalations: <k6>
   · Cursor recoveries: <k7> (by class: invalid-cursor=<a>, resetFrom=<b>, expiry=<c>, discarded=<d>)
   · Cursor-recovery escalations: <k8> (continue-degraded=<x>, stop=<y>)
+Scope growth: started with <N>, added <M>, completed <K>
+Per-ref disposition:
+  · <owner>/<repo>#<m1> · <completed | not-planned>
+  · <owner>/<repo>#<m2> · <completed | not-planned>
+  ...
 Muted issues (session-local): <s>
 Ledger file: <absolute path to .ledger file>
 ```
 
 Counts are derived from the ledger file (or the in-memory count if the file is unavailable). Non-`epic-complete` exits (Stop from an escalation gate, pre-flight failure) print an abbreviated summary with the exit reason.
+
+**`Scope growth:` line (unconditional)**. Emitted in every run summary, including runs with zero scope activity (e.g., an epic-less run closed at the initial G.7 without any adds still prints `Scope growth: started with 0, added 0, completed 0`).
+- `started with N` — count of task-list refs at run start. Epic mode: count of synthetic events from step 3 startup sweep. Epic-less: count of task-list refs on the tracking issue at step 3.
+- `added M` — count of `scope-add · queued` action lines PLUS count of `filing-gate+scope-add · filed + queued (…)` action lines. **Excludes** `filing-gate · skipped` outcomes and any `filing-gate+scope-add · error: …` outcomes.
+- `completed K` — count of `merge · merged (…)` action lines PLUS any `epic-complete` action line for the tracking ref itself. Epic-less mode: count of task-list refs classified `completed | not-planned` per `cockpit_status` at exit time.
+
+**`Per-ref disposition:` block (epic-less only)**. Emitted only under `invocationForm: tracking-existing | tracking-new`. Under epic mode the block is OMITTED entirely (the phase-based structure supplies the "who did what" reading; per-ref disposition would be noise). Ordering matches the tracking issue's task-list markdown; content is the same per-ref list the G.7 gate presented, reused verbatim so the summary and the gate cannot drift.
 
 ## Invariants
 
@@ -983,6 +1152,37 @@ Flow:
 5. Ledger: `christrudelpw/epic#47 · agent:error · escalation-gate · requeue (cockpit resume)`.
 
 If `cockpit_resume` were not available (G-S8 didn't ship the tool, per Assumption A2), Requeue would degrade to Skip with an explicit ledger note: `christrudelpw/epic#47 · agent:error · escalation-gate · skip (cockpit resume unavailable — G-S8 prerequisite)`.
+
+### Example 5 — Epic-less stabilization run with G.6 filing gates and G.7 scope-drained exit
+
+Command: `/cockpit:auto --tracking generacy-ai/agency#100`
+
+Run shape (epic-less, `invocationForm: tracking-existing`):
+
+1. **Startup** — step 1 prints `Tracking ref: generacy-ai/agency#100 · form: tracking-existing`; writes the same as the ledger header. Step 3 startup sweep reads the tracking issue's task list via `cockpit_status(issue="generacy-ai/agency#100", json=true)` and finds it empty (this is a fresh stabilization run). Main loop begins with zero synthetic events.
+2. **Add-existing intent (mid-run)** — the operator types `also process generacy-ai/agency#420`. Parser (`parseAddExistingIntent`) returns `{ref: "generacy-ai/agency#420"}`. Session calls `cockpit_scope_add(scopeRoot="generacy-ai/agency#100", addRef="generacy-ai/agency#420")` then `cockpit_queue(issue="generacy-ai/agency#420")`. **No gate.**
+   - Ledger: `generacy-ai/agency#420 · scope-add · queued`.
+3. **File-new intent #1 (mid-run)** — the operator types `file an issue for the flaky test in module foo`. Parser (`parseFileNewIntent`) returns `{topic: "the flaky test in module foo"}`. Drafter subagent returns `{title, body, labels}`. G.6 fires with the five-element block. Operator selects `Approve & file`.
+   - `gh issue create --title "..." --body-file /tmp/cockpit-auto-file-generacy-ai-agency-100-1720905600.md` returns `generacy-ai/agency#421`.
+   - `cockpit_scope_add(scopeRoot="generacy-ai/agency#100", addRef="generacy-ai/agency#421")` succeeds; `cockpit_queue(issue="generacy-ai/agency#421")` succeeds.
+   - Ledger: `generacy-ai/agency#421 · filing-gate+scope-add · filed + queued (generacy-ai/agency#421)`.
+4. **File-new intent #2 skipped at G.6** — the operator types `open a bug for the retry-helper timeout`. Drafter returns a draft; G.6 fires; operator selects `Skip (don't file)` after reading the draft.
+   - Ledger: `generacy-ai/agency#100 · filing-gate · skipped (draft discarded)` (the tracking ref sits in the left slot because no new ref was assigned).
+5. **All three refs (from steps 2, 3, and one more via a subsequent add-existing) reach terminal** (mix of merges and `not-planned` closures). `cockpit_await_events` returns nothing more actionable; the parent detects scope-drain via `cockpit_status`'s classifier.
+6. **G.7 fires (first drain)** — presentation shows `Refs processed: 3`, per-ref disposition `#420 · completed`, `#421 · completed`, `#422 · not-planned`. Operator selects `Keep watching`.
+   - Ledger: `generacy-ai/agency#100 · scope-drained · scope-drained-gate · keep-watching`.
+7. Loop resumes; the operator does no further adds. `cockpit_await_events` returns no events on the tracking ref for several iterations. `cockpit_status` still reports every ref terminal → **G.7 fires again**.
+8. **G.7 (second drain)** — operator selects `Finish (close tracking issue + summary)`.
+   - Ledger: `generacy-ai/agency#100 · scope-drained · scope-drained-gate · finish (tracking closed)` (written BEFORE the close so the run summary can read it).
+   - `gh issue close generacy-ai/agency#100` succeeds.
+   - Run summary per § L.6 with `Scope growth: started with 0, added 3, completed 3` and the per-ref disposition block:
+     ```text
+     Per-ref disposition:
+       · generacy-ai/agency#420 · completed
+       · generacy-ai/agency#421 · completed
+       · generacy-ai/agency#422 · not-planned
+     ```
+   - Exit zero.
 
 <!-- BEGIN error-conv -->
 **Error handling** — When a Bash CLI exit code is non-zero (or a pre-flight failed), classify the failure into exactly one of three classes (first match wins, all matches case-insensitive) and emit the matching response. Every class MUST print something — never silently no-op. Exit non-zero on every class. This block covers the remaining Bash CLI invocations (`gh` for issue comment posting; `git` for local ledger writes). Cockpit MCP tool typed errors surface at their call sites (`code`/`message`/`details` structured fields), not through this regex classifier — the tool-presence check in step 3 handles tool absence with its own load-bearing ledger line.

@@ -1,9 +1,9 @@
 [
-  { "name": "cockpit_status", "requiredParams": [], "optionalParams": ["epic", "json"] },
+  { "name": "cockpit_status", "requiredParams": [], "optionalParams": ["epic", "issue", "json"] },
   { "name": "cockpit_context", "requiredParams": ["issue"], "optionalParams": [] },
-  { "name": "cockpit_queue", "requiredParams": ["epic", "phase"], "optionalParams": [] },
+  { "name": "cockpit_queue", "requiredParams": [], "optionalParams": ["epic", "phase", "issue"] },
   { "name": "cockpit_advance", "requiredParams": ["issue", "gate"], "optionalParams": [] },
   { "name": "cockpit_resume", "requiredParams": ["issue"], "optionalParams": [] },
   { "name": "cockpit_merge", "requiredParams": ["issue"], "optionalParams": [] },
-  { "name": "cockpit_await_events", "requiredParams": ["epic"], "optionalParams": ["cursor", "maxWaitMs", "coalesceWindowMs", "maxBatchSize"] }
+  { "name": "cockpit_await_events", "requiredParams": [], "optionalParams": ["epic", "issue", "cursor", "maxWaitMs", "coalesceWindowMs", "maxBatchSize"] }
 ]
