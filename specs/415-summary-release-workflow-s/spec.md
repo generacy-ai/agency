@@ -1,11 +1,10 @@
-# Feature Specification: Release workflow peer-dep check reddens jobs after successful publish
+# Feature Specification: Fix Release Workflow Peer-Dep Consistency Check
 
-**Branch**: `415-summary-release-workflow-s` | **Date**: 2026-07-14 | **Status**: Draft
-**Source**: [Issue #415](https://github.com/generacy-ai/agency/issues/415)
+**Branch**: `415-summary-release-workflow-s` | **Date**: 2026-07-14 | **Status**: Clarified
 
 ## Summary
 
-The `Release` workflow's **"Validate latest peer-dep consistency"** step can fail **after a successful publish**, turning the release job red even though packages were published correctly. It tripped during the cockpit→stable rollout on 2026-07-13.
+The `Release` workflow's **"Validate latest peer-dep consistency"** step can fail **after a successful publish**, turning the release job red even though packages were published correctly. It tripped during the cockpit → stable rollout on 2026-07-13. This change retargets the check at the tag actually being published, advances `@latest` alongside `@stable` on stable publishes so drift stops re-accumulating, and emits a non-failing advisory when residual `@latest` drift is still observed.
 
 ## Evidence
 
@@ -35,77 +34,73 @@ Two compounding problems:
 - Real failures in this step would be indistinguishable from this pre-existing noise.
 - No functional impact on the cockpit rollout — `claude-plugin-cockpit@0.1.0` is on `@stable` and installs cleanly (no deps/peerDeps).
 
-## Proposed fix (pick/combine)
-
-- **Reconcile the agency-family `@latest` tags** in one coordinated bump so the peers resolve, OR
-- **Advance `@latest` alongside `@stable`** in the agency release flow (generacy's `release.yml` already does this — "Advance @latest dist-tag for all published packages"), so `@latest` stops pointing at ancient previews, OR
-- **Make the check validate the tag actually being published** (`stable`) rather than `@latest`, and/or make it non-blocking (warn) since it runs after publish and cannot gate it.
-
 ## User Stories
 
-### US1: Release engineer sees green jobs for successful publishes
+### US1: Reliable release signal for maintainers
 
-**As a** release engineer merging a release PR to `main`,
-**I want** the Release workflow to finish green when packages were published successfully,
-**So that** I can trust job status as a signal and notice real failures immediately.
-
-**Acceptance Criteria**:
-- [ ] A successful stable publish results in a fully green Release workflow run.
-- [ ] The peer-dep validation step no longer marks the job red for stale `@latest` drift that is unrelated to the release that just ran.
-- [ ] If a genuine peer-dep inconsistency exists in the tag being published, it is surfaced clearly (either as a failed check or a prominent advisory).
-
-### US2: Cluster/consumer of stable channel gets consistent peers
-
-**As a** consumer installing agency packages from the `@stable` dist-tag,
-**I want** peer dependencies across the agency package family to resolve consistently for the tag I install,
-**So that** installs succeed without peer conflicts.
+**As a** maintainer merging a release PR,
+**I want** the `Release` workflow job to be green when the publish actually succeeded and the published tag family is internally consistent,
+**So that** a red job is a reliable signal of a real problem and does not have to be routinely explained away.
 
 **Acceptance Criteria**:
-- [ ] Peer-dep consistency is validated against the dist-tag actually being published (e.g. `stable`), not an unrelated tag.
-- [ ] Consumers installing `@stable` do not encounter peer conflicts caused by drift on `@latest`.
+- [ ] A successful stable publish with no peer-dep conflict within the `@stable` family produces a green release job.
+- [ ] A publish that produces a genuine peer-dep conflict within the just-published tag family still reddens the job.
+- [ ] Pre-existing `@latest` drift alone never reddens the job.
 
-### US3: On-call responder can distinguish real failures from stale noise
+### US2: Non-accumulating `@latest` drift
 
-**As an** engineer investigating a red Release run,
-**I want** red status to indicate a real problem with the release,
-**So that** I don't have to reverse-engineer whether the redness is pre-existing noise.
+**As a** consumer installing agency packages without a tag qualifier,
+**I want** `@latest` to point at the current stable release after each stable publish,
+**So that** `npm install @generacy-ai/agency-plugin-*` resolves to a coherent set of stable versions.
 
 **Acceptance Criteria**:
-- [ ] Post-publish checks that cannot gate the publish are either fixed to gate pre-publish, made advisory (warn without failing), or reworked so they only fail on issues attributable to the current release.
+- [ ] After a stable publish, every package published in that run has its `@latest` dist-tag advanced to the newly-published stable version.
+- [ ] Preview publishes never touch `@latest`.
+
+### US3: Visibility into residual drift
+
+**As a** maintainer,
+**I want** the workflow to surface residual `@latest` drift as an advisory (not a failure) when the family's `@latest` tags are still inconsistent,
+**So that** we know when a manual reconciliation is warranted without reddening green publishes.
+
+**Acceptance Criteria**:
+- [ ] When residual `@latest` drift is detected on a run whose `@stable` (or published-tag) check passed, the workflow emits a non-failing annotation/warning describing the drift.
 
 ## Functional Requirements
 
-| ID | Requirement | Priority | Notes |
-|----|-------------|----------|-------|
-| FR-001 | Successful stable publishes MUST NOT cause the Release job to end red due to unrelated `@latest` drift. | P1 | Core acceptance criterion. |
-| FR-002 | The peer-dep consistency check MUST validate the dist-tag being published (e.g. `stable`), not a hardcoded `@latest`. | P1 | Or the check must be made advisory. |
-| FR-003 | If drift on `@latest` exists but the published tag is consistent, the workflow SHOULD emit a warning/advisory annotation without failing the job. | P2 | Preserves visibility of underlying drift. |
-| FR-004 | The Release flow SHOULD advance the `@latest` dist-tag alongside `@stable` for all published packages, matching generacy's `release.yml`. | P2 | Prevents drift accumulating on `@latest`. |
-| FR-005 | Any check that must gate a release MUST run pre-publish, not post-publish, so its failure has meaning. | P2 | Structural fix for the ordering flaw. |
-| FR-006 | Genuine peer-dep inconsistencies within the tag being published MUST still fail the workflow. | P1 | Do not silence the check entirely. |
+| ID     | Requirement                                                                                                                                                                              | Priority | Notes |
+|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|-------|
+| FR-001 | The peer-dep consistency check MUST NOT fail on `@latest` drift alone when the just-published tag family is internally consistent.                                                       | P1       | Root fix for the misleading red job. |
+| FR-002 | The check MUST validate the tag actually being published (e.g. `stable`), not `@latest`.                                                                                                 | P1       | Retargets the check at the release channel that matters. |
+| FR-003 | When the check passes but residual `@latest` drift is still present in the family, the workflow MUST emit a non-failing advisory (warning/annotation) describing the drift.              | P2       | Keeps drift visible without blocking. |
+| FR-004 | On a successful stable publish, the workflow MUST advance the `@latest` dist-tag of each published package to the newly-published stable version. Preview publishes MUST NOT touch `@latest`. | P1   | Matches generacy's `release.yml`; stops drift re-accumulating. |
+| FR-005 | Any check that must *gate* a release MUST run pre-publish. The peer-dep consistency check is reclassified as a post-publish *verification* of the published tag family and remains post-publish. | P2 | Explicit reclassification; keeps FR-005 as the governing principle without forcing pre-publish gating for this check. |
+| FR-006 | The check MUST still fail when the just-published tag family is genuinely inconsistent (real peer-dep conflict), so real regressions are detectable.                                     | P1       | Preserves the check's original intent. |
+| FR-007 | The set of packages participating in the check MUST be derived from the changesets `publishedPackages` output for the run, not from a hardcoded list.                                    | P1       | Auto-includes new packages (current hardcoded `PACKAGES` list already omits `@generacy-ai/claude-plugin-cockpit`). For each published package, peer-dep ranges are resolved against (a) other packages published in this run at their new versions and (b) any non-published peers at the published tag. |
 
 ## Success Criteria
 
-| ID | Metric | Target | Measurement |
-|----|--------|--------|-------------|
-| SC-001 | Green Release runs on successful stable publishes | 100% of successful publishes end green | GitHub Actions run status on the next stable release after this fix ships. |
-| SC-002 | Peer-dep check validates the published tag | Check reads dist-tag from the release, not hardcoded `@latest` | Code review of `.github/workflows/release.yml`. |
-| SC-003 | No false-positive redness on stable publishes | 0 red Release runs attributable to `@latest` drift | Review of Release runs in the 30 days following the fix. |
-| SC-004 | Real peer-dep issues still detected | Deliberately induced peer-dep conflict on the published tag fails the workflow | Manual test or dry-run in a fork/branch. |
+| ID     | Metric                                                                        | Target                                                                          | Measurement                                                    |
+|--------|--------------------------------------------------------------------------------|---------------------------------------------------------------------------------|----------------------------------------------------------------|
+| SC-001 | Green release job for a successful stable publish with no real conflict        | 100% green over the next 3 stable publishes                                     | GitHub Actions run history for the `Release` workflow.         |
+| SC-002 | `@latest` matches `@stable` for each family package after a stable publish     | `npm view @generacy-ai/<pkg>@latest version` == `npm view … @stable version` for every published package, within the run | Post-publish assertion in workflow logs (or manual check). |
+| SC-003 | Advisory annotation is emitted when residual drift is present                  | For any release run where `@latest` drift persists after publish, exactly one non-failing annotation describing it appears in the run | Workflow logs / job annotations. |
+| SC-004 | Real peer-dep regressions still fail the job                                   | Synthetic test (or first real occurrence) demonstrates a genuine conflict reddens the job | Manual verification during rollout / retro on next incident. |
 
 ## Assumptions
 
-- The agency release flow uses changesets and publishes with `--tag stable` for stable-channel releases.
-- The cluster runtime installs from `@stable`, and `@latest` is a legacy/preview channel that has drifted.
-- Modifying `.github/workflows/release.yml` is the primary vehicle for the fix; underlying package `package.json` peer-dep declarations are not necessarily changing.
-- Advancing `@latest` alongside `@stable` (per generacy's flow) is an acceptable policy — no consumer relies on `@latest` pointing at old previews.
+- `changesets` publish output exposes a `publishedPackages` field enumerating `{name, version}` pairs for what was just published (used by FR-007).
+- The workflow can read the just-published tag from the changesets step (or determine it from `--tag` in the publish config) to decide which dist-tag to validate.
+- Every current family package has a coherent `@stable` version, so advancing `@latest` to `@stable` on a stable publish will not itself introduce new inconsistencies.
+- `npm dist-tag add` is available in the release job's environment with credentials sufficient to advance `@latest` for all family packages.
 
 ## Out of Scope
 
-- Rewriting the changesets pipeline or moving off changesets.
-- Backfilling correct peer-dep pins into historical preview releases already published to npm.
-- Migrating existing consumers pinned to old `@latest` versions.
-- Broader changes to release cadence, versioning strategy, or the meaning of the `preview` / `stable` / `latest` channels beyond what is needed to fix the misleading red job.
+- **One-time historical retag of existing stale `@latest` tags.** Reconciling pre-existing `@latest` drift is not part of this PR (Q3=B). The workflow fix converges drift over time as each package next publishes stable. A separate operational step (e.g. `npm dist-tag add @generacy-ai/<pkg>@<stable> latest` across the family) may be executed independently if we want `@latest` clean immediately.
+- **Pre-publish gating.** Moving the check to run before `changesets publish` (Q4=A) is not part of this change; the check remains post-publish and is reclassified as verification (FR-005).
+- **Backfilling historical peer-dep pins** in already-published preview versions.
+- **Consumer migration** away from `@latest`.
+- **Changes to preview-channel behaviour** beyond the explicit "preview publishes must not touch `@latest`" rule in FR-004.
 
 ---
 
