@@ -56,65 +56,128 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Validate latest peer-dep consistency
+      - name: Validate published tag family peer-dep consistency
         if: steps.changesets.outputs.published == 'true'
+        env:
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+          PUBLISH_TAG: stable
         run: |
           node - <<'EOF'
           const { execSync } = require('child_process');
           const semver = require('semver');
 
-          const PACKAGES = [
-            '@generacy-ai/agency',
-            '@generacy-ai/agency-plugin-spec-kit',
-            '@generacy-ai/agency-plugin-humancy',
-            '@generacy-ai/agency-plugin-docker',
-            '@generacy-ai/agency-plugin-firebase',
-            '@generacy-ai/agency-plugin-git',
-            '@generacy-ai/agency-plugin-npm',
-            '@generacy-ai/agency-extension',
-          ];
+          const published = JSON.parse(process.env.PUBLISHED_PACKAGES);
+          const publishTag = process.env.PUBLISH_TAG;
 
-          function npmInfo(pkg) {
+          function npmInfo(spec) {
             try {
-              return JSON.parse(execSync(`npm info ${pkg}@latest --json 2>/dev/null`, { encoding: 'utf8' }));
+              return JSON.parse(execSync(`npm info ${spec} --json 2>/dev/null`, { encoding: 'utf8' }));
             } catch {
               return null;
             }
           }
 
-          const infos = {};
-          for (const pkg of PACKAGES) {
-            infos[pkg] = npmInfo(pkg);
-            if (infos[pkg]) {
-              console.log(`  ${pkg}@latest = ${infos[pkg].version}`);
-            } else {
-              console.log(`  ${pkg}@latest = (not on npm)`);
-            }
+          const family = {};
+
+          // Seed with every published package at its new version.
+          for (const { name, version } of published) {
+            const info = npmInfo(`${name}@${version}`);
+            family[name] = {
+              name,
+              version,
+              source: 'published',
+              peerDependencies: info?.peerDependencies || {},
+            };
+            console.log(`  ${name}@${version} (published)`);
           }
 
-          let failed = false;
-          for (const pkg of PACKAGES) {
-            const info = infos[pkg];
-            if (!info || !info.peerDependencies) continue;
-            for (const [peer, range] of Object.entries(info.peerDependencies)) {
-              if (!infos[peer]) continue;
-              const peerVersion = infos[peer]?.version;
-              if (!peerVersion) continue;
-              // workspace:* becomes a concrete range after publish; skip if not semver
+          // One hop out: fetch non-published peers at the publish tag.
+          const peerNames = new Set();
+          for (const entry of Object.values(family)) {
+            for (const peer of Object.keys(entry.peerDependencies)) {
+              if (!family[peer]) peerNames.add(peer);
+            }
+          }
+          for (const peer of peerNames) {
+            const info = npmInfo(`${peer}@${publishTag}`);
+            if (!info) {
+              console.log(`  ${peer}@${publishTag} = (not on npm)`);
+              continue;
+            }
+            family[peer] = {
+              name: peer,
+              version: info.version,
+              source: 'registry',
+              peerDependencies: info.peerDependencies || {},
+            };
+            console.log(`  ${peer}@${publishTag} = ${info.version} (registry)`);
+          }
+
+          const conflicts = [];
+          for (const entry of Object.values(family)) {
+            if (entry.source !== 'published') continue;
+            for (const [peer, range] of Object.entries(entry.peerDependencies)) {
+              if (!family[peer]) continue;
               if (!semver.validRange(range)) continue;
-              if (!semver.satisfies(peerVersion, range)) {
-                console.error(`::error::Peer dep conflict: ${pkg}@${info.version} requires ${peer}@${range} but @latest is ${peerVersion}`);
-                failed = true;
+              if (!semver.satisfies(family[peer].version, range)) {
+                console.error(`::error::Peer dep conflict: ${entry.name}@${entry.version} requires ${peer}@${range} but ${family[peer].source === 'published' ? 'just-published' : `@${publishTag}`} is ${family[peer].version}`);
+                conflicts.push({ package: entry.name, peer, range, actual: family[peer].version });
               }
             }
           }
 
-          if (failed) {
-            console.error('One or more @latest packages have unresolvable peer dependencies.');
+          if (conflicts.length) {
+            console.error('One or more just-published packages have unresolvable peer dependencies within the published tag family.');
             console.error('Re-run the release after bumping all affected packages together in a single changeset.');
             process.exit(1);
           }
-          console.log('All @latest peer dependencies are consistent.');
+          console.log(`All peer dependencies in the @${publishTag} family are consistent.`);
+          EOF
+
+      - name: Advance @latest for stable publishes
+        if: steps.changesets.outputs.published == 'true' && env.PUBLISH_TAG == 'stable'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+          PUBLISH_TAG: stable
+        run: |
+          if [ ! -f ~/.npmrc ] || ! grep -q '_authToken' ~/.npmrc; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          fi
+          node - <<'EOF'
+          const { execSync } = require('child_process');
+          const published = JSON.parse(process.env.PUBLISHED_PACKAGES);
+          for (const { name, version } of published) {
+            execSync(`npm dist-tag add ${name}@${version} latest`, { stdio: 'inherit' });
+          }
+          EOF
+
+      - name: Emit @latest drift advisory
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}
+        run: |
+          node - <<'EOF'
+          const { execSync } = require('child_process');
+          const published = JSON.parse(process.env.PUBLISHED_PACKAGES);
+
+          function viewVersion(spec) {
+            try {
+              return execSync(`npm view ${spec} version 2>/dev/null`, { encoding: 'utf8' }).trim() || null;
+            } catch {
+              return null;
+            }
+          }
+
+          for (const { name } of published) {
+            const latest = viewVersion(`${name}@latest`);
+            const stable = viewVersion(`${name}@stable`);
+            if (latest !== stable) {
+              const latestLabel = latest ?? 'missing';
+              const stableLabel = stable ?? 'missing';
+              console.log(`::warning::Residual @latest drift: ${name}@latest is ${latestLabel} but @stable is ${stableLabel}`);
+            }
+          }
           EOF
 
       - name: Publish extension to Marketplace
