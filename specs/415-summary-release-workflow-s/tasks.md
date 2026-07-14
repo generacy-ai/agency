@@ -18,11 +18,11 @@ tasks in Phase 3 are read-only and marked `[P]`.
 
 ## Phase 1: Baseline
 
-- [ ] T001 Read the current `Validate latest peer-dep consistency` step in `.github/workflows/release.yml` (lines ~59–118) and confirm three things: (a) the hardcoded `PACKAGES = [...]` list is present and omits `@generacy-ai/claude-plugin-cockpit`, (b) `steps.changesets.outputs.publishedPackages` is not yet consumed, (c) `--tag stable` remains the publish tag on the `pnpm changeset publish` step (~line 52). Capture the exact line numbers of the step boundaries — they anchor T010's rewrite.
+- [X] T001 Read the current `Validate latest peer-dep consistency` step in `.github/workflows/release.yml` (lines ~59–118) and confirm three things: (a) the hardcoded `PACKAGES = [...]` list is present and omits `@generacy-ai/claude-plugin-cockpit`, (b) `steps.changesets.outputs.publishedPackages` is not yet consumed, (c) `--tag stable` remains the publish tag on the `pnpm changeset publish` step (~line 52). Capture the exact line numbers of the step boundaries — they anchor T010's rewrite.
 
-- [ ] T002 Confirm `semver` is resolvable in the step's inline Node via the workspace `pnpm install --frozen-lockfile` that runs earlier in the job (see `.github/workflows/release.yml` around line 36). No install step needs to be added; if it is not resolvable, stop and add `require('semver')` availability before proceeding with T010.
+- [X] T002 Confirm `semver` is resolvable in the step's inline Node via the workspace `pnpm install --frozen-lockfile` that runs earlier in the job (see `.github/workflows/release.yml` around line 36). No install step needs to be added; if it is not resolvable, stop and add `require('semver')` availability before proceeding with T010.
 
-- [ ] T003 Confirm `NPM_TOKEN` auth is written to `~/.npmrc` for the runner by the `changesets/action@v1` step (or the surrounding publish step at ~line 57). T020 reuses that auth surface for `npm dist-tag add`; if `.npmrc` is not present when the new step runs, T020's inline block must write it explicitly (matches pattern in `research.md` §P3).
+- [X] T003 Confirm `NPM_TOKEN` auth is written to `~/.npmrc` for the runner by the `changesets/action@v1` step (or the surrounding publish step at ~line 57). T020 reuses that auth surface for `npm dist-tag add`; if `.npmrc` is not present when the new step runs, T020's inline block must write it explicitly (matches pattern in `research.md` §P3).
 
 ---
 
@@ -30,7 +30,7 @@ tasks in Phase 3 are read-only and marked `[P]`.
 
 <!-- All Phase 2 tasks edit `.github/workflows/release.yml`. Complete sequentially. -->
 
-- [ ] T010 [US1] **Rewrite** the existing step `Validate latest peer-dep consistency` in `.github/workflows/release.yml` to `Validate published tag family peer-dep consistency`. Concrete changes:
+- [X] T010 [US1] **Rewrite** the existing step `Validate latest peer-dep consistency` in `.github/workflows/release.yml` to `Validate published tag family peer-dep consistency`. Concrete changes:
   - Remove the hardcoded `PACKAGES = [...]` list.
   - Add `env: PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}` and `PUBLISH_TAG: stable` on the step (pattern in `research.md` §P1).
   - Rewrite the inline Node to parse `PUBLISHED_PACKAGES` (JSON array of `{name, version}`) and build the `FamilyMap` defined in `data-model.md`: (1) seed each published package at its new version (`source: "published"`) using `npm info <name>@<version> --json` for its `peerDependencies`; (2) one hop out — for each peer referenced by a published package that is not already in the map, `npm info <peer>@<PUBLISH_TAG> --json`, `source: "registry"`; skip peers missing on the registry (mirror existing null-tolerant behaviour at ~line 100).
@@ -38,14 +38,14 @@ tasks in Phase 3 are read-only and marked `[P]`.
   - Keep the outer `if: steps.changesets.outputs.published == 'true'` gate. Preserve the "Peer dep conflict:" log line format so downstream troubleshooting docs in `quickstart.md` §Troubleshooting stay accurate.
   - Satisfies FR-001, FR-002, FR-006, FR-007; US1 acceptance criteria 1–3.
 
-- [ ] T011 [US2] **Add** a new step immediately after T010's step in `.github/workflows/release.yml`: `Advance @latest for stable publishes`.
+- [X] T011 [US2] **Add** a new step immediately after T010's step in `.github/workflows/release.yml`: `Advance @latest for stable publishes`.
   - Guard: `if: steps.changesets.outputs.published == 'true' && env.PUBLISH_TAG == 'stable'`.
   - `env:` block sets `NPM_TOKEN: ${{ secrets.NPM_TOKEN }}`, `PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}`, `PUBLISH_TAG: stable`.
   - Body: if `~/.npmrc` is not already present with the auth token, write `//registry.npmjs.org/:_authToken=${NPM_TOKEN}` to it (see T003 finding). Then `JSON.parse(process.env.PUBLISHED_PACKAGES)` and for each `{name, version}` shell out `npm dist-tag add ${name}@${version} latest` via `child_process.execSync(..., { stdio: 'inherit' })`.
   - A failure of any single `npm dist-tag add` MUST fail the step (real auth/network/registry problem, not the drift being demoted).
   - Satisfies FR-004; US2 acceptance criteria 1 (advancement on stable) and 2 (preview never touches `@latest`).
 
-- [ ] T012 [US3] **Add** a new step immediately after T011's step in `.github/workflows/release.yml`: `Emit @latest drift advisory`.
+- [X] T012 [US3] **Add** a new step immediately after T011's step in `.github/workflows/release.yml`: `Emit @latest drift advisory`.
   - Guard: `if: steps.changesets.outputs.published == 'true'` (advisory runs regardless of channel, but only when a publish occurred).
   - `env:` block sets `PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.publishedPackages }}`.
   - Body: for each `{name}` in the parsed array, read `npm view <name>@latest version` and `npm view <name>@stable version` (tolerate missing tags as `null`). When they diverge (either missing, or unequal), print a single `::warning::Residual @latest drift: <name>@latest is <latest|missing> but @stable is <stable|missing>` line — one per divergence, matching the format in `research.md` §P4.
@@ -59,11 +59,11 @@ tasks in Phase 3 are read-only and marked `[P]`.
 
 <!-- Phase boundary: Complete Phase 2 before starting Phase 3. -->
 
-- [ ] T020 [P] [US1] Run the offline negative-path rehearsal in `quickstart.md` §"Verifying the negative path" verbatim against a Node ≥ 18 REPL. Expected output: `FAILED (expected):` followed by exactly one `Conflict` entry naming `@generacy-ai/agency-plugin-spec-kit → @generacy-ai/agency` with `range=^0.1.0`, `actual=0.0.9`. Confirms `isConsistent`'s conflict-detection semantics used in T010 (FR-006).
+- [X] T020 [P] [US1] Run the offline negative-path rehearsal in `quickstart.md` §"Verifying the negative path" verbatim against a Node ≥ 18 REPL. Expected output: `FAILED (expected):` followed by exactly one `Conflict` entry naming `@generacy-ai/agency-plugin-spec-kit → @generacy-ai/agency` with `range=^0.1.0`, `actual=0.0.9`. Confirms `isConsistent`'s conflict-detection semantics used in T010 (FR-006).
 
-- [ ] T021 [P] [US1] Run the offline positive-path rehearsal: same script as T020 but change the `@generacy-ai/agency` version to `0.1.0`. Expected output: `PASSED` with `exit 0` and an empty conflicts array. Confirms `@latest` drift elsewhere (simulated by a `source: "registry"` entry at an older version, not a published package with a violated peer range) does not redden the job.
+- [X] T021 [P] [US1] Run the offline positive-path rehearsal: same script as T020 but change the `@generacy-ai/agency` version to `0.1.0`. Expected output: `PASSED` with `exit 0` and an empty conflicts array. Confirms `@latest` drift elsewhere (simulated by a `source: "registry"` entry at an older version, not a published package with a violated peer range) does not redden the job.
 
-- [ ] T022 [P] [US2] Lint the workflow change with `actionlint` (or `pnpm dlx actionlint` if it is not preinstalled) against `.github/workflows/release.yml`. Zero errors expected. Catches YAML/expression syntax regressions in the three edited step blocks before they hit CI.
+- [X] T022 [P] [US2] Lint the workflow change with `actionlint` (or `pnpm dlx actionlint` if it is not preinstalled) against `.github/workflows/release.yml`. Zero errors expected. Catches YAML/expression syntax regressions in the three edited step blocks before they hit CI.
 
 - [ ] T023 [US1, US2, US3] Post-merge, on the next real stable publish, verify the acceptance criteria against the actual Actions run per `quickstart.md` §"Verifying on the next real stable publish":
   - The `Release` job is green.
