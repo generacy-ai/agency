@@ -16,7 +16,7 @@ Two-file playbook amendment. No code, no dependencies, no new packages. Every ed
 
 Tasks within this phase touch the same file (`packages/claude-plugin-cockpit/commands/auto.md`) and must run **sequentially** to avoid conflicting edits. Each amendment is scoped to a single section so they compose cleanly.
 
-- [ ] T001 [US1] Amend `auto.md` §D.2 (Apply verdict → `request-changes` branch, currently around line 181) in `packages/claude-plugin-cockpit/commands/auto.md`.
+- [X] T001 [US1] Amend `auto.md` §D.2 (Apply verdict → `request-changes` branch, currently around line 181) in `packages/claude-plugin-cockpit/commands/auto.md`.
   - Replace the one-liner ("post a `COMMENT` review with per-finding inline threads … no `advance` call") with the four-step guardrail per `contracts/request-changes-post.md` §Preconditions/POST body/Postconditions and `contracts/postcondition-check.md` §Combined verdict.
   - Steps to spell out in D.2 prose (not restate the JSON — cite the contract file):
     1. Pre-validate — fetch PR diff with `gh pr diff <owner>/<repo>#<pr-n>`, parse hunk headers, assign each `Finding` an `AnchorCheck` per data-model.md.
@@ -26,16 +26,16 @@ Tasks within this phase touch the same file (`packages/claude-plugin-cockpit/com
     5. On failure: sleep 2s, retry POST once; on second failure re-present G.2 (see T003) with the failure notice prepended.
   - Add explicit "no `cockpit_advance`" reminder — unresolved threads own the transition via `PrFeedbackMonitorService`.
 
-- [ ] T002 [US1] Amend `auto.md` §D.3 (Apply verdict step, currently around line 203, "Apply verdict — same as D.2") in `packages/claude-plugin-cockpit/commands/auto.md`.
+- [X] T002 [US1] Amend `auto.md` §D.3 (Apply verdict step, currently around line 203, "Apply verdict — same as D.2") in `packages/claude-plugin-cockpit/commands/auto.md`.
   - D.3 currently defers to D.2 by reference. After T001, that reference already inherits the guardrail — verify the "same as D.2" wording is unambiguous for the amended flow and, if needed, add a one-line callout ("On `request-changes`: run the D.2 guardrail; the acting-bot-login used for the Leg-2 filter is the PR-author credential per the Generacy single-credential rule.") to make the PR-scope specifics explicit.
   - Do NOT duplicate the four-step guardrail body — keep D.3 a pointer to D.2 as today.
 
-- [ ] T003 [US1] Amend `auto.md` §G.2 (Review verdict gate, currently around lines 549–592) in `packages/claude-plugin-cockpit/commands/auto.md`.
+- [X] T003 [US1] Amend `auto.md` §G.2 (Review verdict gate, currently around lines 549–592) in `packages/claude-plugin-cockpit/commands/auto.md`.
   - In the "on selection" branch table (around line 586), replace the `request-changes` row ("post COMMENT review with per-finding inline threads") with "post via D.2 guardrail (pre-validate → POST → two-leg verify → retry-once → re-present on failure)".
   - Add a **G.2 re-presentation shape** subsection (Q3=A per research.md R4) describing what a re-presented gate looks like after a retry-then-fail: prepended failure notice with the POST/GraphQL error `code`/`message` verbatim, a `postcondition failed after retry` line, then the original findings table and the same `AskUserQuestion` (`approve` / `request-changes` / `abort`). Note that re-selecting `request-changes` starts a fresh POST with a fresh retry allowance (retry counter is per-attempt, not per-verdict).
   - Note the invariant: G.2 `abort` and `approve` branches are unchanged.
 
-- [ ] T004 [US1] Update `auto.md` §Ledger cheatsheet (currently around lines 952–955) in `packages/claude-plugin-cockpit/commands/auto.md`.
+- [X] T004 [US1] Update `auto.md` §Ledger cheatsheet (currently around lines 952–955) in `packages/claude-plugin-cockpit/commands/auto.md`.
   - Add rows for the new ledger line shapes per `contracts/postcondition-check.md` §Ledger emission and `contracts/request-changes-post.md` §Ledger:
     - `D.2/D.3 review-verdict` · `postcondition-passed · leg1=<n>/<n> · leg2=<m>/<n>`
     - `D.2/D.3 review-verdict` · `postcondition-failed · attempt=<1|2> · leg1=<a>/<n> · leg2=<b>/<n>` (with `re-present-gate` suffix on attempt=2)
@@ -46,18 +46,18 @@ Tasks within this phase touch the same file (`packages/claude-plugin-cockpit/com
 
 Tasks in this phase touch a different file from Phase 1 (`packages/claude-plugin-cockpit/commands/review.md`) so the phase as a whole is `[P]` with Phase 1. Within this phase the tasks touch the same file and must run sequentially.
 
-- [ ] T005 [P] [US1] Amend `review.md` §5 (Post feedback on `request-changes`, currently around lines 117–125) in `packages/claude-plugin-cockpit/commands/review.md`.
+- [X] T005 [P] [US1] Amend `review.md` §5 (Post feedback on `request-changes`, currently around lines 117–125) in `packages/claude-plugin-cockpit/commands/review.md`.
   - Replace the current single-POST prose with the four-step guardrail (pre-validate → compose bundle with anchored/unanchored split → POST → two-leg verify → retry-once → re-present G.2 on failure). Cite `../../../specs/422-summary-auto-md-s/contracts/request-changes-post.md` and `contracts/postcondition-check.md` (or the eventual doc anchors if these move) rather than restating the JSON/GraphQL.
   - Preserve the `Feedback posted: N inline comment(s) on PR #<pull_number>` success-line contract but tighten: emit ONLY after both legs pass. `N` is the anchored-finding count.
   - Preserve the "gates other than `implementation-review`" no-op branch verbatim.
 
-- [ ] T006 [P] [US1] Amend `review.md` §Terminal Outcome Check (currently around lines 140–155, the `**request-changes**` bullet) in `packages/claude-plugin-cockpit/commands/review.md`.
+- [X] T006 [P] [US1] Amend `review.md` §Terminal Outcome Check (currently around lines 140–155, the `**request-changes**` bullet) in `packages/claude-plugin-cockpit/commands/review.md`.
   - Update the request-changes bullet to state: "Step 5 executed and emitted the success line matching `Feedback posted: N inline comment(s) on PR #<pull_number>` after both postcondition legs passed" — i.e. the success line's absence is now a hard signal (not a soft one) that the guardrail failed and the gate was re-presented / aborted.
   - Add a bullet for the re-presented-gate outcome: "Terminal outcome may also be a re-presented G.2 with the failure notice prepended, in which case the terminal outcome is whatever verdict the operator selects on the re-presentation."
 
 ## Phase 3: Cross-file consistency check
 
-- [ ] T007 [US1] Verify marker string and ledger templates match verbatim across `packages/claude-plugin-cockpit/commands/auto.md`, `packages/claude-plugin-cockpit/commands/review.md`, and `specs/422-summary-auto-md-s/contracts/*.md`.
+- [X] T007 [US1] Verify marker string and ledger templates match verbatim across `packages/claude-plugin-cockpit/commands/auto.md`, `packages/claude-plugin-cockpit/commands/review.md`, and `specs/422-summary-auto-md-s/contracts/*.md`.
   - `grep -n 'generacy-cockpit:unanchored-findings' packages/claude-plugin-cockpit/commands/*.md specs/422-summary-auto-md-s/contracts/*.md` — every occurrence must be the identical literal, no whitespace variation.
   - `grep -n 'General findings (no file anchor)' <same paths>` — H2 wording identical.
   - `grep -n 'postcondition-passed\|postcondition-failed\|review-post-retry\|Feedback posted:' <same paths>` — every ledger/success template identical between playbook and contract.
