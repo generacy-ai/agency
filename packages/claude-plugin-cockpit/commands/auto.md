@@ -8,7 +8,7 @@ arguments:
 
 # Auto Command
 
-Drive the named tracking ref (an epic, an existing tracking issue, or a newly filed tracking issue) to terminal state by dispatching Monitor-delivered wake-ups through `cockpit_await_events` and routing to the six existing assist commands' *actions* (MCP tool calls + subagent hops), never the assist commands themselves. The loop shape is: **pre-flight (incl. `Monitor` presence check) → arm `generacy cockpit watch <ref>` under harness `Monitor` (sensor) → startup sweep (tool-presence check + synthetic-event dispatch) → per wake (Monitor line OR ScheduleWakeup heartbeat fire): drain typed batch via `cockpit_await_events(epic|issue, cursor, maxWaitMs=1, coalesceWindowMs=3000)` → consume batch in stream order → per event: re-check live state → dispatch → write one ledger line → advance in-memory cursor → arm next heartbeat → wait for next wake → exit on terminal state (`epic-complete` in epic mode, G.7 scope-drained `Finish` in epic-less mode).** Two hard boundaries are load-bearing: **never merge on red** (validate + green is mechanical; anything red routes through the bounded-fixer branch and, if still red, an escalation gate) and **every gate prompts** (per-gate auto-approve / "full auto" is explicitly out of scope). Analysis lives in subagents (`subagent_type: "general-purpose"`) whose contracts return strict JSON per hop; the parent loop stays thin.
+Drive the named tracking ref (an epic, an existing tracking issue, or a newly filed tracking issue) to terminal state by dispatching Monitor-delivered wake-ups through `cockpit_await_events` and routing to the six existing assist commands' *actions* (MCP tool calls + subagent hops), never the assist commands themselves. The loop shape is: **pre-flight (incl. `Monitor` presence check) → arm `generacy cockpit watch <epic-ref>` under harness `Monitor` (sensor) → startup sweep (tool-presence check + synthetic-event dispatch) → per wake (Monitor line OR ScheduleWakeup heartbeat fire): drain typed batch via `cockpit_await_events(epic|issue, cursor, maxWaitMs=1, coalesceWindowMs=3000)` → consume batch in stream order → per event: re-check live state → dispatch → write one ledger line → advance in-memory cursor → arm next heartbeat → wait for next wake → exit on terminal state (`epic-complete` in epic mode, G.7 scope-drained `Finish` in epic-less mode).** Two hard boundaries are load-bearing: **never merge on red** (validate + green is mechanical; anything red routes through the bounded-fixer branch and, if still red, an escalation gate) and **every gate prompts** (per-gate auto-approve / "full auto" is explicitly out of scope). Analysis lives in subagents (`subagent_type: "general-purpose"`) whose contracts return strict JSON per hop; the parent loop stays thin.
 
 ## User Input
 
@@ -40,7 +40,7 @@ $ARGUMENTS
 
    **Ledger header line** — the FIRST line of the ledger file, written above the dispatch stream: `Tracking ref: <tracking-ref> · form: <invocationForm>`. Under Forms 1 and 2 the header is written at step 1 (before the startup sweep). Under Form 3 the header is written after G.6 approval; if G.6 was skipped at the initial fire, the header carries `form: tracking-new (abandoned before creation)` and the run exits.
 
-2. **Arm the background sensor under harness `Monitor`.** Spawn `generacy cockpit watch <ref>` under the harness `Monitor` tool at loop start, where `<ref>` is the epic ref under `invocationForm: epic` or the tracking ref under `--tracking` / `--new` (matching the ledger header line's `Tracking ref:` field). The `Monitor.spawn(...)` call binds `monitorHandle` (see `data-model.md § In-memory loop state`) and re-invokes the model exactly when the child emits a stdout line — idle cost is zero. The NDJSON content on stdout is a **doorbell only**: the parent NEVER parses lines for content. `cockpit_await_events` remains the sole source of typed batches (step 4). On successful arm-up, write the ledger line:
+2. **Arm the background sensor under harness `Monitor`.** Spawn `generacy cockpit watch <epic-ref>` under the harness `Monitor` tool at loop start. The verb's positional is named `<epic-ref>` (matching `generacy cockpit watch --help`), but it takes the epic ref under `invocationForm: epic` or the tracking ref under `--tracking` / `--new` (matching the ledger header line's `Tracking ref:` field) — any task-list-bearing scope issue is accepted. The `Monitor.spawn(...)` call binds `monitorHandle` (see `data-model.md § In-memory loop state`) and re-invokes the model exactly when the child emits a stdout line — idle cost is zero. The NDJSON content on stdout is a **doorbell only**: the parent NEVER parses lines for content. `cockpit_await_events` remains the sole source of typed batches (step 4). On successful arm-up, write the ledger line:
 
    ```text
    <ref> · watch-lifecycle · spawn · armed
@@ -69,7 +69,7 @@ $ARGUMENTS
 
 4. **Main loop (wake-driven).** Post-#420, the loop is **wake-driven**, not long-polling. The model does nothing between wakes — the harness re-invokes the loop only when a wake signal arrives:
 
-   - **Monitor-delivered wake**: the harness re-invokes the model because `Monitor` observed a new stdout line from the `generacy cockpit watch <ref>` sensor armed in step 2. The line content is a doorbell only — never parsed.
+   - **Monitor-delivered wake**: the harness re-invokes the model because `Monitor` observed a new stdout line from the `generacy cockpit watch <epic-ref>` sensor armed in step 2. The line content is a doorbell only — never parsed.
    - **`ScheduleWakeup` heartbeat fire**: the harness re-invokes the model because the belt-and-braces heartbeat (armed per C4 below) elapsed while `Monitor` was silent.
 
    Idle cost between wakes is **zero tokens** — no polling turn, no context re-read. This is the load-bearing property of the whole rewrite.
@@ -148,7 +148,7 @@ $ARGUMENTS
 
    The compound-liveness cross-check (N=4 empty reads + actionable live state) retires with this step. The `maxWaitMs=1` at the tool boundary makes each drain effectively non-blocking; the "no events" case now surfaces as a Monitor-silent interval bounded by the C4 heartbeat, and the tool server owns the "silent stall" detection (a stalled server returns a typed error or fails the tool call, both of which the recovery branches above handle).
 
-   **Watch re-spawn (C5).** On any Monitor-reported exit of the `generacy cockpit watch <ref>` subprocess armed in step 2 (or after a step-2 immediate spawn failure that routed here with `attempt=1 backoff=1s`):
+   **Watch re-spawn (C5).** On any Monitor-reported exit of the `generacy cockpit watch <epic-ref>` subprocess armed in step 2 (or after a step-2 immediate spawn failure that routed here with `attempt=1 backoff=1s`):
 
    1. Print the following line verbatim to the transcript (user-visible surface — FR-005):
 
@@ -168,7 +168,7 @@ $ARGUMENTS
 
    3. Wait `<b>` seconds. When `<b> ≤ 60`, use `Bash sleep <b>` (fits inside a single turn). When `<b> > 60`, use `ScheduleWakeup(delaySeconds=<b>, prompt=<verbatim /cockpit:auto invocation>, reason="cockpit-auto watch re-spawn backoff")` (the wait shouldn't burn a turn's context at longer backoffs — the harness re-invokes the loop when the delay elapses).
 
-   4. Attempt `Monitor.spawn("generacy cockpit watch <ref>")` again.
+   4. Attempt `Monitor.spawn("generacy cockpit watch <epic-ref>")` again.
 
       - **On spawn success**: write the ledger line
 
