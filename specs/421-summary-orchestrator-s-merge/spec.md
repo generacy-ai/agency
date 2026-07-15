@@ -28,6 +28,14 @@ Companion (filed on generacy from the same run): the `@generacy-ai/cockpit` clas
 
 Found during the snappoll dogfood run (cluster stable, orchestrator 0.8.0).
 
+## Clarifications
+
+Resolved via [clarifications.md](./clarifications.md) batch 1 (2026-07-15):
+
+- **Co-occurrence dedup (Q1)**: Dedup by issue-ref. Once D.11 dispatches for an issue-ref, subsequent `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` events for the same ref are ledger-only (`already-dispatched`) and skip the gate. The dedup entry is cleared when the `merge-conflicts` gate advances, so a genuinely new conflict on the same issue gates again.
+- **Presentation wording (Q2)**: The D.11 presentation block adds a dedicated structured field `**Auto-remedy status:** failed (engine escalated via blocked:stuck-merge-conflicts)` placed above `**Root cause:**` when the source label is `blocked:stuck-merge-conflicts`. Fixed-shape labeled-field convention — no opening-line mutation, no trailing prose.
+- **Subagent context (Q3)**: The D.11 diagnosis subagent prompt receives the source label verbatim; the subagent may reference "auto-remedy already failed" in `root_cause` / `evidence` when the label is `blocked:stuck-merge-conflicts`. Return schema unchanged — parent already knows the label for rendering.
+- **D.10 trigger text (Q4)**: D.10's case (d) is broadened to "any state token (`waiting-for:*` or `blocked:*`) that does not match a Trigger in D.1–D.11 fires D.10." This documents `blocked:*` as a recognized token family and prevents future `blocked:*` labels (e.g. `blocked:stuck-validate-fix` from generacy#943) from falling through the catch-all.
 
 ## User Stories
 

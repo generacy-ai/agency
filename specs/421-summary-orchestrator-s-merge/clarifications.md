@@ -13,7 +13,9 @@ Questions and answers to clarify the feature specification.
 - C: Fire once per label per issue-ref: the operator sees at most one gate for the `waiting-for:*` event and one for the `blocked:*` event; ledger records both.
 - D: Out of scope for this fix — the classifier prerequisite hasn't shipped yet, so document the behavior as 'undefined until follow-up' and don't add dedup logic now.
 
-**Answer**: *Pending*
+**Answer**: A — Dedup by issue-ref: once D.11 dispatches for an issue-ref, subsequent merge-conflict-family events for the same ref are ledger-only (`already-dispatched`) — with the dedup entry cleared when the `merge-conflicts` gate advances, so a future new conflict on the same issue gates again.
+
+Rationale: The two labels are one incident by construction (the handler applies `blocked:*` while leaving `waiting-for:*` in place), so a second gate asks the operator the question they just answered — pure gate fatigue with no new information. The ledger line keeps the audit trail complete, and clearing dedup on advance preserves correctness for genuinely new conflicts.
 
 ### Q2: Presentation wording
 **Context**: FR-003 says the D.11 gate presentation must 'note auto-remedy already failed' when the source label is `blocked:stuck-merge-conflicts`, but doesn't specify the exact wording or placement. The current initial-presentation template (auto.md ~line 685) opens with `Merge conflicts on <issue-ref>:` followed by Root cause / Evidence / Conflicted paths / Suggested decision. An implementer needs an exact string to render.
@@ -24,7 +26,9 @@ Questions and answers to clarify the feature specification.
 - C: Append a trailing note after the resolve-locally instruction: `Note: the engine's auto-remedy has already failed on this conflict; operator resolution is required.`
 - D: Prepend a bold callout line above the entire block: `**⚠️ Auto-remedy failed — operator resolution required.**`
 
-**Answer**: *Pending*
+**Answer**: B — A dedicated field in the presentation block: `**Auto-remedy status:** failed (engine escalated via blocked:stuck-merge-conflicts)`, placed above `**Root cause:**`.
+
+Rationale: The gates' display language is fixed labeled fields (the five-element convention), so a structured field is where both an operator's eye and any future parser look; mutating the opening line or appending trailing prose is exactly the unstructured drift the fixed-shape rule exists to prevent.
 
 ### Q3: Subagent context
 **Context**: The D.11 diagnosis subagent (auto.md line 381–387) receives `<issue-ref + conflicted-paths payload + gate-option-set directive + return-schema directive>` and returns `{root_cause, evidence, recommended_action, confidence}`. If the source label is `blocked:stuck-merge-conflicts`, the fact that engine auto-remedy has already tried and failed is material information for root-cause diagnosis. The spec doesn't say whether the subagent prompt should be updated to carry this signal.
@@ -34,7 +38,9 @@ Questions and answers to clarify the feature specification.
 - B: No — the subagent receives the same prompt regardless of source label; the 'auto-remedy failed' framing is a parent-side presentation concern only (per FR-003), and the subagent's diagnosis focuses purely on the conflict content.
 - C: Yes and extend the return schema — add an optional `remedy_context: 'auto-failed' | 'plain'` field so the parent can render conditionally without string-sniffing.
 
-**Answer**: *Pending*
+**Answer**: A — Yes: pass the source label verbatim in the subagent prompt; the subagent may reference the failed auto-remedy in `root_cause`/`evidence`. Return schema unchanged.
+
+Rationale: "The engine already tried and failed" is materially useful to diagnosis — it rules out recommending the trivial rebase the engine already attempted — but the parent already knows the label for rendering (FR-003), so extending the return schema duplicates state the parent owns. Prompt-only is the minimal change that improves diagnosis quality.
 
 ### Q4: D.10 trigger text
 **Context**: D.10's current Trigger enumerates four sub-cases (a-d); case (d) says 'the `waiting-for:*` label is a token that does not match a Trigger in any § Dispatch row (D.1–D.9c or D.11).' `blocked:stuck-merge-conflicts` is a `blocked:*` label, not `waiting-for:*`, so case (d) technically wouldn't match it — but case (a) 'S8 adds a new transition class the playbook doesn't know' plausibly would (this is how snappoll's 3 fall-throughs happened). FR-005/FR-006 require the fall-through to stop. An implementer needs to know whether D.10's Trigger prose must be explicitly rewritten, or whether extending D.11's Trigger alone is sufficient.
@@ -44,5 +50,7 @@ Questions and answers to clarify the feature specification.
 - B: Update D.10's Trigger to add an explicit clause: 'blocked:stuck-merge-conflicts is a recognized state that routes to D.11 (see D.11 trigger).' Belt-and-suspenders — safer for future readers.
 - C: Update D.10's Trigger to broaden case (d) beyond `waiting-for:*` — e.g., 'any state token (waiting-for:* or blocked:*) that does not match a Trigger in D.1–D.11 fires D.10.' This handles the fix AND documents blocked:* as a recognized state class.
 
-**Answer**: *Pending*
+**Answer**: C — Broaden D.10's case (d): any state token (`waiting-for:*` or `blocked:*`) that does not match a Trigger in D.1–D.11 fires D.10.
+
+Rationale: The gap that bit snappoll wasn't just a missing D.11 row — `blocked:*` tokens had no defined place in D.10's routing prose at all, so the next blocked label (`blocked:stuck-validate-fix` is already slated to become error-tier in generacy#943) would fall through the vague catch-all again. Broadening case (d) fixes the class rather than the instance and documents `blocked:*` as a recognized token family.
 
