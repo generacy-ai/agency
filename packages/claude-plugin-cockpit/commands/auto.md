@@ -226,7 +226,7 @@ The following nine event classes are dispatched per this table. The parent **alw
 | D.9b | `waiting-for:children-complete` | Ledger line only (epic-container state) |
 | D.9c | `waiting-for:dependencies` | Ledger line only (engine-owned cross-issue wait) |
 | D.9d | `phase:*` (prefix-match) | Ledger line only (engine-owned phase transition) |
-| D.11 | `waiting-for:merge-conflicts` | Escalation gate (`I've resolved it` / `Skip` / `Stop`) |
+| D.11 | `waiting-for:merge-conflicts` **or** `blocked:stuck-merge-conflicts` (labels co-occur when the engine escalates; deduplicated per-issue for one incident) | Escalation gate (`I've resolved it` / `Skip` / `Stop`) |
 | D.10 | Unrecognized / ambiguous | Escalation gate (Skip / Stop only, never Retry) |
 
 ### D.1 — `waiting-for:clarification`
@@ -495,38 +495,39 @@ If `cockpit_status` fails for one or more ad-hoc refs during the helper call, om
 
 **Trigger**: An issue enters any `phase:*` state. **Prefix-match**: any transition class whose token begins with the literal `phase:` prefix matches this row (`phase:specify`, `phase:clarify`, `phase:plan`, `phase:tasks`, `phase:implement`, `phase:validate`, and any future workflow-phase addition). The phase set is workflow-dependent and open-ended — speckit-feature and speckit-bugfix already differ; enumeration would break the day a workflow adds a phase.
 
-**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — engine-owned transient transition. Never surface a D.10 escalation gate on a `phase:*` token; D.10 remains the catch-all for genuinely unknown, non-`phase:` labels (per § Dispatch D.10's tightened trigger — an unrecognized `waiting-for:*` still fires D.10).
+**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — engine-owned transient transition. Never surface a D.10 escalation gate on a `phase:*` token; D.10 remains the catch-all for genuinely unknown, non-`phase:` labels (per § Dispatch D.10's tightened trigger — an unrecognized `waiting-for:*` or `blocked:*` still fires D.10).
 
 **Ledger line**: `<issue-ref> · <phase:*-token> · (no-op) · engine-owned phase transition`.
 
-### D.11 — `waiting-for:merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)
+### D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)
 
-**Trigger**: An issue enters `waiting-for:merge-conflicts` (base-sync produced a merge conflict; the branch cannot be advanced without an operator-authored resolution). Verbatim event string: `waiting-for:merge-conflicts`.
+**Trigger**: An issue enters a merge-conflicts-family state. Verbatim event strings (either fires this row): `waiting-for:merge-conflicts` (base-sync produced a merge conflict; the branch cannot be advanced without an operator-authored resolution) OR `blocked:stuck-merge-conflicts` (engine auto-remedy attempted AND failed; operator resolution is the only path forward). The classifier applies both labels together for a single stuck-merge incident, so the two events co-occur per issue — the dedup rule in step 1 (dispatched-issues set) ensures one incident produces one escalation gate. The label that surfaced first is treated as the `<source-label>` for the ledger and threaded through the subagent prompt and G.4d presentation.
 
 **Dispatch**:
-1. **Fetch context.** The parent's sole evidence-fetch tool is `cockpit_context(issue=<issue-ref>)`; the return payload includes the pause-alert comment content and the list of conflicted paths. **No ad-hoc `gh` chains, no link-following, no `gh issue view --comments` inline in the parent.**
+1. **Dedup check.** If `<issue-ref>` is already present in the in-memory `dispatched-issues set` (session-scoped, alongside the session mute set referenced at `auto.md:266`, `:305`, `:391`, `:407`, `:749`), the sibling merge-conflicts-family label has already produced one gate for this incident. Write ledger-only line `<issue-ref> · <source-label> · escalation-gate · already-dispatched` and return to the main loop — do NOT fetch context, spawn a subagent, or present a gate. Otherwise, add `<issue-ref>` to the dispatched-issues set and continue to step 1a.
+1a. **Fetch context.** The parent's sole evidence-fetch tool is `cockpit_context(issue=<issue-ref>)`; the return payload includes the pause-alert comment content and the list of conflicted paths. **No ad-hoc `gh` chains, no link-following, no `gh issue view --comments` inline in the parent.**
 1.5. **Spawn diagnosis subagent** — for any conflict-triage work beyond the engine bundle (repro, log reads, `git status` / `git diff` / branch inspection, downstream artifact fetch), dispatch to a diagnosis subagent. Invocation:
    ```
    subagent_type: "general-purpose"
    description: "Diagnose <issue-ref> merge conflicts"
-   prompt: <issue-ref + conflicted-paths payload + gate-option-set directive + return-schema directive>
+   prompt: <issue-ref + <source-label> (verbatim: one of `waiting-for:merge-conflicts` or `blocked:stuck-merge-conflicts`) + conflicted-paths payload + gate-option-set directive + return-schema directive>
    ```
-   The subagent MUST NOT invoke any slash command. Return contract: a single JSON value `{root_cause: string, evidence: string, recommended_action: string, confidence: "low"|"medium"|"high"}` where `recommended_action` is exactly one of the target gate's option strings (`I've resolved it — advance the gate` / `Skip (session-local mute)` / `Stop (exit auto)` — verbatim). No prose, no fenced block. On unrecoverable error the subagent returns `{"error": "<description>"}`.
+   When `<source-label>` is `blocked:stuck-merge-conflicts`, the subagent MAY reference "auto-remedy already failed" (engine attempted resolution and escalated) in its `root_cause`/`evidence` fields. The subagent MUST NOT invoke any slash command. Return contract: a single JSON value `{root_cause: string, evidence: string, recommended_action: string, confidence: "low"|"medium"|"high"}` where `recommended_action` is exactly one of the target gate's option strings (`I've resolved it — advance the gate` / `Skip (session-local mute)` / `Stop (exit auto)` — verbatim). No prose, no fenced block. On unrecoverable error the subagent returns `{"error": "<description>"}`.
 2. **Present escalation gate** (see § Gate contract G.4d). In one assistant response: presentation block per § Gate contract G.4d — five-element block populated verbatim from the verdict (`root_cause`/`evidence` fill the context and evidence rows; conflicted paths shown; `recommended_action` renders as a "Suggested decision" line with `confidence` beside it) + single `AskUserQuestion` with options `I've resolved it — advance the gate` / `Skip (session-local mute)` / `Stop (exit auto)`, header `Escalate`, `multiSelect: false`. No in-parent re-analysis.
 3. **Apply verdict**:
-   - `I've resolved it — advance the gate` → call `cockpit_advance(issue=<issue-ref>, gate="merge-conflicts")`. On success: ledger `advanced`; continue. **On typed-error return: re-present the D.11 gate with the tool's `code`/`message` prepended verbatim to the presentation block** (see § Gate contract G.4d re-present shape). The operator may retry, skip, or stop from the re-presented gate.
-   - `Skip (session-local mute)` → add `<issue-ref>` to session mute set; ledger line `skip (session-local mute)`; continue.
-   - `Stop (exit auto)` → kill watch; summary; exit.
+   - `I've resolved it — advance the gate` → call `cockpit_advance(issue=<issue-ref>, gate="merge-conflicts")`. On success: ledger `advanced`; **remove `<issue-ref>` from the dispatched-issues set** so a genuinely new future conflict on the same issue re-gates; continue. **On typed-error return: re-present the D.11 gate with the tool's `code`/`message` prepended verbatim to the presentation block** (see § Gate contract G.4d re-present shape). The operator may retry, skip, or stop from the re-presented gate; the dispatched-issues set entry remains until either advance succeeds or the session ends.
+   - `Skip (session-local mute)` → add `<issue-ref>` to session mute set; **leave the dispatched-issues set entry in place** (session-local mute semantics — the existing session mute set already suppresses further events on this issue, and the dispatched-issues set is aligned with that until session end); ledger line `skip (session-local mute)`; continue.
+   - `Stop (exit auto)` → kill watch; summary; exit (dispatched-issues set drops with process exit).
 
 **Future degradation**: Once the engine-side merge-conflicts resolver ships (companion finding in generacy dead-end-gate), this row degrades to ledger-only (D.9-shape) — the label becomes server-side-owned. Until then, this escalation gate is the operator's resolution surface.
 
-**Ledger line**: `<issue-ref> · waiting-for:merge-conflicts · escalation-gate · <advanced | advance failed: <code>: <message> | skip (session-local mute) | stop (exit)>`.
+**Ledger line**: `<issue-ref> · <source-label> · escalation-gate · <advanced | advance failed: <code>: <message> | skip (session-local mute) | stop (exit) | already-dispatched>`. `<source-label>` is written verbatim from the triggering event and is one of `waiting-for:merge-conflicts` or `blocked:stuck-merge-conflicts`. The `already-dispatched` outcome is produced by the step 1 dedup check (Entity 3 in `data-model.md`); the four gate-outcome tokens (`advanced` / `advance failed: …` / `skip …` / `stop …`) are produced by the verdict-apply step 3.
 
 ### D.10 — Unrecognized / ambiguous state → escalation gate (Skip / Stop only)
 
-**Trigger**: The re-check step reads a live state whose transition class is not one of D.1–D.9 (including D.9a/b/c) or D.11. This can happen when: (a) S8 adds a new transition class the playbook doesn't know, (b) the streamed event conflicts with the live state and neither is dispatchable, (c) `cockpit status --json` returns an unexpected shape, **(d) the `waiting-for:*` label is a token that does not match a Trigger in any § Dispatch row (D.1–D.9c or D.11)**.
+**Trigger**: The re-check step reads a live state whose transition class is not one of D.1–D.9 (including D.9a/b/c) or D.11. This can happen when: (a) S8 adds a new transition class the playbook doesn't know, (b) the streamed event conflicts with the live state and neither is dispatchable, (c) `cockpit status --json` returns an unexpected shape, **(d) any state token (`waiting-for:*` OR `blocked:*`) does not match a Trigger in any § Dispatch row (D.1–D.9c or D.11)** — future `blocked:*` labels (e.g. `blocked:stuck-validate-fix` from generacy#943) that lack their own dispatch row land here, not in D.11.
 
-**Any `waiting-for:*` label without a matching dispatch row IS an unrecognized state.** "Known but not actionable" is not a permissible classification outcome — the § Dispatch table is the exhaustive list of `waiting-for:*` states the loop may treat as no-ops (via the named ledger-only rows D.9, D.9a, D.9b, D.9c). "Wait for someone else to handle it" is never a permissible dispatch outcome for a `waiting-for:*` state unless the table explicitly names it ledger-only. If the table does not name it, D.10 fires — verbatim state in the presentation block.
+**Any `waiting-for:*` OR `blocked:*` label without a matching dispatch row IS an unrecognized state.** "Known but not actionable" is not a permissible classification outcome — the § Dispatch table is the exhaustive list of `waiting-for:*` and `blocked:*` states the loop may treat as no-ops (via the named ledger-only rows D.9, D.9a, D.9b, D.9c) or dispatch to a dedicated gate (D.11). "Wait for someone else to handle it" is never a permissible dispatch outcome for a `waiting-for:*` or `blocked:*` state unless the table explicitly names it ledger-only. If the table does not name it, D.10 fires — verbatim state in the presentation block.
 
 **Dispatch**:
 1. **Present escalation gate** (see § Gate contract G.4c). In one assistant response: presentation block including the observed state (verbatim from `cockpit status --json`) + streamed event line + single `AskUserQuestion` with options `Skip (session-local mute) (Recommended)` / `Stop (exit auto)`, header `Escalate`, `multiSelect: false`. **NEVER Retry** (nothing to retry — we don't know what to do).
@@ -834,6 +835,7 @@ Initial presentation:
 ```markdown
 Merge conflicts on <issue-ref>:
 
+**Auto-remedy status:** failed (engine escalated via blocked:stuck-merge-conflicts)   ← rendered ONLY when <source-label> is `blocked:stuck-merge-conflicts`; omitted entirely when source is `waiting-for:merge-conflicts`
 **Root cause:** <verdict.root_cause verbatim>
 **Evidence:** <verdict.evidence verbatim>
 **Conflicted paths (from engine pause alert):**
@@ -844,6 +846,8 @@ Merge conflicts on <issue-ref>:
 
 The branch cannot advance until the conflicts are resolved and the branch is pushed conflict-free. Resolve locally (e.g., `git checkout <branch>; git rebase origin/main; git mergetool; git push --force-with-lease`), then select `I've resolved it — advance the gate` to call `cockpit_advance(issue=<issue-ref>, gate="merge-conflicts")`.
 ```
+
+The `Auto-remedy status` row is a fixed-shape labeled field (D.7 precedent at `auto.md:665–677`); its literal value is `failed (engine escalated via blocked:stuck-merge-conflicts)` when present. The opening line and all other rows are unchanged across both source labels — do not mutate the opening line and do not append trailing prose beyond what is shown.
 
 Re-presentation on typed-error return (Q3=A shape):
 
@@ -854,6 +858,7 @@ Advance failed for <issue-ref>:
 
 Merge conflicts on <issue-ref>:
 
+**Auto-remedy status:** failed (engine escalated via blocked:stuck-merge-conflicts)   ← rendered ONLY when <source-label> is `blocked:stuck-merge-conflicts`; omitted entirely when source is `waiting-for:merge-conflicts`
 **Root cause:** <verdict.root_cause verbatim>
 **Evidence:** <verdict.evidence verbatim>
 **Conflicted paths (from engine pause alert):**
@@ -864,6 +869,8 @@ Merge conflicts on <issue-ref>:
 
 The branch cannot advance until the conflicts are resolved and the branch is pushed conflict-free. Resolve locally (e.g., `git checkout <branch>; git rebase origin/main; git mergetool; git push --force-with-lease`), then select `I've resolved it — advance the gate` to call `cockpit_advance(issue=<issue-ref>, gate="merge-conflicts")`.
 ```
+
+The `Auto-remedy status` row is inserted with identical placement (above `**Root cause:**`) and identical literal value across the initial and re-presentation shapes — the two shapes remain symmetric aside from the prepended typed-error preamble.
 
 **(c) Unrecognized state**:
 
