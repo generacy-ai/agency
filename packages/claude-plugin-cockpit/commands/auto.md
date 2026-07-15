@@ -297,10 +297,18 @@ The following nine event classes are dispatched per this table. The parent **alw
 3. **Present fused verdict gate** (see § Gate contract G.2). In one assistant response: findings-summary table (per #388 C.3.5 shape) + `Suggested decision: <approve | request-changes>` line + single `AskUserQuestion` with options `approve` / `request-changes` / `abort` (in that order), header `Verdict`, `multiSelect: false`. For zero findings (`[]`), still present the gate — the row is `| (none) | | | |` with `Suggested decision: approve`.
 4. **Apply verdict**:
    - `approve` → `cockpit_advance(issue=<issue-ref>, gate=<gate-name>)`.
-   - `request-changes` → post a `COMMENT` review with per-finding inline threads (each finding becomes a `Comment` on `file:line` with body `<summary> — <failure_scenario>`); the server-side feedback loop owns the rest — no `advance` call.
+   - `request-changes` → run the four-step guardrail below. The exact JSON body shape, GraphQL query, marker string, and ledger templates live in `specs/422-summary-auto-md-s/contracts/request-changes-post.md` and `specs/422-summary-auto-md-s/contracts/postcondition-check.md`; the prose here spells out the guardrail steps but never restates those shapes verbatim.
+     1. **Pre-validate anchors** — fetch the PR diff via `gh pr diff <owner>/<repo>#<pr-n>`, parse `@@ -A,B +C,D @@` hunk headers into `DiffHunk[]`, and assign each `Finding` an `AnchorCheck` verdict per `data-model.md` (§ AnchorCheck rule: `anchored` iff `finding.line != null` AND ∃ hunk in the same file whose `[headStart, headStart + headCount − 1]` range contains `finding.line`; every other finding is `unanchored`, tagged with reason `analyzer-supplied-null` or `outside-diff-hunks`).
+     2. **Compose bundle** — assemble the `ReviewPostBundle` per `contracts/request-changes-post.md` § POST body: one `comments[]` entry per anchored finding (`path`, `line`, `body: <summary> — <failure_scenario>`); unanchored findings render into `body` under the literal marker `<!-- generacy-cockpit:unanchored-findings -->` immediately followed by `## General findings (no file anchor)`, per contract § Unanchored-block shape. **Refuse to POST when `comments.length == 0` AND unanchored count == 0** — a `request-changes` on zero findings is a contract violation (Error handling class `OTHER`).
+     3. **POST** — `gh api -X POST /repos/<owner>/<repo>/pulls/<pr-n>/reviews --input <bundle>`; capture the response's `.id`, `.submitted_at`, and `.comments[].length`. Exit 0 is required to proceed.
+     4. **Verify (two legs)** per `contracts/postcondition-check.md` § Combined verdict:
+        - **Leg 1** — `response.comments.length == bundle.comments.length` (POST accepted every anchored entry).
+        - **Leg 2** — run the `reviewThreads(first:50)` GraphQL query from the same contract; filter client-side to nodes matching ALL of: `isResolved == false`, `comments.nodes[0].author.login == <acting-bot-login>`, `comments.nodes[0].createdAt >= response.submitted_at`. Filtered count MUST be `≥ bundle.comments.length`.
+        Success ⇔ both legs pass. On failure: sleep 2000 ms, retry the POST once; if the second attempt's postcondition also fails, re-present G.2 (see § Gate contract G.2 — re-presentation shape) with the failure notice prepended. On success (first attempt or after retry), emit the `Feedback posted: N inline comment(s) on PR #<pull_number>` success line (N = anchored count) — this is the only marker downstream steps read to confirm the POST landed.
+     5. **No `cockpit_advance`** — unresolved threads own the transition; the server-side `PrFeedbackMonitorService` (generacy#861/#869/#878/#883 lineage) applies `waiting-for:address-pr-feedback` and enqueues fix work. Calling `advance` here races the server.
    - `abort` → do nothing (no post, no advance).
 
-**Ledger line**: `<issue-ref> · waiting-for:<artifact>-review · review-analysis+<verdict> · <outcome>` — outcomes: `approved` / `request-changes (<count> findings)` / `aborted` / `advance failed` / `error: <description>`.
+**Ledger line**: `<issue-ref> · waiting-for:<artifact>-review · review-analysis+<verdict> · <outcome>` — outcomes: `approved` / `posted (<anchored> inline, <unanchored> in body)` (first-attempt success) / `postcondition-failed → re-present-gate` (failed after retry) / `aborted` / `advance failed` / `error: <description>`. See § Ledger cheatsheet for the postcondition-passed/failed and review-post-retry line shapes emitted around the request-changes POST.
 
 **Failure modes**: `[]` still prompts the gate (assist-mode contract preserved). `{"error": …}` → **Error handling** class `OTHER`; **do not** invoke `AskUserQuestion`. Parse failure or other shape → **Error handling** with the raw return quoted.
 
@@ -319,9 +327,9 @@ The following nine event classes are dispatched per this table. The parent **alw
    ```
    The prompt carries only the PR reference; the subagent fetches its own diff via `gh pr diff <owner>/<repo>#<pr-n>` and reads surrounding files as needed. Returns strict JSON per the SB.2 schema. The raw-JSON-suppression clause carried forward from #388 / #390 (canonical inline occurrence is in D.2 prose above) applies here identically — the parent renders the parsed findings as a table; it never restates the JSON verbatim.
 3. **Present fused verdict gate** — same as D.2 (see § Gate contract G.2).
-4. **Apply verdict** — same as D.2.
+4. **Apply verdict** — same as D.2. On `request-changes`, run the D.2 four-step guardrail; the `<acting-bot-login>` used in the Leg-2 GraphQL filter is the PR-author credential (Generacy single-credential rule — the same account that opened the PR posts the review), so it MUST match the `viewer.login` seen by `gh api graphql -f query='{ viewer { login } }'` in the same session. The `<owner>/<repo>/<pr-n>` triple comes from step 1's `cockpit status --json` result.
 
-**Ledger line**: `<issue-ref> · waiting-for:implementation-review · review-analysis+<verdict> · <outcome>`.
+**Ledger line**: `<issue-ref> · waiting-for:implementation-review · review-analysis+<verdict> · <outcome>` — outcomes as in D.2.
 
 ### D.4 — `waiting-for:manual-validation`
 
@@ -702,16 +710,38 @@ Suggested decision: approve
 - **Header**: `Verdict` (≤ 12 chars)
 - **Options** (exactly three, discrete, in this order):
   1. `approve` — advance the gate
-  2. `request-changes` — post COMMENT review with per-finding inline threads
+  2. `request-changes` — post via the D.2 guardrail (pre-validate → POST → two-leg verify → retry-once → re-present on failure)
   3. `abort` — do nothing
 - **multiSelect**: `false`
 
 **Post-gate behavior**:
 - `approve` → `cockpit_advance(issue=<issue-ref>, gate=<gate-name>)`.
-- `request-changes` → post a `COMMENT` review with per-finding inline threads.
+- `request-changes` → run the D.2 four-step guardrail; do NOT `advance` (unresolved threads own the transition).
 - `abort` → do nothing.
 
 Hard-error subagent returns (`{"error": …}` or unparseable) → **Error handling** class `OTHER`; **do not** invoke `AskUserQuestion`. Zero findings still invokes `AskUserQuestion` — no auto-approve smuggled in.
+
+**G.2 re-presentation shape** (fired only when the D.2 request-changes guardrail's second attempt also fails its postcondition — Q3=A per `research.md` R4):
+
+The re-presented gate is a full G.2 re-fire (same table, same `AskUserQuestion` call with the same three options in the same order) with a **failure notice prepended** to the presentation body:
+
+```markdown
+> **Postcondition failed after retry.**
+> POST/GraphQL error: <verbatim `code` / `message` from the failing leg — quote the response payload>
+> postcondition failed after retry (attempt=2 · leg1=<a>/<n> · leg2=<b>/<n>)
+
+<original findings table>
+
+Suggested decision: <approve | request-changes>
+```
+
+**Rules**:
+- The failure notice is a Markdown blockquote so the operator's eye lands on it first; the original findings table and `Suggested decision:` line follow verbatim from the initial G.2 presentation (no re-analysis — the analyzer's return is unchanged; the failure is in the delivery layer, not the analysis).
+- The failure notice quotes the failing leg's error `code`/`message` verbatim inside the blockquote (Leg 1 → mismatch summary from the POST response; Leg 2 → the GraphQL query's response fragment or the timeout error).
+- Re-selecting `request-changes` on the re-presented gate starts a **fresh POST with a fresh retry allowance** — the retry counter is per-attempt (per POST bundle), not per-verdict, so operator re-selection does not compound retries.
+- The `abort` and `approve` branches on the re-presented gate are unchanged — `approve` still advances the gate (operator's judgment call: they may choose to advance despite the invisible feedback), `abort` still does nothing.
+
+**Invariant**: G.2 `abort` and `approve` branches are unchanged by this branch — only `request-changes` gains the postcondition guardrail and the retry-then-re-present recovery.
 
 ### G.3 — Manual-validation confirm gate
 
@@ -1069,7 +1099,11 @@ Stable strings per dispatch table row, so `grep` recipes on `<action>` / `<outco
 |--------------|------------|------------------------|
 | D.1 clarification | `clarification-batch` | `advanced`, `posted <k>/<N>, skipped <s>`, `all answers skipped`, `error: <description>` |
 | D.2 artifact-review | `review-analysis+advance` | `approved`, `advance failed`, `error: <description>` |
-| D.2 artifact-review | `review-analysis+comment-review` | `request-changes (<count> findings)` |
+| D.2 artifact-review | `review-analysis+request-changes` | `posted (<anchored> inline, <unanchored> in body)` |
+| D.2 artifact-review | `review-analysis+request-changes` | `postcondition-failed → re-present-gate` |
+| D.2/D.3 review-verdict | `postcondition-passed` | `leg1=<n>/<n> · leg2=<m>/<n>` |
+| D.2/D.3 review-verdict | `postcondition-failed` | `attempt=<1\|2> · leg1=<a>/<n> · leg2=<b>/<n>` (attempt=2 line appends ` · re-present-gate`) |
+| D.2/D.3 review-verdict | `review-post-retry` | `attempt=1 · backoff=2s` |
 | D.2 artifact-review | `review-analysis+abort` | `aborted` |
 | D.3 implementation-review | (same as D.2) | (same as D.2) |
 | D.4 manual-validation | `manual-validation-summary+advance` | `manually validated` |
