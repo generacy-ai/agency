@@ -1,6 +1,6 @@
 # Feature Specification: Monitor-driven wake-ups for `/cockpit:auto`
 
-**Branch**: `420-summary-cockpit-auto-s` | **Date**: 2026-07-15 | **Status**: Draft | **Issue**: [#420](https://github.com/generacy-ai/agency/issues/420)
+**Branch**: `420-summary-cockpit-auto-s` | **Date**: 2026-07-15 | **Status**: Planned | **Issue**: [#420](https://github.com/generacy-ai/agency/issues/420)
 
 ## Summary
 
