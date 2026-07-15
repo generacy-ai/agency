@@ -1171,9 +1171,11 @@ describe("403 — auto.md ledger-only contract + phase:* row + subagent diagnosi
       autoMd,
       "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)",
     );
+    // #421: D.11 now also absorbs `blocked:stuck-merge-conflicts` (generacy#943
+    // classifies it error-tier), so the gate heading names both labels.
     const d11Block = extractSubheadingBlock(
       autoMd,
-      "D.11 — `waiting-for:merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
     );
 
     // Positive: sole-tool contract (post-#406 form).
