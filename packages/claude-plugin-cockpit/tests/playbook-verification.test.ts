@@ -1503,7 +1503,13 @@ describe("406 — cockpit MCP tool migration + await-events loop", () => {
     expect(/generacy cockpit watch\b/.test(watchContent)).toBe(true);
   });
 
-  it("406-3 (`cockpit_await_events` loop shape): auto.md step 4 uses cockpit_await_events; step 2 has no run_in_background:true; step 4 has no Monitor primitive", () => {
+  // #420 supersedes the #406 loop shape: the 55s long-poll is replaced by a
+  // `generacy cockpit watch` sensor armed under the harness `Monitor` tool,
+  // whose stdout lines wake the model. `cockpit_await_events` survives as the
+  // sole typed-batch source, but is now a fast drain (`maxWaitMs=1`) rather
+  // than the thing that blocks. Hence the old "step 4 has no Monitor
+  // primitive" rule is inverted below, and the long-poll is pinned as absent.
+  it("406-3 (post-#420 wake-driven loop shape): auto.md step 4 drains cockpit_await_events on a Monitor wake with maxWaitMs=1 and no 55s long-poll; step 2 arms the sensor under Monitor, not run_in_background", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const steps = extractInstructionsSteps(autoMd);
     const step2 = steps.get(2) ?? "";
@@ -1512,8 +1518,18 @@ describe("406 — cockpit MCP tool migration + await-events loop", () => {
     expect(step4, "auto.md step 4 must contain `cockpit_await_events` at least once").toContain(
       "cockpit_await_events",
     );
+    // The sensor is armed under the harness `Monitor` tool (#420 C2), never a
+    // raw backgrounded Bash process.
     expect(step2.includes("run_in_background: true")).toBe(false);
-    expect(step4.includes("Monitor")).toBe(false);
+    expect(step2, "auto.md step 2 must arm the sensor under `Monitor`").toContain("Monitor");
+    // #420 C3: step 4 is wake-driven — the drain runs on a Monitor-delivered
+    // wake (or a ScheduleWakeup heartbeat fire), not a blocking long-poll.
+    expect(step4, "auto.md step 4 must be Monitor-wake driven").toContain("Monitor");
+    expect(step4, "auto.md step 4 must drain with maxWaitMs=1").toContain("maxWaitMs=1");
+    expect(
+      step4.includes("maxWaitMs=55000"),
+      "auto.md step 4 must not reinstate the 55s long-poll (#420 SC-001/SC-002)",
+    ).toBe(false);
   });
 
   it("406-4 (in-memory cursor): auto.md steps 4/5 state cursor is in-memory only, reference the recovery convergence, and carry no on-disk cursor path", () => {
