@@ -12,7 +12,8 @@ Questions and answers to clarify the feature specification.
 - B: Fail the whole verdict post as an analyzer bug — surface an error and re-prompt the analyzer to re-anchor to a diff line.
 - C: Attempt the POST first; if GitHub returns a 422 on that specific comment, drop that entry to the body section and re-POST once.
 
-**Answer**: *Pending*
+**Answer**: A — Pre-validate every anchor against the PR diff before posting; a populated `file:line` outside the diff hunks is treated as anchor-less (falls to the FR-004 body section) and counts as un-anchorable in the FR-002 postcondition.
+**Rationale:** The executor already holds the diff in the review flow, so validation is free and deterministic; posting first and dropping 422s burns an API round-trip on a known-rejectable payload with atomicity ambiguity, and failing the whole post turns a routine analyzer imprecision (citing a context line near the change) into a hard failure loop.
 
 ### Q2: Postcondition source of truth
 **Context**: FR-002 says verify by querying `reviewThreads` OR by reading the POST response's `comments` count. These are subtly different: the POST response returns immediately with the comments it accepted; `reviewThreads` is a fresh GraphQL query that reflects what the monitor will actually see. The choice affects both correctness and latency of the guardrail.
@@ -22,7 +23,8 @@ Questions and answers to clarify the feature specification.
 - B: A fresh `reviewThreads(first:N)` GraphQL query after the POST — most faithful to what `PrFeedbackMonitorService` sees, at the cost of one extra API call.
 - C: Both: assert POST-response count matches anchored-finding count AND the subsequent GraphQL query returns ≥ that many new unresolved threads.
 
-**Answer**: *Pending*
+**Answer**: C — Both: assert the POST response accepted the anchored-finding count AND a follow-up `reviewThreads` GraphQL query returns at least that many new unresolved threads.
+**Rationale:** The bug this guards against shipped precisely because nothing checked what the consumer sees — `PrFeedbackMonitorService` reads GraphQL threads, so that leg is non-negotiable — while the POST-response leg is free and localizes the failure (accepted-but-invisible vs rejected-at-write) when the two disagree. One extra API call is nothing against another silent feedback-loop disconnect.
 
 ### Q3: Guardrail failure recovery
 **Context**: FR-003 says on postcondition failure the playbook must not emit `Feedback posted:` and instead emits `Error handling` and 're-presents the verdict gate.' That leaves the actual recovery behavior undefined — does it silently retry, ask the operator, abort the turn, or something else? This determines whether a transient GitHub 5xx auto-heals or requires a human.
@@ -32,7 +34,8 @@ Questions and answers to clarify the feature specification.
 - B: Do not retry — immediately re-present the verdict gate to the operator (approve/request-changes/abort) with the failure context in the prompt.
 - C: Abort the turn with a hard error; leave the PR untouched and let the outer /cockpit:auto loop retry the whole verdict.
 
-**Answer**: *Pending*
+**Answer**: A — Retry the POST once inline (bounded, ~2 s backoff); if the postcondition still fails, re-present the verdict gate to the operator with the failure context.
+**Rationale:** A single bounded retry auto-heals the common transient 5xx without waking a human, and keeps the gate re-presentation as the honest next step when the failure is real; a hard abort throws away a completed review analysis the operator already invested a verdict in. Matches the bounded-fixer idiom the merge flow already uses.
 
 ### Q4: Fix-loop thread resolution
 **Context**: FR-005 says the re-review step must check `reviewThread.isResolved` per finding and skip re-verification of resolved threads. But nothing in the spec says who resolves them. If the fix-loop agent doesn't explicitly resolve, threads stay open and re-review re-verifies every finding, defeating FR-005's purpose. If it always resolves after a diff attempt, resolution stops meaning 'genuinely fixed.'
@@ -42,7 +45,8 @@ Questions and answers to clarify the feature specification.
 - B: Only the re-review step resolves threads it verifies as fixed; the fix-loop never resolves — threads track re-review's own conclusions.
 - C: The operator resolves threads manually; agents only read `isResolved` and never write it.
 
-**Answer**: *Pending*
+**Answer**: B — Only the re-review step resolves threads it has verified as fixed; the fix-loop agent replies in-thread but never resolves.
+**Rationale:** If the fixer resolves its own threads, "resolved" means "the fixer believes it's fixed," and FR-005's skip rule would then skip unverified claims — which is letter-for-letter the snappoll failure (the agent believed `.gitignore` alone resolved findings 1–2, and it didn't). Resolution as re-review's verified verdict makes the skip optimization sound; never let the fixer self-certify.
 
 ### Q5: Anchor-less findings marker
 **Context**: FR-004 says un-anchored findings render 'under a clearly labeled General findings (no file anchor) section' in the review body. For the re-review step and any tooling that parses the body, the exact section header string must be stable and machine-recognizable — otherwise parsing drifts.
@@ -52,5 +56,6 @@ Questions and answers to clarify the feature specification.
 - B: A machine-parseable HTML comment marker like `<!-- speckit:unanchored-findings -->` followed by an H3, so display prose can change without breaking parsers.
 - C: Both — the HTML comment marker for tooling and a human-readable H2 immediately after, so either parsing approach works.
 
-**Answer**: *Pending*
+**Answer**: C — Both: a machine marker `<!-- generacy-cockpit:unanchored-findings -->` immediately followed by the human-readable H2 `## General findings (no file anchor)`.
+**Rationale:** Every stable machine surface in this system is already an HTML comment marker (`generacy-cockpit:review-comment`, `generacy-clarifications:*`, `manual-advance`) — parsers key on the marker while the visible heading stays free to be reworded. One extra line buys both audiences.
 
