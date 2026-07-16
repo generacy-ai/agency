@@ -2257,6 +2257,82 @@ describe("416 — operator-requested capability", () => {
   });
 });
 
+// -----------------------------------------------------------------------------
+// 429 — corrected postcondition Leg 1 + login-normalization preamble
+//
+// #429 replaces the buggy `response.comments.length == bundle.comments.length`
+// Leg 1 rule (which read a non-existent field and re-POSTed every successful
+// review) with a paginated GET + filter on `pull_request_review_id`, and
+// introduces a contract-wide `[bot]`-suffix-strip + case-fold `Login
+// normalization` preamble in `postcondition-check.md`. The four assertions
+// below pin the corrected wording present + the buggy substring absent across
+// both edited contract docs. No existing pin covers the pre-#429 Leg 1 text
+// (verified in plan.md § Constitution Check), so this is a pure addition.
+// -----------------------------------------------------------------------------
+
+const POSTCONDITION_CHECK_PATH = resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "specs",
+  "422-summary-auto-md-s",
+  "contracts",
+  "postcondition-check.md",
+);
+const REQUEST_CHANGES_POST_PATH = resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "specs",
+  "422-summary-auto-md-s",
+  "contracts",
+  "request-changes-post.md",
+);
+
+describe("429 — corrected postcondition Leg 1 + login-normalization preamble", () => {
+  it("429-1: postcondition-check.md contains the corrected Leg 1 procedure (paginated GET + pull_request_review_id filter)", () => {
+    const md = readFileSync(POSTCONDITION_CHECK_PATH, "utf-8");
+    expect(
+      md,
+      "postcondition-check.md must name the paginated inline-comments endpoint",
+    ).toContain("GET /repos/{owner}/{repo}/pulls/{pull_number}/comments");
+    expect(
+      md,
+      "postcondition-check.md must state the join-key filter on pull_request_review_id",
+    ).toContain("pull_request_review_id == response.id");
+  });
+
+  it("429-2: postcondition-check.md does NOT contain the buggy substring `response.comments.length`", () => {
+    const md = readFileSync(POSTCONDITION_CHECK_PATH, "utf-8");
+    expect(
+      md.includes("response.comments.length"),
+      "regression bar — the pre-#429 buggy Leg 1 phrasing must never return to postcondition-check.md",
+    ).toBe(false);
+  });
+
+  it("429-3: request-changes-post.md does NOT contain `response.comments.length` and does NOT capture `.comments[].length`", () => {
+    const md = readFileSync(REQUEST_CHANGES_POST_PATH, "utf-8");
+    expect(
+      md.includes("response.comments.length"),
+      "regression bar — the pre-#429 buggy Leg 1 phrasing must never return to request-changes-post.md",
+    ).toBe(false);
+    expect(
+      md.includes(".comments[].length"),
+      "§ Execution Capture list must not name `.comments[].length` — the POST response has no `comments` field",
+    ).toBe(false);
+  });
+
+  it("429-4: postcondition-check.md carries the `## Login normalization` H2 preamble", () => {
+    const md = readFileSync(POSTCONDITION_CHECK_PATH, "utf-8");
+    expect(
+      md,
+      "postcondition-check.md must open with (or otherwise contain) a `## Login normalization` H2 preamble section",
+    ).toContain("## Login normalization");
+  });
+});
+
 // Silence TS unused-import warning if only used for type narrowing.
 const _typeGuardAddExisting = (a: AddExistingIntent) => a.ref;
 const _typeGuardFileNew = (a: FileNewIntent) => a.topic;

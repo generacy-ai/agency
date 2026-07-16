@@ -71,13 +71,13 @@ JSON
 
 **Capture**:
 - Exit code (0 required to proceed to postcondition).
-- Response JSON — extract `.id` (review ID), `.submitted_at` (POST timestamp for freshness filter), `.comments[].length` (accepted-by-POST count).
+- Response JSON — extract `.id` (review ID; the join key for Leg 1's paginated GET) and `.submitted_at` (POST timestamp for Leg 2's freshness filter). The POST response does NOT carry a `comments` field; see `specs/429-re-filed-from-generacy/data-model.md § PostReviewResponse`.
 
 ## Postconditions
 
 Immediately after POST returns exit 0:
 
-1. **Leg 1 — POST response count**: `response.comments.length == bundle.comments.length`. Mismatch → postcondition failure (POST-side rejection, likely stale anchor check).
+1. **Leg 1 — inline-comment count via a separate REST endpoint**: see `postcondition-check.md § Leg 1` for the paginated GET-and-filter procedure (single source of truth). Pass criterion: `filteredCount == bundle.comments.length` at some point in the inline-poll budget; failure outcome is `genuine-undercount`.
 2. **Leg 2 — GraphQL freshness** (see `postcondition-check.md`): fresh unresolved threads count ≥ `bundle.comments.length`.
 
 **On failure** of either leg: retry the POST once with a 2-second backoff. On second failure, re-present the G.2 verdict gate with the failure details prepended (Q3=A shape). Do NOT emit the `Feedback posted:` success line.
