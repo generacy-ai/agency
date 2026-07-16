@@ -12,7 +12,7 @@
 
 The primary artifact is the `/tasks` skill prompt. Two files must stay byte-identical (SC-005, FR-007); therefore T001 and T002 cannot run in parallel (T002 copies the exact text T001 lands on). CLAUDE.md is independent of the two skill files and can be edited in parallel with them.
 
-- [ ] **T001** [US1] Edit `packages/agency-plugin-spec-kit/commands/tasks.md` to add a "Playbook coupling — mandatory verification task" rule inside Step 1 "Check Prerequisites" step 3 (task organization rules). The rule must instruct the model that when `spec.md` names any path matching `packages/claude-plugin-cockpit/commands/*.md`, `tasks.md` MUST include a task that:
+- [X] **T001** [US1] Edit `packages/agency-plugin-spec-kit/commands/tasks.md` to add a "Playbook coupling — mandatory verification task" rule inside Step 1 "Check Prerequisites" step 3 (task organization rules). The rule must instruct the model that when `spec.md` names any path matching `packages/claude-plugin-cockpit/commands/*.md`, `tasks.md` MUST include a task that:
   - names `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts`,
   - lists every matched `commands/*.md` path under "Files edited by this issue",
   - enumerates pin sites found at `/tasks` time by grepping the test file for `extractSubheadingBlock`, `extractInstructionsSteps`, `readFileSync(AUTO_MD_PATH)`, `readFileSync(resolve(COMMANDS_DIR, ...))`, and `readdirSync(COMMANDS_DIR)`,
@@ -24,12 +24,12 @@ The primary artifact is the `/tasks` skill prompt. Two files must stay byte-iden
 
   **Verifies**: FR-001, FR-002, FR-005, FR-006, FR-007 (this file half).
 
-- [ ] **T002** [US1] Mirror T001 into `packages/claude-plugin-agency-spec-kit/commands/tasks.md`. Copy the edited T001 file byte-for-byte over the mirror, then run `diff packages/agency-plugin-spec-kit/commands/tasks.md packages/claude-plugin-agency-spec-kit/commands/tasks.md` — expected: empty output.
+- [X] **T002** [US1] Mirror T001 into `packages/claude-plugin-agency-spec-kit/commands/tasks.md`. Copy the edited T001 file byte-for-byte over the mirror, then run `diff packages/agency-plugin-spec-kit/commands/tasks.md packages/claude-plugin-agency-spec-kit/commands/tasks.md` — expected: empty output.
 
   **Dependency**: Must run after T001.
   **Verifies**: FR-007 (mirror half), SC-005.
 
-- [ ] **T003** [P] [US2] Add a short "## Cockpit playbook pins" section to root `CLAUDE.md` (~5–10 lines, keep total file well under 200 lines). Section must:
+- [X] **T003** [P] [US2] Add a short "## Cockpit playbook pins" section to root `CLAUDE.md` (~5–10 lines, keep total file well under 200 lines). Section must:
   - name `packages/claude-plugin-cockpit/commands/auto.md`,
   - name `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts`,
   - describe the coupling (test pins headings and loop-shape contracts by exact string),
@@ -42,7 +42,7 @@ The primary artifact is the `/tasks` skill prompt. Two files must stay byte-iden
 ## Phase 2: Verification
 <!-- Phase boundary: Complete Phase 1 (T001–T003) before starting Phase 2 -->
 
-- [ ] **T004** [P] [US1] Verify byte-identity: run
+- [X] **T004** [P] [US1] Verify byte-identity: run
   ```bash
   diff packages/agency-plugin-spec-kit/commands/tasks.md \
        packages/claude-plugin-agency-spec-kit/commands/tasks.md
@@ -51,7 +51,7 @@ The primary artifact is the `/tasks` skill prompt. Two files must stay byte-iden
 
   **Verifies**: SC-005 (Scenario 4).
 
-- [ ] **T005** [P] [US2] Verify CLAUDE.md content: run
+- [X] **T005** [P] [US2] Verify CLAUDE.md content: run
   ```bash
   grep -n "auto.md" CLAUDE.md
   grep -n "playbook-verification.test.ts" CLAUDE.md
@@ -61,7 +61,7 @@ The primary artifact is the `/tasks` skill prompt. Two files must stay byte-iden
 
   **Verifies**: SC-004 (Scenario 5).
 
-- [ ] **T006** [US1] Historical-replay dogfood (Scenario 3 in quickstart.md): in a scratch working copy, point `/speckit:tasks` at the `spec.md` of a prior playbook-editing issue (e.g. #420 or #421) and confirm the generated `tasks.md` now contains at least one task naming `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts` and listing pin sites. Also confirm the generated task text contains "Do NOT weaken or delete an assertion" (or equivalent).
+- [ ] **T006** [manual] [US1] Historical-replay dogfood (Scenario 3 in quickstart.md): in a scratch working copy, point `/speckit:tasks` at the `spec.md` of a prior playbook-editing issue (e.g. #420 or #421) and confirm the generated `tasks.md` now contains at least one task naming `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts` and listing pin sites. Also confirm the generated task text contains "Do NOT weaken or delete an assertion" (or equivalent).
 
   **Verifies**: SC-002, SC-003 (guidance-present half), and validates FR-001/FR-002/FR-005/FR-006 end-to-end.
 
