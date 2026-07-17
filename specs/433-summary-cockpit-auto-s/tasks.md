@@ -10,7 +10,7 @@
 
 ## Phase 1: Skill fix (auto.md prose edits)
 
-- [ ] T001 [US1] Edit `packages/claude-plugin-cockpit/commands/auto.md` — apply all five sub-edits to the § Instructions step 1 pre-flight body in one commit so the file is never left half-fixed:
+- [X] T001 [US1] Edit `packages/claude-plugin-cockpit/commands/auto.md` — apply all five sub-edits to the § Instructions step 1 pre-flight body in one commit so the file is never left half-fixed:
   - (a) L41 probe: change `` `generacy cockpit doorbell --help >/dev/null 2>&1` `` → `` `generacy cockpit help doorbell >/dev/null 2>&1` `` (FR-001; commander.js's auto-wired `help <verb>` router exits 1 for unknown subcommands, 0 for present ones — verified on snappoll `generacy 0.0.0-preview-20260717045830-01bbb03`).
   - (b) L41 inline comment: change `the surface owned by generacy#970 hasn't landed on this cluster` → `the surface owned by generacy#974 hasn't landed on this cluster` (FR-003; #970 already merged as PR #971 and shipped GraphQL rate-limit work, NOT the doorbell verb).
   - (c) L44 error message body: change `needs a generacy build that ships \`generacy cockpit doorbell\` (generacy#970)` → `needs a generacy build that ships \`generacy cockpit doorbell\` (generacy#974)` (FR-003).
@@ -21,7 +21,7 @@
 
 ## Phase 2: Test pin (drift-audit assertion)
 
-- [ ] T002 [US1] Add a new `describe("433 — auto.md doorbell probe uses pure verb-existence form, not the commander --help short-circuit", ...)` block in `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts` with two assertions inside a single `it(...)` block (FR-004; Q2=B — positive + negative):
+- [X] T002 [US1] Add a new `describe("433 — auto.md doorbell probe uses pure verb-existence form, not the commander --help short-circuit", ...)` block in `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts` with two assertions inside a single `it(...)` block (FR-004; Q2=B — positive + negative):
   - **Positive**: `expect(readFileSync(AUTO_MD_PATH, "utf-8")).toContain("generacy cockpit help doorbell")` — asserts the corrected probe string is present.
   - **Negative**: `expect(readFileSync(AUTO_MD_PATH, "utf-8")).not.toContain("cockpit doorbell --help")` — asserts the broken form appears nowhere in auto.md.
 
@@ -31,7 +31,7 @@
 
 ## Phase 3: Verification
 
-- [ ] T003 [US1] Re-pin `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts` for every heading and contract rule this edit changes.
+- [X] T003 [US1] Re-pin `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts` for every heading and contract rule this edit changes.
   Files edited by this issue: `packages/claude-plugin-cockpit/commands/auto.md`
   Pin sites that read the edited file(s):
     - `:515`: `398-1 (drift audit): every commands/*.md invocation matches its --help snapshot argument-kind token` (`readdirSync(COMMANDS_DIR)` sweep — pins every playbook regardless of which one you edited; the corrected probe uses verb `help` and `help` is not in the snapshot set `{watch}`, so this should still pass — verify per FR-005)
@@ -53,7 +53,7 @@
 
   Do NOT weaken or delete an assertion to make the test pass — the pin is a drift audit; weakening it deletes its value.
 
-- [ ] T004 [US1] FR-005 sanity check — run `pnpm --filter @generacy/claude-plugin-cockpit test playbook-verification` and confirm `398-1` passes with the corrected probe form. The 398 audit sweeps `commands/*.md` for `generacy cockpit <verb>` invocations against snapshots under `tests/fixtures/help-snapshots/`; the corrected probe `generacy cockpit help doorbell` matches verb `help` (not `doorbell`), and neither `help` nor `doorbell` has a `.txt` snapshot, so no drift should be reported. If it fails, do NOT add a `doorbell.txt` snapshot as a workaround — investigate the root cause first.
+- [X] T004 [US1] FR-005 sanity check — run `pnpm --filter @generacy/claude-plugin-cockpit test playbook-verification` and confirm `398-1` passes with the corrected probe form. The 398 audit sweeps `commands/*.md` for `generacy cockpit <verb>` invocations against snapshots under `tests/fixtures/help-snapshots/`; the corrected probe `generacy cockpit help doorbell` matches verb `help` (not `doorbell`), and neither `help` nor `doorbell` has a `.txt` snapshot, so no drift should be reported. If it fails, do NOT add a `doorbell.txt` snapshot as a workaround — investigate the root cause first.
 
 - [ ] T005 [US1] SC-002 local-shim verification — verify no regression on doorbell-present clusters (Q3=B). Create a `generacy` shim on PATH whose `cockpit help doorbell` exits 0:
 
@@ -71,7 +71,7 @@
 
   Record the shim invocation verbatim in the PR body so the reviewer can re-run it. Do NOT block merge on generacy#974's rollout — the absent-path is already verified against the real snappoll binary (exit 1).
 
-- [ ] T006 [US1] Run the full playbook-verification test suite one more time (`pnpm --filter @generacy/claude-plugin-cockpit test playbook-verification`) and confirm the new 433 describe block passes AND no other test regressed. This is the final gate before opening the PR.
+- [X] T006 [US1] Run the full playbook-verification test suite one more time (`pnpm --filter @generacy/claude-plugin-cockpit test playbook-verification`) and confirm the new 433 describe block passes AND no other test regressed. This is the final gate before opening the PR.
 
 ## Dependencies & Execution Order
 

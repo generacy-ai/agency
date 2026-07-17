@@ -2351,6 +2351,25 @@ describe("429 — corrected postcondition Leg 1 + login-normalization preamble",
   });
 });
 
+// commander.js short-circuits `--help` before validating the subcommand — `generacy cockpit <unknown-verb> --help`
+// prints the *parent* help and exits 0, so the pre-#433 probe false-passed on doorbell-absent clusters. The negative
+// pin catches full reverts, partial reverts, and half-merges that leave the broken form in either L41 or L53. Scope
+// of the negative match is `cockpit doorbell --help` (with `--help` flag) — NOT the bare `generacy cockpit doorbell`
+// sensor invocation, which is legitimate and pinned by 406-3.
+describe("433 — auto.md doorbell probe uses pure verb-existence form, not the commander --help short-circuit", () => {
+  it("433-1: auto.md pre-flight uses `generacy cockpit help doorbell` and never the broken `cockpit doorbell --help` form", () => {
+    const md = readFileSync(AUTO_MD_PATH, "utf-8");
+    expect(
+      md,
+      "positive pin: auto.md must contain the corrected verb-existence probe `generacy cockpit help doorbell`",
+    ).toContain("generacy cockpit help doorbell");
+    expect(
+      md.includes("cockpit doorbell --help"),
+      "negative pin: the literal string `cockpit doorbell --help` must appear nowhere in auto.md — commander.js short-circuits `--help` before subcommand validation, so this form false-passes on doorbell-absent clusters",
+    ).toBe(false);
+  });
+});
+
 // Silence TS unused-import warning if only used for type narrowing.
 const _typeGuardAddExisting = (a: AddExistingIntent) => a.ref;
 const _typeGuardFileNew = (a: FileNewIntent) => a.topic;
