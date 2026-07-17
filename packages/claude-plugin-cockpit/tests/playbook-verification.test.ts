@@ -1171,9 +1171,11 @@ describe("403 — auto.md ledger-only contract + phase:* row + subagent diagnosi
       autoMd,
       "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)",
     );
+    // #421: D.11 now also absorbs `blocked:stuck-merge-conflicts` (generacy#943
+    // classifies it error-tier), so the gate heading names both labels.
     const d11Block = extractSubheadingBlock(
       autoMd,
-      "D.11 — `waiting-for:merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
     );
 
     // Positive: sole-tool contract (post-#406 form).
@@ -1503,7 +1505,15 @@ describe("406 — cockpit MCP tool migration + await-events loop", () => {
     expect(/generacy cockpit watch\b/.test(watchContent)).toBe(true);
   });
 
-  it("406-3 (`cockpit_await_events` loop shape): auto.md step 4 uses cockpit_await_events; step 2 has no run_in_background:true; step 4 has no Monitor primitive", () => {
+  // #420 supersedes the #406 loop shape: the 55s long-poll is replaced by a
+  // sensor armed under the harness `Monitor` tool, whose stdout lines wake the
+  // model. `cockpit_await_events` survives as the sole typed-batch source, but
+  // is now a fast drain (`maxWaitMs=1`) rather than the thing that blocks.
+  // #431 further supersedes the sensor CLI verb: `generacy cockpit watch` is
+  // replaced by `generacy cockpit doorbell`, which attaches to the shared
+  // event-bus poll loop `cockpit_await_events` drains rather than running its
+  // own poll cycle — one loop per epic, halving background GraphQL cost.
+  it("406-3 (post-#420/#431 wake-driven loop shape): auto.md step 4 drains cockpit_await_events on a Monitor wake with maxWaitMs=1 and no 55s long-poll; step 2 arms `generacy cockpit doorbell` under Monitor, not run_in_background, and `generacy cockpit watch` is retired from the auto sensor", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const steps = extractInstructionsSteps(autoMd);
     const step2 = steps.get(2) ?? "";
@@ -1512,8 +1522,34 @@ describe("406 — cockpit MCP tool migration + await-events loop", () => {
     expect(step4, "auto.md step 4 must contain `cockpit_await_events` at least once").toContain(
       "cockpit_await_events",
     );
+    // The sensor is armed under the harness `Monitor` tool (#420 C2), never a
+    // raw backgrounded Bash process.
     expect(step2.includes("run_in_background: true")).toBe(false);
-    expect(step4.includes("Monitor")).toBe(false);
+    expect(step2, "auto.md step 2 must arm the sensor under `Monitor`").toContain("Monitor");
+    // #431: the auto sensor is `generacy cockpit doorbell`, not the pre-#431
+    // `generacy cockpit watch`. A regression to `watch` would silently
+    // reintroduce the double-poll condition #431 exists to fix.
+    expect(step2, "auto.md step 2 must spawn `generacy cockpit doorbell` as the sensor").toContain(
+      "generacy cockpit doorbell",
+    );
+    expect(
+      /generacy cockpit watch\b/.test(step2),
+      "auto.md step 2 must not spawn `generacy cockpit watch` (retired in #431 for the auto sensor; `/cockpit:watch` retains it in watch.md)",
+    ).toBe(false);
+    // #420 C3: step 4 is wake-driven — the drain runs on a Monitor-delivered
+    // wake (or a ScheduleWakeup heartbeat fire), not a blocking long-poll.
+    expect(step4, "auto.md step 4 must be Monitor-wake driven").toContain("Monitor");
+    expect(step4, "auto.md step 4 must drain with maxWaitMs=1").toContain("maxWaitMs=1");
+    expect(
+      step4.includes("maxWaitMs=55000"),
+      "auto.md step 4 must not reinstate the 55s long-poll (#420 SC-001/SC-002)",
+    ).toBe(false);
+    // #431: step 4's Monitor-delivered wake references `generacy cockpit doorbell`
+    // as the sensor source (not `generacy cockpit watch`).
+    expect(
+      /generacy cockpit watch\b/.test(step4),
+      "auto.md step 4 must not reference `generacy cockpit watch` as the sensor (retired in #431)",
+    ).toBe(false);
   });
 
   it("406-4 (in-memory cursor): auto.md steps 4/5 state cursor is in-memory only, reference the recovery convergence, and carry no on-disk cursor path", () => {
@@ -2236,6 +2272,101 @@ describe("416 — operator-requested capability", () => {
     expect(g7Completed).toContain(" · completed");
     expect(g7Mixed).toContain(" · completed");
     expect(g7Mixed).toContain(" · not-planned");
+  });
+});
+
+// -----------------------------------------------------------------------------
+// 429 — corrected postcondition Leg 1 + login-normalization preamble
+//
+// #429 replaces the buggy `response.comments.length == bundle.comments.length`
+// Leg 1 rule (which read a non-existent field and re-POSTed every successful
+// review) with a paginated GET + filter on `pull_request_review_id`, and
+// introduces a contract-wide `[bot]`-suffix-strip + case-fold `Login
+// normalization` preamble in `postcondition-check.md`. The four assertions
+// below pin the corrected wording present + the buggy substring absent across
+// both edited contract docs. No existing pin covers the pre-#429 Leg 1 text
+// (verified in plan.md § Constitution Check), so this is a pure addition.
+// -----------------------------------------------------------------------------
+
+const POSTCONDITION_CHECK_PATH = resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "specs",
+  "422-summary-auto-md-s",
+  "contracts",
+  "postcondition-check.md",
+);
+const REQUEST_CHANGES_POST_PATH = resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "specs",
+  "422-summary-auto-md-s",
+  "contracts",
+  "request-changes-post.md",
+);
+
+describe("429 — corrected postcondition Leg 1 + login-normalization preamble", () => {
+  it("429-1: postcondition-check.md contains the corrected Leg 1 procedure (paginated GET + pull_request_review_id filter)", () => {
+    const md = readFileSync(POSTCONDITION_CHECK_PATH, "utf-8");
+    expect(
+      md,
+      "postcondition-check.md must name the paginated inline-comments endpoint",
+    ).toContain("GET /repos/{owner}/{repo}/pulls/{pull_number}/comments");
+    expect(
+      md,
+      "postcondition-check.md must state the join-key filter on pull_request_review_id",
+    ).toContain("pull_request_review_id == response.id");
+  });
+
+  it("429-2: postcondition-check.md does NOT contain the buggy substring `response.comments.length`", () => {
+    const md = readFileSync(POSTCONDITION_CHECK_PATH, "utf-8");
+    expect(
+      md.includes("response.comments.length"),
+      "regression bar — the pre-#429 buggy Leg 1 phrasing must never return to postcondition-check.md",
+    ).toBe(false);
+  });
+
+  it("429-3: request-changes-post.md does NOT contain `response.comments.length` and does NOT capture `.comments[].length`", () => {
+    const md = readFileSync(REQUEST_CHANGES_POST_PATH, "utf-8");
+    expect(
+      md.includes("response.comments.length"),
+      "regression bar — the pre-#429 buggy Leg 1 phrasing must never return to request-changes-post.md",
+    ).toBe(false);
+    expect(
+      md.includes(".comments[].length"),
+      "§ Execution Capture list must not name `.comments[].length` — the POST response has no `comments` field",
+    ).toBe(false);
+  });
+
+  it("429-4: postcondition-check.md carries the `## Login normalization` H2 preamble", () => {
+    const md = readFileSync(POSTCONDITION_CHECK_PATH, "utf-8");
+    expect(
+      md,
+      "postcondition-check.md must open with (or otherwise contain) a `## Login normalization` H2 preamble section",
+    ).toContain("## Login normalization");
+  });
+});
+
+// commander.js short-circuits `--help` before validating the subcommand — `generacy cockpit <unknown-verb> --help`
+// prints the *parent* help and exits 0, so the pre-#433 probe false-passed on doorbell-absent clusters. The negative
+// pin catches full reverts, partial reverts, and half-merges that leave the broken form in either L41 or L53. Scope
+// of the negative match is `cockpit doorbell --help` (with `--help` flag) — NOT the bare `generacy cockpit doorbell`
+// sensor invocation, which is legitimate and pinned by 406-3.
+describe("433 — auto.md doorbell probe uses pure verb-existence form, not the commander --help short-circuit", () => {
+  it("433-1: auto.md pre-flight uses `generacy cockpit help doorbell` and never the broken `cockpit doorbell --help` form", () => {
+    const md = readFileSync(AUTO_MD_PATH, "utf-8");
+    expect(
+      md,
+      "positive pin: auto.md must contain the corrected verb-existence probe `generacy cockpit help doorbell`",
+    ).toContain("generacy cockpit help doorbell");
+    expect(
+      md.includes("cockpit doorbell --help"),
+      "negative pin: the literal string `cockpit doorbell --help` must appear nowhere in auto.md — commander.js short-circuits `--help` before subcommand validation, so this form false-passes on doorbell-absent clusters",
+    ).toBe(false);
   });
 });
 

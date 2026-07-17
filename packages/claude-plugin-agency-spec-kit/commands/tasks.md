@@ -178,6 +178,41 @@ Generate an actionable, dependency-ordered task list from the implementation pla
    - Include scope estimate, files, and test approach in group metadata
    - Mark parallel-eligible groups with `[P]`
 
+   **Playbook coupling — mandatory verification task**:
+
+   Before finalizing the task list, check whether `spec.md` (or `plan.md`, or the issue body if fetched) names any file path matching the glob `packages/claude-plugin-cockpit/commands/*.md`. Detect by simple substring / regex match against the literal prefix `packages/claude-plugin-cockpit/commands/` followed by any `.md` filename. Bias permissive — a false positive costs one no-op task; a false negative reintroduces a whole class of validate failures.
+
+   If one or more matches are found, `tasks.md` MUST include a mandatory verification task that:
+
+   - Names `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts` as the file to re-pin.
+   - Lists every matched `commands/*.md` path under a "Files edited by this issue" line.
+   - Enumerates the pin sites in `playbook-verification.test.ts` that read the edited file(s). Compute this at `/tasks` time by grepping the test file for calls to:
+     - `extractSubheadingBlock(...)` — exact-heading pins.
+     - `extractInstructionsSteps(...)` — contract-rule pins (loop shape, step content).
+     - `readFileSync(AUTO_MD_PATH)` and `readFileSync(resolve(COMMANDS_DIR, "<name>"))` — direct named reads.
+     - `readdirSync(COMMANDS_DIR)` — sweep site (currently around `:515`) that covers **every** `commands/*.md` playbook for invocation-vs-`--help` drift.
+   - Filters those sites to ones whose read intersects the edited file(s). Trace `extractSubheadingBlock` / `extractInstructionsSteps` back one line to the `readFileSync` that fed them, and match the resolved filename. Always include the `readdirSync(COMMANDS_DIR)` sweep — it pins every playbook regardless of which one you edited.
+   - States that re-pinning means **updating the assertion to the NEW contract** established by the playbook edit.
+   - Contains the sentence: **"Do NOT weaken or delete an assertion to make the test pass"** — the pin is a drift audit; weakening it deletes its value.
+
+   Canonical task shape to emit:
+
+   ```markdown
+   - [ ] T### [Story] Re-pin `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts`
+     for every heading and contract rule this edit changes.
+     Files edited by this issue: <list of commands/*.md paths from spec.md>
+     Pin sites that read the edited file(s):
+       - :<line>: <test description> (<extractSubheadingBlock | extractInstructionsSteps | readFileSync | readdirSync sweep>)
+       - ...
+     Re-pinning means updating the assertion to the NEW contract.
+     Do NOT weaken or delete an assertion to make the test pass — the pin is a drift audit;
+     weakening it deletes its value.
+   ```
+
+   Placement: the re-pin task belongs in the "Verification" phase (or, in Epic Mode, the verification task group) — after all playbook edit tasks and before or alongside any final smoke-check task. The implementer must land the playbook edit before knowing what heading/contract shape to pin to.
+
+   Emit exactly **one** re-pin task listing all matched files (not one per file). If zero pin sites intersect the edited files after filtering, emit the task anyway with a "verify manually before shipping" note — fail open, matching the permissive bias above.
+
 5. **Granularity validation** (Epic Mode only):
 
    If `epic_mode = true`, check the generated tasks for appropriate granularity:

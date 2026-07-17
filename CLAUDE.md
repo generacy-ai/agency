@@ -34,3 +34,9 @@ source /workspaces/tetrad-development/scripts/stack-env.sh
 ```
 
 See [/workspaces/tetrad-development/docs/DEVELOPMENT_STACK.md](/workspaces/tetrad-development/docs/DEVELOPMENT_STACK.md)
+
+## Cockpit playbook pins
+
+`packages/claude-plugin-cockpit/tests/playbook-verification.test.ts` pins every `packages/claude-plugin-cockpit/commands/*.md` playbook (including `auto.md`) by **exact heading strings and contract rules** — heading renames, loop-shape edits, or new/removed steps break the assertions on purpose. This is a drift audit, not a smoke test.
+
+If your edit breaks a pin, the correct response is to **re-pin the assertion to the NEW contract** in the same PR. Do NOT weaken or delete an assertion to make the test pass — weakening it deletes its value. The rule applies to every `commands/*.md` playbook, not only `auto.md` (the `readdirSync(COMMANDS_DIR)` sweep pins them all for invocation-vs-`--help` drift).
