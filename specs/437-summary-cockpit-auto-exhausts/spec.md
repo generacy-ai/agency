@@ -1,85 +1,82 @@
-# Feature Specification: /cockpit:auto dispatches from doorbell event content instead of re-querying GitHub
+# Feature Specification: ## Summary
+
+`/cockpit:auto` exhausts the GitHub GraphQL rate limit (5000 pts/hr) despite low event volume, because on every wake the skill re-queries GitHub to find out *what* happened — state that (after generacy-ai/generacy#985) the doorbell wake line will carry directly
 
 **Branch**: `437-summary-cockpit-auto-exhausts` | **Date**: 2026-07-17 | **Status**: Draft
-**Issue**: [generacy-ai/agency#437](https://github.com/generacy-ai/agency/issues/437)
-**Depends on**: [generacy-ai/generacy#985](https://github.com/generacy-ai/generacy/issues/985) (engine-side change that makes the doorbell line content-ful)
 
 ## Summary
 
-`/cockpit:auto` exhausts the GitHub GraphQL rate limit (5000 pts/hr) despite low event volume because on every wake the skill re-queries GitHub to find out *what* happened — state that (after generacy-ai/generacy#985) the doorbell wake line will carry directly.
+## Summary
 
-This spec covers the **agency skill side** (`packages/claude-plugin-cockpit/commands/auto.md`). The engine-side companion (content-ful `lineForEvent`, local `to`-classification, baked `checks` verdict) lives in generacy-ai/generacy#985. This change teaches the skill to read the enriched doorbell line instead of re-querying.
+`/cockpit:auto` exhausts the GitHub GraphQL rate limit (5000 pts/hr) despite low event volume, because on every wake the skill re-queries GitHub to find out *what* happened — state that (after generacy-ai/generacy#985) the doorbell wake line will carry directly.
+
+This issue covers the **agency skill** side (`packages/claude-plugin-cockpit/commands/auto.md`). It **depends on** generacy-ai/generacy#985, which makes the doorbell line content-ful; this change teaches the skill to read it instead of re-querying.
 
 ## Problem
 
 - `auto.md` step 4.1 re-checks live state via `cockpit_status(epic, json=true)` for **every** actionable event in the drained batch. That call fans out ~28 GraphQL calls for a mid-size epic; a 3-event wake ≈ ~95 calls. This is the dominant rate-limit consumer.
-- `auto.md:53` currently mandates that the doorbell line be treated as opaque: *"The stdout content is a doorbell only: the parent NEVER parses lines for content."* That mandate is what must be removed so the skill can act on the enriched payload.
+- `auto.md:53` currently mandates the doorbell line be treated as opaque: *"The stdout content is a doorbell only: the parent NEVER parses lines for content."* That mandate is the thing to remove.
+
+## Proposed change (depends on generacy-ai/generacy#985)
+
+1. **Parse the NDJSON event line** the doorbell now emits: `{ type, repo, kind, number, event, to, labels, url, checks? }`.
+2. **Dispatch directly from the line** for the label-driven classes — clarification (D.1), reviews (D.2–D.4), error (D.7), ledger-only (D.9), and the ledger-only variants D.9a–D.9d (`pr-feedback`, `children-complete`, `dependencies`, `phase:*`): the `to` state + `labels` on the line are authoritative, so drop the per-event `cockpit_status` re-check for these classes. **Retain the per-event re-check** for D.8 (`phase-complete` → phase-queue gate), D.10 (unrecognized/ambiguous → escalation gate), and D.11 (`merge-conflicts` → escalation gate): those open human/consequential gates and are low-frequency, so authoritative re-check costs almost nothing while removing stale-state risk. (Clarification Q1: A.)
+3. **Merge gate (D.5/D.6):** consult the `checks` verdict baked into the event; if it is absent — or present with value `pending` — fall back to a **single** authoritative `cockpit_status` / `cockpit_merge` query. Defer-on-pending was rejected because smee doorbell delivery is best-effort and a lost follow-up event would silently stall the merge. (Clarification Q4: B.)
+4. **Enriched-vs-bare detection:** a line is treated as enriched iff it JSON-parses to an object AND carries both `to` and `labels`. Missing either → treat as bare and re-query (graceful degradation for older engines / content-less modes). `checks` presence is NOT part of the enriched-vs-bare gate — a legitimate label-change line has no `checks` — it is handled inside the D.5/D.6 path per FR-003. (Clarification Q2: B.)
+5. **Step-4a contract:** step 4a stays as a single "resolve authoritative state" step whose implementation is "prefer the enriched line; fall back to one `cockpit_status` on absence." One unified source-of-truth priority covers both label-driven and merge-gate paths and folds FR-005 graceful degradation in naturally. (Clarification Q3: B.)
+6. **Ledger rows for enriched-line dispatch** are written from the doorbell line as-received (no extra query), plus a `source: enriched-line` marker column so post-mortems can distinguish enriched-line rows from fallback re-query rows. (Clarification Q5: C.)
+7. Update the step-4 narration and **remove** the `auto.md:53` "never parses lines for content" mandate.
+
+## Acceptance criteria
+
+- The per-event `cockpit_status` re-check is removed for D.1–D.4, D.7, D.9, and D.9a–D.9d; those dispatch off the line content.
+- D.8, D.10, and D.11 retain the current per-event `cockpit_status` re-check.
+- Merge-gate classes (D.5/D.6) use the baked-in `checks` verdict; fall back to a single authoritative query when the verdict is absent OR `pending`.
+- **Enriched-vs-bare gate:** a line is treated as enriched only if it JSON-parses to an object AND carries `to` and `labels`; otherwise the skill falls back to today's re-query behaviour. No hard runtime ordering dependency on generacy-ai/generacy#985.
+- **Step 4a** is retained as a unified "resolve authoritative state" contract (prefer enriched line; single `cockpit_status` fallback on absence) covering both label-driven and merge-gate paths.
+- Ledger rows for label-driven dispatch reflect the doorbell line as-received and carry a `source: enriched-line` marker column distinguishing them from fallback re-query rows.
+- `playbook-verification` pinning tests updated to match the new dispatch (re-pin to the new expected behaviour; do **not** weaken the assertions).
+
+## Cross-repo coordination
+
+Per our one-issue-per-repo rule, the engine change lives in generacy-ai/generacy#985 (content-ful `lineForEvent` + local `to`-classification + baked `checks` verdict). Land in lockstep.
+
+## Context
+
+Follow-up to the doorbell real-time work (agency #431 / generacy #970 / #978 / #980). The root-cause trace and the generacy-side plan are in generacy-ai/generacy#985.
+
 
 ## User Stories
 
-### US1: Operator running /cockpit:auto against a busy epic
+### US1: [Primary User Story]
 
-**As an** operator driving an epic through `/cockpit:auto`,
-**I want** each wake to dispatch off the doorbell line's content when the engine provides it,
-**So that** a normal-cadence run does not blow through the 5000 pts/hr GraphQL budget and stall the epic.
-
-**Acceptance Criteria**:
-- [ ] For clarification (D.1), review (D.2–D.4), error (D.7), and ledger-only (D.9) events, the skill dispatches from the doorbell line's `to`/`labels` fields with no per-event `cockpit_status` call.
-- [ ] For merge-gate events (D.5, D.6), the skill uses the `checks` verdict baked into the line when present; falls back to a single authoritative query only when it is absent.
-- [ ] When the doorbell line is a bare event type (older engine or a mode with no content), the skill falls back to today's re-query behaviour without erroring — no hard runtime ordering with generacy-ai/generacy#985.
-
-### US2: Skill maintainer updating auto.md contract
-
-**As a** maintainer of `auto.md`,
-**I want** the "never parses lines for content" mandate at `auto.md:53` removed and the step-4 narration updated to describe the new dispatch,
-**So that** future changes have a single accurate contract to reason about, and playbook-verification pins the new behaviour instead of the old.
+**As a** [user type],
+**I want** [capability],
+**So that** [benefit].
 
 **Acceptance Criteria**:
-- [ ] `auto.md:53` no longer forbids parsing the doorbell line for content.
-- [ ] Step-4 narration in `auto.md` describes the enriched-line dispatch and the graceful-degradation fallback.
-- [ ] `playbook-verification` pinning tests are updated to match the new dispatch. Assertions are re-pinned to the new contract, not weakened or deleted (per repo CLAUDE.md).
+- [ ] [Criterion 1]
+- [ ] [Criterion 2]
 
 ## Functional Requirements
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | Parse the NDJSON doorbell line into `{ type, repo, kind, number, event, to, labels, url, checks? }`. | P1 | Schema comes from generacy-ai/generacy#985. |
-| FR-002 | Dispatch label-driven classes (D.1 clarification, D.2–D.4 reviews, D.7 error, D.9 ledger-only) directly from the line's `to` + `labels`. | P1 | Drops the per-event `cockpit_status` re-check for these classes. |
-| FR-003 | For merge-gate classes (D.5, D.6), consult the line's `checks` verdict; only if absent, fall back to a single authoritative `cockpit_status` / `cockpit_merge` query. | P1 | Not one query per event — one query, only on absence. |
-| FR-004 | Update `auto.md` step-4 narration to describe the enriched-line dispatch and remove the `auto.md:53` "never parses lines for content" mandate. | P1 | Contract text must match runtime behaviour. |
-| FR-005 | Fall back to today's re-query behaviour when the doorbell line lacks enriched fields (bare event type from older engine or a content-less mode). | P1 | No hard runtime ordering dependency on generacy-ai/generacy#985. |
-| FR-006 | Re-pin `playbook-verification` assertions to match the new dispatch. Do not weaken or delete assertions to make tests pass. | P1 | Per repo CLAUDE.md drift-audit rule. |
+| FR-001 | [Description] | P1 | |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
-| SC-001 | GraphQL calls per actionable event (label-driven classes) | 0 per-event `cockpit_status` calls | Trace/log inspection during a `/cockpit:auto` run against a mid-size epic. |
-| SC-002 | GraphQL calls per actionable event (merge-gate classes) | 0 when `checks` verdict is baked; 1 fallback when absent | Same trace/log inspection, with fixtures for both paths. |
-| SC-003 | End-to-end regression | An epic that today exhausts the 5000 pts/hr budget completes without hitting the rate limit under the same event pattern. | Run against a representative epic or replayed event stream. |
-| SC-004 | Graceful degradation | A run with a bare-event doorbell (simulated older engine) completes with today's behaviour and no runtime error. | Fixture / integration test that forces the fallback path. |
-| SC-005 | Playbook-verification | All `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts` assertions pass, re-pinned to the new contract. | `pnpm test` on the plugin package. |
-
-## Cross-repo coordination
-
-Per the one-issue-per-repo rule, the engine change (content-ful `lineForEvent` + local `to`-classification + baked `checks` verdict) lives in generacy-ai/generacy#985. The two PRs are designed to land in lockstep, but graceful degradation (FR-005) removes any hard ordering requirement.
-
-## Context
-
-Follow-up to the doorbell real-time work: agency #431, generacy #970, #978, #980. The root-cause trace and the engine-side plan are in generacy-ai/generacy#985.
+| SC-001 | [Metric] | [Target] | [How to measure] |
 
 ## Assumptions
 
-- generacy-ai/generacy#985 will land the enriched line schema described in FR-001; this spec's schema tracks that PR.
-- The current `auto.md` step-4 dispatch classes (D.1–D.9) are the correct taxonomy — no new classes added by this change.
-- `playbook-verification.test.ts` is the authoritative pin surface for `auto.md` contract changes.
+- [Assumption 1]
 
 ## Out of Scope
 
-- Engine-side changes to `lineForEvent`, `to`-classification, or the `checks` verdict — those belong to generacy-ai/generacy#985.
-- Changes to non-`auto.md` skills / commands in `packages/claude-plugin-cockpit/commands/`.
-- Any new GraphQL calls or new `cockpit_*` MCP tools; this change removes calls, it does not add new endpoints.
-- Broader rate-limit strategy (backoff, caching, budget accounting) beyond removing the re-query fan-out.
+- [Exclusion 1]
 
 ---
 
