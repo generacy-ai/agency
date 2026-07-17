@@ -1506,12 +1506,14 @@ describe("406 — cockpit MCP tool migration + await-events loop", () => {
   });
 
   // #420 supersedes the #406 loop shape: the 55s long-poll is replaced by a
-  // `generacy cockpit watch` sensor armed under the harness `Monitor` tool,
-  // whose stdout lines wake the model. `cockpit_await_events` survives as the
-  // sole typed-batch source, but is now a fast drain (`maxWaitMs=1`) rather
-  // than the thing that blocks. Hence the old "step 4 has no Monitor
-  // primitive" rule is inverted below, and the long-poll is pinned as absent.
-  it("406-3 (post-#420 wake-driven loop shape): auto.md step 4 drains cockpit_await_events on a Monitor wake with maxWaitMs=1 and no 55s long-poll; step 2 arms the sensor under Monitor, not run_in_background", () => {
+  // sensor armed under the harness `Monitor` tool, whose stdout lines wake the
+  // model. `cockpit_await_events` survives as the sole typed-batch source, but
+  // is now a fast drain (`maxWaitMs=1`) rather than the thing that blocks.
+  // #431 further supersedes the sensor CLI verb: `generacy cockpit watch` is
+  // replaced by `generacy cockpit doorbell`, which attaches to the shared
+  // event-bus poll loop `cockpit_await_events` drains rather than running its
+  // own poll cycle — one loop per epic, halving background GraphQL cost.
+  it("406-3 (post-#420/#431 wake-driven loop shape): auto.md step 4 drains cockpit_await_events on a Monitor wake with maxWaitMs=1 and no 55s long-poll; step 2 arms `generacy cockpit doorbell` under Monitor, not run_in_background, and `generacy cockpit watch` is retired from the auto sensor", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const steps = extractInstructionsSteps(autoMd);
     const step2 = steps.get(2) ?? "";
@@ -1524,6 +1526,16 @@ describe("406 — cockpit MCP tool migration + await-events loop", () => {
     // raw backgrounded Bash process.
     expect(step2.includes("run_in_background: true")).toBe(false);
     expect(step2, "auto.md step 2 must arm the sensor under `Monitor`").toContain("Monitor");
+    // #431: the auto sensor is `generacy cockpit doorbell`, not the pre-#431
+    // `generacy cockpit watch`. A regression to `watch` would silently
+    // reintroduce the double-poll condition #431 exists to fix.
+    expect(step2, "auto.md step 2 must spawn `generacy cockpit doorbell` as the sensor").toContain(
+      "generacy cockpit doorbell",
+    );
+    expect(
+      /generacy cockpit watch\b/.test(step2),
+      "auto.md step 2 must not spawn `generacy cockpit watch` (retired in #431 for the auto sensor; `/cockpit:watch` retains it in watch.md)",
+    ).toBe(false);
     // #420 C3: step 4 is wake-driven — the drain runs on a Monitor-delivered
     // wake (or a ScheduleWakeup heartbeat fire), not a blocking long-poll.
     expect(step4, "auto.md step 4 must be Monitor-wake driven").toContain("Monitor");
@@ -1531,6 +1543,12 @@ describe("406 — cockpit MCP tool migration + await-events loop", () => {
     expect(
       step4.includes("maxWaitMs=55000"),
       "auto.md step 4 must not reinstate the 55s long-poll (#420 SC-001/SC-002)",
+    ).toBe(false);
+    // #431: step 4's Monitor-delivered wake references `generacy cockpit doorbell`
+    // as the sensor source (not `generacy cockpit watch`).
+    expect(
+      /generacy cockpit watch\b/.test(step4),
+      "auto.md step 4 must not reference `generacy cockpit watch` as the sensor (retired in #431)",
     ).toBe(false);
   });
 

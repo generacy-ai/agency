@@ -8,7 +8,7 @@ arguments:
 
 # Auto Command
 
-Drive the named tracking ref (an epic, an existing tracking issue, or a newly filed tracking issue) to terminal state by dispatching Monitor-delivered wake-ups through `cockpit_await_events` and routing to the six existing assist commands' *actions* (MCP tool calls + subagent hops), never the assist commands themselves. The loop shape is: **pre-flight (incl. `Monitor` presence check) → arm `generacy cockpit watch <epic-ref>` under harness `Monitor` (sensor) → startup sweep (tool-presence check + synthetic-event dispatch) → per wake (Monitor line OR ScheduleWakeup heartbeat fire): drain typed batch via `cockpit_await_events(epic|issue, cursor, maxWaitMs=1, coalesceWindowMs=3000)` → consume batch in stream order → per event: re-check live state → dispatch → write one ledger line → advance in-memory cursor → arm next heartbeat → wait for next wake → exit on terminal state (`epic-complete` in epic mode, G.7 scope-drained `Finish` in epic-less mode).** Two hard boundaries are load-bearing: **never merge on red** (validate + green is mechanical; anything red routes through the bounded-fixer branch and, if still red, an escalation gate) and **every gate prompts** (per-gate auto-approve / "full auto" is explicitly out of scope). Analysis lives in subagents (`subagent_type: "general-purpose"`) whose contracts return strict JSON per hop; the parent loop stays thin.
+Drive the named tracking ref (an epic, an existing tracking issue, or a newly filed tracking issue) to terminal state by dispatching Monitor-delivered wake-ups through `cockpit_await_events` and routing to the six existing assist commands' *actions* (MCP tool calls + subagent hops), never the assist commands themselves. The loop shape is: **pre-flight (incl. `Monitor` presence check) → arm `generacy cockpit doorbell <epic-ref>` under harness `Monitor` (sensor) → startup sweep (tool-presence check + synthetic-event dispatch) → per wake (Monitor line OR ScheduleWakeup heartbeat fire): drain typed batch via `cockpit_await_events(epic|issue, cursor, maxWaitMs=1, coalesceWindowMs=3000)` → consume batch in stream order → per event: re-check live state → dispatch → write one ledger line → advance in-memory cursor → arm next heartbeat → wait for next wake → exit on terminal state (`epic-complete` in epic mode, G.7 scope-drained `Finish` in epic-less mode).** Two hard boundaries are load-bearing: **never merge on red** (validate + green is mechanical; anything red routes through the bounded-fixer branch and, if still red, an escalation gate) and **every gate prompts** (per-gate auto-approve / "full auto" is explicitly out of scope). Analysis lives in subagents (`subagent_type: "general-purpose"`) whose contracts return strict JSON per hop; the parent loop stays thin.
 
 ## User Input
 
@@ -34,25 +34,25 @@ $ARGUMENTS
    Monitor tool is required for /cockpit:auto but is not available in this harness. Upgrade Claude Code, or drive the epic manually with /cockpit:watch, /cockpit:status, and /cockpit:advance.
    ```
 
-   Then exit non-zero. Do **NOT** create the ledger directory. Do **NOT** write a ledger line — the ledger file has not been created yet at this step, and pre-flight refuses to touch the filesystem for a run that can never succeed. The check is presence-only; do not attempt to distinguish "absent" from "present-but-broken" — an actually-broken `Monitor` surfaces as a spawn failure at step 2 and routes to the C5 re-spawn branch. This `Monitor`-presence check MUST run before every other pre-flight check (before `command -v generacy`, before ledger-directory creation, before any state-changing tool call). Maps to FR-006 / SC-006.
+   Then exit non-zero. Do **NOT** create the ledger directory. Do **NOT** write a ledger line — the ledger file has not been created yet at this step, and pre-flight refuses to touch the filesystem for a run that can never succeed. The check is presence-only; do not attempt to distinguish "absent" from "present-but-broken" — an actually-broken `Monitor` surfaces as a spawn failure at step 2 and degrades to the C4 heartbeat-only recovery path (Q3=A — skill stays passive on doorbell-transport death). This `Monitor`-presence check MUST run before every other pre-flight check (before `command -v generacy`, before ledger-directory creation, before any state-changing tool call). Maps to FR-006 / SC-006.
 
-   On presence, fall through: `command -v generacy` (on failure → **Error handling** class `MISSING_BINARY`); `gh auth status` (on failure → **Error handling** class `AUTH_FAILURE`); confirm the operator's cwd is a writable git repo; create the ledger directory with `mkdir -p .generacy/cockpit/auto-runs` (on failure → **Error handling** class `OTHER`). Compute the run's ledger filename: `.generacy/cockpit/auto-runs/<tracking-ref-slug>-<timestamp>.ledger`, where `<tracking-ref-slug>` is the tracking reference with `/` replaced by `-` and `#` stripped, and `<timestamp>` is `YYYYMMDD-HHMMSS` in the operator's local time captured now.
+   On presence, fall through: `command -v generacy` (on failure → **Error handling** class `MISSING_BINARY`).
+
+   **Next**, probe for the engine doorbell surface with `generacy cockpit doorbell --help >/dev/null 2>&1`. If the probe exits non-zero (the current `generacy` build doesn't ship the `doorbell` subcommand — the surface owned by generacy#970 hasn't landed on this cluster), print verbatim:
+
+   ```
+   Engine doorbell surface not available. /cockpit:auto needs a generacy build that ships `generacy cockpit doorbell` (generacy#970). Upgrade the cluster's generacy build, or drive the epic manually with /cockpit:watch, /cockpit:status, and /cockpit:advance.
+   ```
+
+   Then exit non-zero. Do **NOT** create the ledger directory. Do **NOT** write a ledger line — pre-flight refuses to touch the filesystem for a run that can never succeed. Do **NOT** fall back to spawning `generacy cockpit watch` — a silent fallback would mask engine-agency version drift and re-introduce the double-poll condition this playbook exists to remove.
+
+   On probe success, continue: `gh auth status` (on failure → **Error handling** class `AUTH_FAILURE`); confirm the operator's cwd is a writable git repo; create the ledger directory with `mkdir -p .generacy/cockpit/auto-runs` (on failure → **Error handling** class `OTHER`). Compute the run's ledger filename: `.generacy/cockpit/auto-runs/<tracking-ref-slug>-<timestamp>.ledger`, where `<tracking-ref-slug>` is the tracking reference with `/` replaced by `-` and `#` stripped, and `<timestamp>` is `YYYYMMDD-HHMMSS` in the operator's local time captured now.
 
    **Ledger header line** — the FIRST line of the ledger file, written above the dispatch stream: `Tracking ref: <tracking-ref> · form: <invocationForm>`. Under Forms 1 and 2 the header is written at step 1 (before the startup sweep). Under Form 3 the header is written after G.6 approval; if G.6 was skipped at the initial fire, the header carries `form: tracking-new (abandoned before creation)` and the run exits.
 
-2. **Arm the background sensor under harness `Monitor`.** Spawn `generacy cockpit watch <epic-ref>` under the harness `Monitor` tool at loop start. The verb's positional is named `<epic-ref>` (matching `generacy cockpit watch --help`), but it takes the epic ref under `invocationForm: epic` or the tracking ref under `--tracking` / `--new` (matching the ledger header line's `Tracking ref:` field) — any task-list-bearing scope issue is accepted. The `Monitor.spawn(...)` call binds `monitorHandle` (see `data-model.md § In-memory loop state`) and re-invokes the model exactly when the child emits a stdout line — idle cost is zero. The NDJSON content on stdout is a **doorbell only**: the parent NEVER parses lines for content. `cockpit_await_events` remains the sole source of typed batches (step 4). On successful arm-up, write the ledger line:
+2. **Arm the background sensor under harness `Monitor`.** Spawn `generacy cockpit doorbell <epic-ref>` under the harness `Monitor` tool at loop start. The verb's positional is named `<epic-ref>` (matching `generacy cockpit doorbell --help`), but it takes the epic ref under `invocationForm: epic` or the tracking ref under `--tracking` / `--new` (matching the ledger header line's `Tracking ref:` field) — any task-list-bearing scope issue is accepted. The `Monitor.spawn(...)` call binds `monitorHandle` (see `data-model.md § In-memory loop state`) and re-invokes the model exactly when the child emits a stdout line — idle cost is zero. The stdout content is a **doorbell only**: the parent NEVER parses lines for content. `cockpit_await_events` remains the sole source of typed batches (step 4). **No ledger line for sensor arm-up** — the doorbell subprocess is engine-owned per generacy#970 (it internally attaches to the shared event-bus poll loop `cockpit_await_events` drains rather than running its own poll cycle), and skill-side arm-up produces no ledger row. The pre-#431 `watch-lifecycle · spawn · armed` row is retired along with the C5 re-spawn state machine.
 
-   ```text
-   <ref> · watch-lifecycle · spawn · armed
-   ```
-
-   On **immediate spawn failure** (`Monitor.spawn(...)` returns a spawn error, e.g., binary not on `$PATH`, cluster registration missing), write the ledger line:
-
-   ```text
-   <ref> · watch-lifecycle · spawn · spawn failed: <description>
-   ```
-
-   Then transition into the step 5 C5 re-spawn branch with `watchRespawnAttemptCounter = 1` and `watchRespawnBackoffSec = 1`. Do NOT abort the run — the C5 branch owns the recovery walk. The cursor is unchanged from pre-#420: the first `cockpit_await_events` call in step 4 arms the in-memory cursor from the tool server's connect-time position. Maps to FR-001, FR-009, SC-004.
+   On **immediate spawn failure** (`Monitor.spawn(...)` returns a spawn error — should not happen when pre-flight passed, but may surface as a transient cluster-registration race), the skill **stays passive**: no ledger line, no re-spawn branch (Q3=A). The C4 heartbeat (step 4) is the sole recovery signal — the loop degrades to heartbeat-only cost until the engine restores the doorbell surface. Transport resilience lives behind the doorbell surface itself, not in a skill-side state machine. The cursor is unchanged from pre-#420: the first `cockpit_await_events` call in step 4 arms the in-memory cursor from the tool server's connect-time position. Maps to FR-001, FR-009, SC-004.
 
 3. **Startup sweep.**
 
@@ -69,7 +69,7 @@ $ARGUMENTS
 
 4. **Main loop (wake-driven).** Post-#420, the loop is **wake-driven**, not long-polling. The model does nothing between wakes — the harness re-invokes the loop only when a wake signal arrives:
 
-   - **Monitor-delivered wake**: the harness re-invokes the model because `Monitor` observed a new stdout line from the `generacy cockpit watch <epic-ref>` sensor armed in step 2. The line content is a doorbell only — never parsed.
+   - **Monitor-delivered wake**: the harness re-invokes the model because `Monitor` observed a new stdout line from the `generacy cockpit doorbell <epic-ref>` sensor armed in step 2. The line content is a doorbell only — never parsed.
    - **`ScheduleWakeup` heartbeat fire**: the harness re-invokes the model because the belt-and-braces heartbeat (armed per C4 below) elapsed while `Monitor` was silent.
 
    Idle cost between wakes is **zero tokens** — no polling turn, no context re-read. This is the load-bearing property of the whole rewrite.
@@ -90,8 +90,6 @@ $ARGUMENTS
    **Initial-flagged events** — `issue-transition` events with `initial: true` from `cockpit_await_events`, produced by generacy#935 for connect-time snapshots and mid-run scope joins (e.g., events emitted after `cockpit_scope_add`) — dispatch through the existing table by their carried state class, the same as any other event. The step-4a re-check remains authoritative. **D.10 structurally cannot fire on an initial-flagged event because the state class is known.** No new dispatch row is added; the initial-flag is orthogonal to dispatch (Q5 anchor). Preserved verbatim from pre-#420 semantics.
 
    **Empty-batch handling**: A wake whose drain returns zero events is a legitimate outcome. Under a Monitor-delivered wake this indicates burst coalescing (the doorbell line's state was already consumed by an earlier drain) or a spurious wake. Under a heartbeat fire it usually indicates a genuine quiet interval (or a superseded prior heartbeat firing after a Monitor wake already drained). In either case: advance the cursor to `batch.nextCursor` (the tool server's connect-time position moved forward even without events), arm the next heartbeat per C4, and wait. Ledger-only cost accounting sees zero appends for an empty-batch wake — that is the SC-001 / SC-002 saving in action. Heartbeat-fire wakes DO write a ledger line per C4 (`heartbeat · schedule-wakeup · fired · drain empty` when the drain was empty) — heartbeat accounting is separate from per-event ledger accounting. Monitor-delivered wakes with an empty drain do NOT write a ledger line (a doorbell that produced no dispatchable event is a no-op).
-
-   **Watch-health reset**: any Monitor-delivered wake whose drain dispatched at least one event resets the C5 re-spawn bookkeeping (`watchRespawnAttemptCounter → 0`, `watchRespawnBackoffSec → 1`). A drain that returns zero events after a heartbeat fire is NOT a health signal — the watch never woke.
 
    Maps to FR-002, FR-003, FR-007, SC-001, SC-002.
 
@@ -125,9 +123,7 @@ $ARGUMENTS
 
    Maps to FR-004, SC-005.
 
-5. **Cursor recovery + Watch re-spawn.** Two lifecycle-recovery branches live in step 5: cursor recovery (Branch A / Branch B, unchanged from #924 semantics) and Watch re-spawn (C5, new in #420). Both restore the loop's ability to make progress after a lifecycle event; both are idempotent by construction. **Cursor recovery** is described below; **Watch re-spawn** is described at the end of this step.
-
-   **Cursor recovery.** There is no watch process to re-arm from the cursor's perspective — the cursor is in-memory only, held for the lifetime of the current dispatch loop. Each cursor-error signal returned from `cockpit_await_events` is classified per the post-#924 hardened taxonomy and routed onto one of two branches. The parent maintains a **per-class consecutive-fault counter** — one counter each for `invalid-cursor`, `resetFrom`, `expiry`, `discarded`. Every counter resets to 0 on any **successful cursor reuse**: any `cockpit_await_events` call presenting a non-null cursor and returning no cursor-error signal (empty batches included — an accepted cursor returning zero events is the cursor mechanism working perfectly on a quiet epic). All counters reset together; the `streakOperatorAcknowledged` flag (see Branch B) resets to `false` on the same event.
+5. **Cursor recovery.** There is no watch process to re-arm from the cursor's perspective — the cursor is in-memory only, held for the lifetime of the current dispatch loop. Each cursor-error signal returned from `cockpit_await_events` is classified per the post-#924 hardened taxonomy and routed onto one of two branches. The parent maintains a **per-class consecutive-fault counter** — one counter each for `invalid-cursor`, `resetFrom`, `expiry`, `discarded`. Every counter resets to 0 on any **successful cursor reuse**: any `cockpit_await_events` call presenting a non-null cursor and returning no cursor-error signal (empty batches included — an accepted cursor returning zero events is the cursor mechanism working perfectly on a quiet epic). All counters reset together; the `streakOperatorAcknowledged` flag (see Branch B) resets to `false` on the same event.
 
    **Branch A — recover (unchanged semantics; per-class ledger accounting only):**
    - `resetFrom` reset signal in the returned batch — the tool server signaled a reset in the batch metadata (e.g., server-side event-log rotation). Increment `resetFrom` counter; recover; ledger `<epic-ref> · cursor-recovery · resetFrom · <resetFrom-counter>`.
@@ -147,63 +143,6 @@ $ARGUMENTS
    Q2=A reset semantics (verbatim): any successful cursor reuse resets **ALL** counters to 0 and clears `streakOperatorAcknowledged`. A fresh 2-in-a-row `invalid-cursor` streak after a healed period is a **new** escalation decision — the gate re-fires at count == 2 again (per Q4=A).
 
    The compound-liveness cross-check (N=4 empty reads + actionable live state) retires with this step. The `maxWaitMs=1` at the tool boundary makes each drain effectively non-blocking; the "no events" case now surfaces as a Monitor-silent interval bounded by the C4 heartbeat, and the tool server owns the "silent stall" detection (a stalled server returns a typed error or fails the tool call, both of which the recovery branches above handle).
-
-   **Watch re-spawn (C5).** On any Monitor-reported exit of the `generacy cockpit watch <epic-ref>` subprocess armed in step 2 (or after a step-2 immediate spawn failure that routed here with `attempt=1 backoff=1s`):
-
-   1. Print the following line verbatim to the transcript (user-visible surface — FR-005):
-
-      ```text
-      [watch] Monitor reported exit · code=<c> · backoff=<b>s
-      ```
-
-      where `<c>` is the Monitor-reported exit code (or `spawn-failed` on a step-2 immediate spawn failure) and `<b>` is the current `watchRespawnBackoffSec`.
-
-   2. Write the ledger line:
-
-      ```text
-      <ref> · watch-lifecycle · watch-respawn · attempt=<n> backoff=<b>s exit=<code>
-      ```
-
-      where `<n>` is `watchRespawnAttemptCounter`, `<b>` is `watchRespawnBackoffSec`, and `<code>` is the exit code (or `spawn-failed`).
-
-   3. Wait `<b>` seconds. When `<b> ≤ 60`, use `Bash sleep <b>` (fits inside a single turn). When `<b> > 60`, use `ScheduleWakeup(delaySeconds=<b>, prompt=<verbatim /cockpit:auto invocation>, reason="cockpit-auto watch re-spawn backoff")` (the wait shouldn't burn a turn's context at longer backoffs — the harness re-invokes the loop when the delay elapses).
-
-   4. Attempt `Monitor.spawn("generacy cockpit watch <epic-ref>")` again.
-
-      - **On spawn success**: write the ledger line
-
-        ```text
-        <ref> · watch-lifecycle · watch-respawn · attempt=<n> backoff=<b>s spawned
-        ```
-
-        Continue the main loop (fall back through to step 4's wake-driven iteration). The updated `monitorHandle` binds to the new subprocess. **Do NOT reset the backoff/attempt counters here** — reset happens only on watch-*health* (per below), not on watch-*re-arm*. A watch that spawns but immediately dies again should walk the same backoff sequence forward.
-
-      - **On spawn failure**: write the ledger line
-
-        ```text
-        <ref> · watch-lifecycle · watch-respawn · attempt=<n> backoff=<b>s spawn failed: <description>
-        ```
-
-        Increment `watchRespawnAttemptCounter`, double `watchRespawnBackoffSec` (`b ← min(2b, 300)`), and retry from step 1. **No hard retry cap; retries are unbounded.** No fallback to long-poll mode (Q3=A).
-
-   **Backoff schedule** (fixed, hardcoded in the playbook):
-
-   ```text
-   1s → 2s → 4s → 8s → 16s → 32s → 64s → 128s → 256s → 300s (hold)
-   ```
-
-   The ceiling at 300s ties the pathological case (persistently-dead watch) to exactly one heartbeat's cost — the C4 heartbeat already accepts that cadence, so a dead watch degrades to *exactly* heartbeat cost, not a multiple of it (Q4=A).
-
-   **Reset rule (watch-health signal)**: any Monitor-delivered wake whose drain (per C3 step 4.i) dispatched at least one event resets both counters:
-
-   ```text
-   watchRespawnAttemptCounter ← 0
-   watchRespawnBackoffSec     ← 1
-   ```
-
-   A drain that returns zero events after a heartbeat fire is NOT a health signal — the watch never woke. A Monitor-delivered wake with an empty drain is also NOT a health signal (the doorbell fired but produced no dispatchable event; the watch is technically alive but not yet demonstrated healthy). Only a real event dispatched from a Monitor-delivered drain proves the watch is producing signal end-to-end.
-
-   Maps to FR-005, SC-005.
 
 6. **Exit.** On `epic-complete`, print the run summary per § Ledger L.6 (including the absolute path of the run's `.ledger` file), and exit zero. Non-`epic-complete` exits (Stop from an escalation gate, unrecoverable error) print an abbreviated summary with the exit reason.
 
@@ -1080,9 +1019,9 @@ or, using the mnemonic column names: `issue · transition · action · outcome`.
 
 > A dispatch without a ledger line is a protocol violation.
 
-**What counts as a "dispatch"**: any event line from `cockpit watch` that the parent processes (branches into the dispatch table); any event synthesized by the startup sweep; any escalation-gate retry that re-runs the fixer or re-presents the escalation gate; any session-mute skip.
+**What counts as a "dispatch"**: any typed event from a `cockpit_await_events` batch that the parent processes (branches into the dispatch table); any event synthesized by the startup sweep; any escalation-gate retry that re-runs the fixer or re-presents the escalation gate; any session-mute skip.
 
-**What does NOT count**: re-check calls that don't produce a dispatch decision; pre-flight failures (before the loop begins). Note: watch re-spawns DO ledger — the `watch-lifecycle · watch-respawn` rows in the § Action + outcome vocabulary table are mandatory per-attempt per FR-005 (post-#420 norm-shift; pre-#420 auto.md excluded re-arms from ledger accounting).
+**What does NOT count**: re-check calls that don't produce a dispatch decision; pre-flight failures (before the loop begins); re-arms and doorbell arm-ups are not dispatches (re-arms are idempotent).
 
 **Persistence rule (dual-write, unconditional)**:
 
@@ -1096,7 +1035,7 @@ Write mechanism: `echo "<line>" >> .generacy/cockpit/auto-runs/<epic-ref-slug>-<
 
 **Timestamp format**: `YYYYMMDD-HHMMSS` in the operator's local time, captured at the start of the run (step 1).
 
-**Idempotency rule (L.5 — startup sweep + live-state re-check)**: The startup sweep (step 3) + the live-state re-check (step 4a) guarantee that spawning `cockpit watch` twice on the same live state produces no duplicate action. Each synthetic event from the startup sweep produces its own ledger line, per the mandatory-per-dispatch rule. On watch re-arm (step 5), events streamed for state already dispatched are recognized as no-ops by the re-check step and dispatched only if the live state is still actionable.
+**Idempotency rule (L.5 — startup sweep + live-state re-check)**: The startup sweep (step 3) + the live-state re-check (step 4a) guarantee that re-arming the doorbell sensor on the same live state produces no duplicate action. Each synthetic event from the startup sweep produces its own ledger line, per the mandatory-per-dispatch rule. Events streamed for state already dispatched are recognized as no-ops by the re-check step and dispatched only if the live state is still actionable.
 
 ### Action + outcome vocabulary (per dispatch row)
 
@@ -1137,11 +1076,9 @@ Stable strings per dispatch table row, so `grep` recipes on `<action>` / `<outco
 | D.8 phase-queue hold / queued-with-ad-hoc (non-empty ad-hoc list) | `phase-queue-gate` | `held (<M> ad-hoc open)`, `queued P<next> (<N> issues) with <M> ad-hoc open` |
 | D.8 `openAdHocIssues` helper (failure only) | `openAdHocIssues` | `error: cockpit_status failed for <ref>: <description>` |
 | mute-set hit | `(muted)` | `skip (session-local mute active)` |
-| Watch lifecycle — arm-up (step 2) | `watch-lifecycle · spawn` | `armed`, `spawn failed: <description>` |
-| Watch lifecycle — re-spawn (step 5 C5) | `watch-lifecycle · watch-respawn` | `attempt=<n> backoff=<b>s exit=<code>`, `attempt=<n> backoff=<b>s spawned`, `attempt=<n> backoff=<b>s spawn failed: <description>` |
 | Heartbeat fire (step 4 C4) | `heartbeat · schedule-wakeup` | `fired · drain empty`, `fired · drain complete (<M> events)` |
 
-The `<issue-ref>` slot of the three rows above carries the **`<epic-ref>`** (or the tracking ref under `--tracking` / `--new`, matching the ledger header line's `Tracking ref:` field) — the watch subprocess and heartbeat are epic-scoped, not per-issue.
+The `<issue-ref>` slot of the heartbeat row carries the **`<epic-ref>`** (or the tracking ref under `--tracking` / `--new`, matching the ledger header line's `Tracking ref:` field) — heartbeats are epic-scoped, not per-issue.
 
 ### L.4 — Status table policy
 
@@ -1198,7 +1135,7 @@ Counts are derived from the ledger file (or the in-memory count if the file is u
 4. **No cross-slash-command invocation** from `auto.md`. Cross-command composition is CLI verb (`generacy cockpit …`) + subagent boundary only. No `/cockpit:*`, `/code-review`, or `/speckit:*` invocation from the parent's execution path.
 5. **Analysis in subagents** whose contracts end with the subagent — the #390 pattern. All four analysis workloads (clarification drafting, review verdict, manual-validation summary, bounded fixer) live inside `subagent_type: "general-purpose"` hops with strict-JSON returns.
 6. **Autonomy *policy* out of scope.** Per-gate auto-approve and "full auto" mode are explicitly out of scope in v1. Every gate prompts; none auto-proceed.
-7. **Stream consumption is unfiltered.** Every non-empty line from `cockpit watch` is an event; content-based filters over the stream are prohibited. If the harness requires a match pattern to arm a reader, it matches any non-empty line, never a JSON field.
+7. **Stream consumption is unfiltered.** Every non-empty line from `generacy cockpit doorbell` is a doorbell only; doorbell content is a doorbell only; never parsed for content. Content-based filters over the stream are prohibited. If the harness requires a match pattern to arm a reader, it matches any non-empty line, never a JSON field.
 8. **Ledger-only rows are cheap by contract.** A transition that dispatches to a ledger-only row (D.9, D.9a, D.9b, D.9c, D.9d) must add no tool calls beyond the ledger append and no prose. Playbook edits that add per-event output — a `cockpit_status` re-check, an epic status table, a prose recap — on a ledger-only row are efficiency regressions.
 9. **MCP-tool-only invariant.** After the migration, `auto.md` invokes no `generacy cockpit <migrated-verb>` Bash form — every dispatch of the six migrated verbs (`status`, `context`, `queue`, `advance`, `resume`, `merge`) goes through its `cockpit_*` MCP tool. Playbook edits that reintroduce the Bash form are drift regressions.
 
@@ -1210,8 +1147,7 @@ Command: `/cockpit:auto christrudelpw/epic#42`
 
 Run shape:
 
-1. **Sensor arm-up** — step 2 spawns `generacy cockpit watch christrudelpw/epic#42` under harness `Monitor`.
-   - Ledger: `christrudelpw/epic#42 · watch-lifecycle · spawn · armed`.
+1. **Sensor arm-up** — step 2 spawns `generacy cockpit doorbell christrudelpw/epic#42` under harness `Monitor` (no ledger line — sensor arm-up is engine-owned).
 2. **Startup sweep** — the parent verifies the seven `cockpit_*` MCP tools are present, then calls `cockpit_status(epic="christrudelpw/epic#42", json=true)` and finds P1 has three actionable children: `#43` in `waiting-for:clarification`, `#44` in `waiting-for:implementation-review`, `#45` in `waiting-for:manual-validation`. Each is dispatched in order.
 2. **D.1 for #43** — clarification drafter subagent → fused batch gate with N=3 questions (`ceil(3/4) = 1` `AskUserQuestion` call in one response) → all approved → post + `cockpit_advance(issue="christrudelpw/epic#43", gate="clarification")`.
    - Ledger: `christrudelpw/epic#43 · waiting-for:clarification · clarification-batch · advanced`.
