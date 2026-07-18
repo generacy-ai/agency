@@ -2370,6 +2370,197 @@ describe("433 — auto.md doorbell probe uses pure verb-existence form, not the 
   });
 });
 
+// -----------------------------------------------------------------------------
+// 437 — enriched-line dispatch drops the per-event `cockpit_status(epic, json=true)`
+// re-check for label-driven classes (D.1–D.4, D.7, D.9/D.9a–D.9d) and consults the
+// baked `checks` verdict for D.5/D.6 — retaining the re-check only for D.8, D.10,
+// D.11 (human/consequential gates). The doorbell subprocess (generacy#985) now
+// emits an NDJSON line per event carrying `{ to, labels, checks?, ... }`; the
+// parent parses it and dispatches directly. Pins:
+//   437-1 — step 4a is now the unified "Resolve authoritative state" contract;
+//           the pre-#437 "advisory / live is authoritative" wording is retired.
+//   437-2 — D.1–D.4 and D.7 dispatch narrations name the enriched line's
+//           `to`/`labels` as source-of-truth; no positive per-event re-check
+//           imperative remains in those blocks.
+//   437-3 — § Invariants §7 retains the anti-drop clause and cross-references
+//           the § Enriched-line dispatch contract; the pre-#437
+//           "never parsed for content" clause is retired.
+//   437-4 — § Ledger section carries the literal `source: enriched-line`
+//           marker vocabulary.
+//   437-5 — D.5/D.6 narrations name both `absent` AND `pending` as fallback
+//           triggers (per Q4=B). Q4=A defer-on-pending is explicitly rejected.
+//   437-6 — D.8/D.10/D.11 narrations state the retain-the-re-check rule as
+//           a positive obligation.
+// -----------------------------------------------------------------------------
+
+function extractLedgerSection(md: string): string {
+  const start = md.indexOf("\n## Ledger\n");
+  if (start === -1) throw new Error("§ Ledger heading not found in auto.md");
+  const rest = md.slice(start + 1);
+  const nextH2 = rest.indexOf("\n## ", 1);
+  return nextH2 === -1 ? rest : rest.slice(0, nextH2);
+}
+
+describe("437 — auto.md enriched-line dispatch drops per-event cockpit_status re-check for label-driven classes", () => {
+  it("437-1: step 4a is the unified `Resolve authoritative state` contract that prefers the enriched line; pre-#437 `advisory / live is authoritative` wording is retired", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const steps = extractInstructionsSteps(autoMd);
+    const step4 = steps.get(4) ?? "";
+
+    // Positive: the new unified contract wording is present in step 4.
+    expect(
+      step4,
+      "positive pin: step 4a must open with the new `Resolve authoritative state.` contract wording",
+    ).toContain("Resolve authoritative state");
+    expect(
+      step4,
+      "positive pin: step 4a must state the priority as `Prefer the enriched doorbell line`",
+    ).toContain("Prefer the enriched");
+
+    // Negative: the pre-#437 canonical phrase is gone from all of auto.md, not
+    // just step 4 (a partial revert that reintroduces it elsewhere is a drift).
+    expect(
+      autoMd.includes("The batch event is advisory; the live return is authoritative"),
+      "negative pin: the pre-#437 phrase `The batch event is advisory; the live return is authoritative` must appear nowhere in auto.md",
+    ).toBe(false);
+  });
+
+  it("437-2: D.1–D.4 and D.7 dispatch narrations name the enriched line's `to`/`labels` as source-of-truth; no positive per-event `cockpit_status` re-check imperative remains", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const headers = [
+      "D.1 — `waiting-for:clarification`",
+      "D.2 — `waiting-for:<artifact>-review`",
+      "D.3 — `waiting-for:implementation-review`",
+      "D.4 — `waiting-for:manual-validation`",
+      "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)",
+    ];
+    for (const header of headers) {
+      const block = extractSubheadingBlock(autoMd, header);
+
+      // Positive: block names the enriched line's `to` and `labels` as source-of-truth.
+      expect(
+        block,
+        `positive pin (${header}): dispatch narration must name the enriched line's \`to\` as source-of-truth`,
+      ).toContain("`to`");
+      expect(
+        block,
+        `positive pin (${header}): dispatch narration must name the enriched line's \`labels\` as source-of-truth`,
+      ).toContain("`labels`");
+      expect(
+        block,
+        `positive pin (${header}): dispatch narration must reference the § Enriched-line dispatch contract`,
+      ).toContain("Enriched-line dispatch contract");
+
+      // Negative: no positive per-event re-check imperative remains. The pre-#437
+      // shape had a `Re-check live state via cockpit_status(...)` imperative bullet;
+      // the post-#437 blocks only mention `cockpit_status` inside a negation clause
+      // ("no per-event `cockpit_status(...)` re-check fires on the enriched-line path")
+      // or inside a scoped fallback rule — neither of which matches the imperative
+      // regex below.
+      expect(
+        block,
+        `negative pin (${header}): dispatch narration must NOT contain the pre-#437 \`Re-check live state\` imperative`,
+      ).not.toMatch(/Re-check live state/);
+    }
+  });
+
+  it("437-3: § Invariants §7 retains the anti-drop clause and cross-references the § Enriched-line dispatch contract; the pre-#437 `never parsed for content` clause is retired", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const invariants = extractInvariantsSection(autoMd);
+
+    // §7 is the "Stream consumption is unfiltered" invariant.
+    const item7Match = invariants.match(/^7\.\s+\*\*Stream consumption is unfiltered\.\*\*([^]*?)(?=^\d+\.\s+\*\*|$)/m);
+    expect(
+      item7Match,
+      "positive pin: § Invariants must contain a §7 opening with `Stream consumption is unfiltered.`",
+    ).toBeTruthy();
+    const item7Body = item7Match![1]!;
+
+    // Positive: §7 references the § Enriched-line dispatch contract as the parse authority.
+    expect(
+      item7Body,
+      "positive pin: §7 must cross-reference the § Enriched-line dispatch contract",
+    ).toContain("Enriched-line dispatch contract");
+    // Positive: §7 retains the anti-drop protection (content-based filters prohibited).
+    expect(
+      item7Body,
+      "positive pin: §7 must retain the anti-drop clause `content-based filters` prohibition",
+    ).toMatch(/content-based filters/i);
+
+    // Negative: the pre-#437 `never parsed for content` phrase is retired.
+    expect(
+      item7Body.includes("never parsed for content"),
+      "negative pin: the pre-#437 phrase `never parsed for content` must not appear inside § Invariants §7",
+    ).toBe(false);
+  });
+
+  it("437-4: § Ledger section carries the literal `source: enriched-line` marker vocabulary", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const ledger = extractLedgerSection(autoMd);
+
+    // Positive-only pin: the literal marker string appears in the § Ledger section
+    // (per contracts/enriched-line-dispatch.md C8 row 437-4). Post-mortems `grep`
+    // on this string to isolate enriched-line dispatch rows from fallback re-query
+    // rows, so the marker's presence in the ledger vocabulary is load-bearing.
+    expect(
+      ledger,
+      "positive pin: § Ledger section must contain the literal `source: enriched-line` marker",
+    ).toContain("source: enriched-line");
+  });
+
+  it("437-5: D.5/D.6 narrations name both `absent` AND `pending` as fallback triggers; the Q4=A defer-on-pending phrasing is rejected", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const headers = [
+      "D.5 — `completed:validate` (checks green) → merge without gate",
+      "D.6 — `completed:validate` (red) / merge red → bounded fixer subagent",
+    ];
+    for (const header of headers) {
+      const block = extractSubheadingBlock(autoMd, header);
+
+      // Positive: block names both `absent` and `pending` as fallback triggers per Q4=B.
+      expect(
+        block,
+        `positive pin (${header}): narration must name \`absent\` as a fallback trigger`,
+      ).toContain("absent");
+      expect(
+        block,
+        `positive pin (${header}): narration must name \`pending\` as a fallback trigger`,
+      ).toContain("pending");
+
+      // Negative: Q4=A defer-on-pending is rejected. The pre-#437 clarification round
+      // considered a "defer this wake / wait for the next doorbell fire" phrasing —
+      // it must appear nowhere in D.5/D.6 dispatch narrations.
+      expect(
+        block,
+        `negative pin (${header}): narration must NOT contain a defer-on-pending phrasing (Q4=A rejection)`,
+      ).not.toMatch(/defer\s+(this\s+wake|on\s+pending)/i);
+    }
+  });
+
+  it("437-6: D.8/D.10/D.11 narrations state the retain-the-re-check rule as a positive obligation", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const headers = [
+      "D.8 — `phase-complete` → phase-queue confirmation gate",
+      "D.10 — Unrecognized / ambiguous state → escalation gate (Skip / Stop only)",
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+    ];
+    for (const header of headers) {
+      const block = extractSubheadingBlock(autoMd, header);
+
+      // Positive-only pin: retain-the-re-check phrase is a positive obligation. The
+      // three classes open human/consequential gates where a stale-line dispatch
+      // could open a gate against superseded state — future authors editing these
+      // dispatch rows read the retain rule from the block itself. The regex is
+      // permissive on what follows `cockpit_status` (the D.8/D.10/D.11 wordings
+      // spell the argument list explicitly, e.g., `cockpit_status(epic=<epic-ref>, json=true)`).
+      expect(
+        block,
+        `positive pin (${header}): narration must state the retain-the-re-check obligation`,
+      ).toMatch(/retain[s]?\s+the\s+per-event\s+`cockpit_status/);
+    }
+  });
+});
+
 // Silence TS unused-import warning if only used for type narrowing.
 const _typeGuardAddExisting = (a: AddExistingIntent) => a.ref;
 const _typeGuardFileNew = (a: FileNewIntent) => a.topic;
