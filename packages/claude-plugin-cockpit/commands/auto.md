@@ -50,7 +50,7 @@ $ARGUMENTS
 
    **Ledger header line** — the FIRST line of the ledger file, written above the dispatch stream: `Tracking ref: <tracking-ref> · form: <invocationForm>`. Under Forms 1 and 2 the header is written at step 1 (before the startup sweep). Under Form 3 the header is written after G.6 approval; if G.6 was skipped at the initial fire, the header carries `form: tracking-new (abandoned before creation)` and the run exits.
 
-2. **Arm the background sensor under harness `Monitor`.** Spawn `generacy cockpit doorbell <epic-ref>` under the harness `Monitor` tool at loop start. The verb's positional is named `<epic-ref>` (matching `generacy cockpit help doorbell`), but it takes the epic ref under `invocationForm: epic` or the tracking ref under `--tracking` / `--new` (matching the ledger header line's `Tracking ref:` field) — any task-list-bearing scope issue is accepted. The `Monitor.spawn(...)` call binds `monitorHandle` (see `data-model.md § In-memory loop state`) and re-invokes the model exactly when the child emits a stdout line — idle cost is zero. The stdout content is a **doorbell only**: the parent NEVER parses lines for content. `cockpit_await_events` remains the sole source of typed batches (step 4). **No ledger line for sensor arm-up** — the doorbell subprocess is engine-owned per generacy#974 (it internally attaches to the shared event-bus poll loop `cockpit_await_events` drains rather than running its own poll cycle), and skill-side arm-up produces no ledger row. The pre-#431 `watch-lifecycle · spawn · armed` row is retired along with the C5 re-spawn state machine.
+2. **Arm the background sensor under harness `Monitor`.** Spawn `generacy cockpit doorbell <epic-ref>` under the harness `Monitor` tool at loop start. The verb's positional is named `<epic-ref>` (matching `generacy cockpit help doorbell`), but it takes the epic ref under `invocationForm: epic` or the tracking ref under `--tracking` / `--new` (matching the ledger header line's `Tracking ref:` field) — any task-list-bearing scope issue is accepted. The `Monitor.spawn(...)` call binds `monitorHandle` (see `data-model.md § In-memory loop state`) and re-invokes the model exactly when the child emits a stdout line — idle cost is zero. The stdout content is **NDJSON per-line** — the parent parses each line as a candidate enriched event per § Enriched-line dispatch contract (E2 detection gate). Enriched lines (JSON-parseable objects carrying `to` and `labels`) drive label-driven dispatch (D.1–D.4, D.7, D.9, D.9a–D.9d) and inform the D.5/D.6 merge gate via the baked `checks` verdict; bare or malformed lines fall back to `cockpit_await_events` for authoritative state. `cockpit_await_events` remains the sole source of typed batches for the merge-gate fallback and D.8/D.10/D.11 escalation surfaces (step 4). **No ledger line for sensor arm-up** — the doorbell subprocess is engine-owned per generacy#974 (it internally attaches to the shared event-bus poll loop `cockpit_await_events` drains rather than running its own poll cycle), and skill-side arm-up produces no ledger row. The pre-#431 `watch-lifecycle · spawn · armed` row is retired along with the C5 re-spawn state machine.
 
    On **immediate spawn failure** (`Monitor.spawn(...)` returns a spawn error — should not happen when pre-flight passed, but may surface as a transient cluster-registration race), the skill **stays passive**: no ledger line, no re-spawn branch (Q3=A). The C4 heartbeat (step 4) is the sole recovery signal — the loop degrades to heartbeat-only cost until the engine restores the doorbell surface. Transport resilience lives behind the doorbell surface itself, not in a skill-side state machine. The cursor is unchanged from pre-#420: the first `cockpit_await_events` call in step 4 arms the in-memory cursor from the tool server's connect-time position. Maps to FR-001, FR-009, SC-004.
 
@@ -82,7 +82,7 @@ $ARGUMENTS
    4. **Arm next heartbeat + wait** — fall through to step C4 (heartbeat lifecycle) to arm the next `ScheduleWakeup` and wait for the next wake signal. Do NOT re-issue `cockpit_await_events` in a tight loop — the next call happens on the next wake.
 
    For each event in the batch (in stream order):
-   - **(a) Re-check live state** via `cockpit_status(epic=<epic-ref>, json=true)` for actionable dispatch classes (D.1–D.8, D.10, D.11). The batch event is advisory; the live return is authoritative (spec § Loop). Ledger-only rows (D.9, D.9a, D.9b, D.9c, D.9d) skip the re-check per § Invariants #8's cost contract — a batch containing only ledger-only events is one ledger append per event and zero other tool calls. If the epic's live state is `epic-complete`, go to step 6.
+   - **(a) Resolve authoritative state.** Prefer the enriched doorbell line's `to` / `labels` fields (and, for D.5/D.6, the baked `checks` verdict) — a line is enriched iff it JSON-parses to an object AND carries both `to` and `labels` (per § Enriched-line dispatch contract E2). Otherwise, fall back to a single `cockpit_status(epic=<epic-ref>, json=true)` query to resolve authoritative state. **Under the enriched-line path**, D.1–D.4, D.7, and D.9/D.9a–D.9d dispatch directly from the line's `to` / `labels` fields — the per-event re-check for these classes is redundant when the line carries them. **Retain the per-event `cockpit_status` re-check for D.8, D.10, and D.11** — those open human/consequential gates where a stale-line dispatch could open a gate against superseded state, and their low frequency makes the authoritative query cost negligible. **D.5/D.6** consult the `checks` verdict on the line; if `checks` is **absent OR `pending`** (per Q4=B), fall back to a single authoritative `cockpit_status(issue=<issue-ref>, json=true)` / `cockpit_merge(issue=<issue-ref>)` query — defer-on-pending is rejected because smee doorbell delivery is best-effort/lossy and a lost follow-up event would silently stall the merge. Ledger-only rows (D.9, D.9a, D.9b, D.9c, D.9d) skip any query entirely per § Invariants #8's cost contract — a batch containing only ledger-only events is one ledger append per event and zero other tool calls. If the epic's live state is `epic-complete`, go to step 6.
    - **(b) Dispatch** per § Dispatch below, branching on the *live* transition class.
    - **(c) Write one ledger line** per § Ledger (transcript print + append to the run's `.ledger` file). A dispatch without a ledger line is a protocol violation.
    - **(d) Continue** with the next event in the batch.
@@ -146,9 +146,116 @@ $ARGUMENTS
 
 6. **Exit.** On `epic-complete`, print the run summary per § Ledger L.6 (including the absolute path of the run's `.ledger` file), and exit zero. Non-`epic-complete` exits (Stop from an escalation gate, unrecoverable error) print an abbreviated summary with the exit reason.
 
+## Enriched-line dispatch contract
+
+Post-generacy#985 the doorbell subprocess emits an NDJSON line per event carrying dispatch-sufficient fields. The parent parses each line as a candidate enriched event and dispatches label-driven classes directly from the line — dropping the per-event `cockpit_status(epic, json=true)` re-check that was the dominant GraphQL rate-limit consumer for the frequent dispatch classes. This section defines the parse gate, the per-class dispatch source, the merge-gate `checks` handling, the unified step-4a priority, the ledger marker rules, and the graceful-degradation guarantee. It is the authoritative reference for § Dispatch D.1–D.11 and step 4a; the dispatch rows below name it verbatim.
+
+### E1 — Enriched line schema (consumed, not owned)
+
+**Owner**: `generacy-ai/generacy#985` defines and versions the schema. This playbook reads what the engine emits; a future schema change on the generacy side surfaces here as a C2 detection-gate failure → fallback path fires. Reproduced for pin discoverability:
+
+```jsonc
+{
+  "type": "issue-transition",
+  "repo": "<owner>/<repo>",
+  "kind": "issue" | "pr",
+  "number": <integer>,
+  "event": "<github-event-kind>",
+  "to": "<engine-classified-target-state>",   // load-bearing: dispatch input
+  "labels": ["<current-labels>", ...],         // load-bearing: dispatch input + ledger row content
+  "url": "<github-url>",
+  "checks": "green" | "red" | "pending"        // OPTIONAL; present only on merge-verdict-relevant events (D.5/D.6)
+}
+```
+
+**Load-bearing fields** on the enriched-vs-bare gate (C2 below): `to` AND `labels`. `checks` is orthogonal to the gate and consulted only in the D.5/D.6 branch (C4).
+
+### E2 — Enriched-vs-bare detection gate
+
+**Rule**: A doorbell line is treated as **enriched** iff BOTH of the following hold:
+
+1. The line JSON-parses to a value that is (a) an object (not `null`, not a string/number/boolean, not an array), AND
+2. That object carries **both** `to` and `labels` fields with non-null, non-undefined values.
+
+Any other outcome — parse failure, non-object parse result, missing `to`, missing `labels` — treats the line as **bare** and routes it to the fallback path (single authoritative `cockpit_status(epic=<epic-ref>, json=true)` per pre-#437 shape). This gate does NOT raise an error: a malformed line goes down the fallback path; the loop keeps running.
+
+`checks` presence is NOT part of this gate. A legitimate label-change line has no `checks` — requiring `checks` here would route every label-driven line to the fallback path and nullify the whole rewrite. `checks` presence/absence is handled inside the D.5/D.6 path per C4.
+
+### E3 — Dispatch source per class
+
+Under the post-#437 contract each dispatch class falls into one of two source columns depending on whether the enriched-line path applies:
+
+| Dispatch class | Trigger token (`to` field) | Source under enriched line | Source under bare line |
+|----------------|----------------------------|----------------------------|------------------------|
+| D.1 | `waiting-for:clarification` | **enriched line** | fallback |
+| D.2 | `waiting-for:<artifact>-review` (spec/clarification/plan/tasks) | **enriched line** | fallback |
+| D.3 | `waiting-for:implementation-review` | **enriched line** | fallback |
+| D.4 | `waiting-for:manual-validation` | **enriched line** | fallback |
+| D.5 | `completed:validate` + `checks: "green"` | **enriched line + `checks`** | fallback |
+| D.6 | `completed:validate` + `checks: "red"` | **enriched line + `checks`** | fallback |
+| D.7 | `agent:error` / `failed:<subtype>` | **enriched line** | fallback |
+| D.8 | `phase-complete` | **fallback (retain re-check)** | fallback |
+| D.9 | `waiting-for:address-pr-feedback` | **enriched line** (ledger-only) | fallback (ledger-only) |
+| D.9a | `waiting-for:pr-feedback` | **enriched line** (ledger-only) | fallback (ledger-only) |
+| D.9b | `waiting-for:children-complete` | **enriched line** (ledger-only) | fallback (ledger-only) |
+| D.9c | `waiting-for:dependencies` | **enriched line** (ledger-only) | fallback (ledger-only) |
+| D.9d | `phase:*` (prefix-match) | **enriched line** (ledger-only) | fallback (ledger-only) |
+| D.10 | Unrecognized / ambiguous | **fallback (retain re-check)** | fallback |
+| D.11 | `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` | **fallback (retain re-check)** | fallback |
+
+**Retain-the-re-check** (D.8, D.10, D.11): all three open human/consequential gates where a stale-line dispatch could open a gate against superseded state — D.8's phase-queue confirmation needs authoritative per-ad-hoc-ref state; D.10 is by definition the unknown-state class; D.11 could open a merge-conflicts escalation gate against a conflict the engine has already auto-remedied. All three are low-frequency (D.8 ≈once per phase; D.10/D.11 are error/escalation cases), so retaining the authoritative re-check costs almost nothing.
+
+### E4 — `checks` verdict handling for D.5/D.6
+
+**Rule**: The D.5/D.6 merge-gate dispatch consults the `checks` field on the enriched line (E1) and branches on its value:
+
+| `checks` value | Action |
+|----------------|--------|
+| `"green"` | D.5 branch: `cockpit_merge(issue=<issue-ref>)` (unchanged from pre-#437) |
+| `"red"` | D.6 branch: bounded fixer subagent (unchanged from pre-#437) |
+| `"pending"` | **Fall back** to a single authoritative `cockpit_status(issue=<issue-ref>, json=true)` OR `cockpit_merge(issue=<issue-ref>)` (per the D.5 vs. D.6 dispatch); branch on the returned verdict per pre-#437 logic |
+| Absent (field missing OR `null`/`undefined`) | **Fall back** — same as `"pending"` |
+
+**Defer-on-pending was rejected**: smee doorbell delivery is best-effort/lossy; a lost follow-up event on the `pending → green | red` transition would silently stall the merge. Merge-gate dispatch is ≈once per issue, so the extra query cost on `pending` is negligible.
+
+**Ledger marker on fallback**: D.5/D.6 fallback rows do NOT carry the `source: enriched-line` marker (they carry no marker; equivalent to `source: re-query`).
+
+### E5 — Step-4a "resolve authoritative state" priority
+
+**Unified contract**: Step 4a resolves authoritative state per this priority list:
+
+1. **Prefer the enriched doorbell line's `to`/`labels`** (and, for D.5/D.6, `checks`) when E2 returns `enriched: true` AND the class is in the E3 "enriched line" column.
+2. **Fall back to a single `cockpit_status(epic=<epic-ref>, json=true)`** when E2 returns `enriched: false` (bare line, older engine, content-less mode), OR the class is in the E3 fallback column (D.8, D.10, D.11), OR E4's `checks` verdict is absent/pending.
+
+**Retained invariant**: `cockpit_await_events` remains the sole source of typed **batches** for the merge-gate fallback path and for D.8/D.10/D.11 escalation surfaces. The enriched line is a **dispatch input**, not a **batch source**. The distinction preserves the anti-drop protection of § Invariants §7 (content-based filters over the stream are prohibited; nothing that lands in the event log is silently dropped by the parent).
+
+### E6 — Ledger row marker
+
+**Format** (unchanged four-column shape, marker appended in outcome slot):
+
+```
+<issue-ref> · <transition-class> · <action> · <outcome> [· source: enriched-line]
+```
+
+**Marker rules**:
+
+- **Append `· source: enriched-line`** to the outcome slot when the dispatch was driven by the enriched line (E2 = true AND the class is in the E3 "enriched line" column, including D.5/D.6 with decisive `checks`).
+- **Omit the marker** (equivalent to `source: re-query`) when:
+  - The class is in the E3 "fallback" column (D.8, D.10, D.11).
+  - The class is in the E3 "enriched line" column but the line was bare (E2 = false) AND the fallback path fired.
+  - The class is D.5/D.6 and `checks` was absent OR `pending` (E4 fallback path fired).
+
+**Post-mortem grep semantics**: `grep 'source: enriched-line' <ledger>` isolates every enriched-line dispatch row (the post-#437 savings visible); `grep -v 'source: enriched-line' <ledger>` isolates every re-query row (pre-#437 shape, retain-the-re-check classes, and merge-gate fallbacks). Pre-#437 ledger files (no markers) and mixed pre/post-#437 ledgers concatenate without ambiguity.
+
+### E7 — Graceful degradation
+
+**Guarantee**: A cluster running an older `generacy` (pre-#985, no enriched line generation) sees every doorbell line fail the E2 detection gate (missing `to` and/or `labels`) and falls back to the pre-#437 `cockpit_status(epic, json=true)` per-event re-check. Pre-#437 behaviour is preserved verbatim on the fallback path.
+
+**Schema drift protection**: A future generacy-side schema change (renaming a load-bearing field, dropping `to` or `labels` from a subset of events) surfaces on the skill side as an E2 gate failure → fallback path fires → the loop keeps running at pre-#437 cost. No runtime error, no operator-visible failure — the SC-001 saving degrades gracefully back to the baseline.
+
 ## Dispatch
 
-The following nine event classes are dispatched per this table. The parent **always** re-checks live state on every event (step 4a) — streamed lines are advisory (spec § Loop trust boundary). The re-check is mandatory for every *actionable* dispatch class (D.1–D.8, D.10, D.11); ledger-only rows (D.9, D.9a, D.9b, D.9c, D.9d) skip the re-check entirely per § Invariants #8's cost contract. Each dispatch is composed of **CLI verb + optional subagent + optional gate**; no dispatch invokes a `/cockpit:*` slash command (invariant §4).
+The following nine event classes are dispatched per this table. The parent resolves authoritative state per step 4a — the enriched doorbell line's `to` / `labels` (and, for D.5/D.6, `checks`) are the source of truth for label-driven classes (D.1–D.4, D.5/D.6 on decisive `checks`, D.7, D.9, D.9a–D.9d); the per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check is retained for D.8, D.10, and D.11 (human/consequential gates), and fires as fallback for the label-driven classes when the doorbell line is bare (per FR-005 graceful degradation) or for D.5/D.6 when `checks` is absent or `pending` (per Q4=B). Ledger-only rows (D.9, D.9a, D.9b, D.9c, D.9d) skip any query entirely per § Invariants #8's cost contract. Each dispatch is composed of **CLI verb + optional subagent + optional gate**; no dispatch invokes a `/cockpit:*` slash command (invariant §4).
 
 | # | Event | Action shape |
 |---|-------|--------------|
@@ -171,6 +278,8 @@ The following nine event classes are dispatched per this table. The parent **alw
 ### D.1 — `waiting-for:clarification`
 
 **Trigger**: An issue enters `waiting-for:clarification` (open clarification questions posted, awaiting operator-authored answers). Verbatim event string: `waiting-for:clarification`.
+
+**Source of truth**: The dispatch reads `to` and `labels` from the enriched doorbell line per § Enriched-line dispatch contract E3 — no per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check fires on the enriched-line path. On bare / malformed lines the fallback path fires per FR-005 (single `cockpit_status` re-query, pre-#437 behaviour). The ledger row carries `· source: enriched-line` on the enriched-line path (no suffix on fallback) per § Enriched-line dispatch contract E6.
 
 **Dispatch**:
 1. **Fetch context**: `cockpit_context(issue=<issue-ref>)` (the same MCP tool `/cockpit:clarify` uses). The return payload's `clarificationComment.body` field carries the engine-authored batch-comment template (raw). Parse it into per-question `{title, context, question, options}` per the shared batch-comment rule (`### Q<n>: <title>` headers + `**Context**:` / `**Question**:` / `**Options**:` labels; option bullets tolerant of `A:` and `A)` styles; free-form questions with no `**Options**:` label yield `options: null`).
@@ -224,6 +333,8 @@ The following nine event classes are dispatched per this table. The parent **alw
 
 **Trigger**: An issue enters `waiting-for:spec-review`, `waiting-for:clarification-review`, `waiting-for:plan-review`, or `waiting-for:tasks-review`. Verbatim event string: `waiting-for:<artifact>-review`.
 
+**Source of truth**: The dispatch reads `to` and `labels` from the enriched doorbell line per § Enriched-line dispatch contract E3 — no per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check fires on the enriched-line path. On bare / malformed lines the fallback path fires per FR-005. The ledger row carries `· source: enriched-line` on the enriched-line path (no suffix on fallback) per § Enriched-line dispatch contract E6.
+
 **Dispatch**:
 1. **Resolve target artifact** — parse `<artifact>` from the transition class; identify the file to review (e.g., `specs/<issue-slug>/spec.md`, `plan.md`, `tasks.md`, `clarifications.md`).
 2. **Spawn review-verdict analyzer subagent** — reuses #390's contract verbatim. Invocation:
@@ -255,6 +366,8 @@ The following nine event classes are dispatched per this table. The parent **alw
 
 **Trigger**: A PR enters `waiting-for:implementation-review`. Verbatim event string: `waiting-for:implementation-review`.
 
+**Source of truth**: The dispatch reads `to` and `labels` from the enriched doorbell line per § Enriched-line dispatch contract E3 — no per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check fires on the enriched-line path. On bare / malformed lines the fallback path fires per FR-005. The ledger row carries `· source: enriched-line` on the enriched-line path (no suffix on fallback) per § Enriched-line dispatch contract E6.
+
 **Dispatch**: Structurally identical to D.2; the only difference is the scope passed to the subagent — an artifact file (D.2) vs. a PR reference (D.3). Both use the #390 contract verbatim.
 
 1. **Resolve PR** — from `cockpit status --json`, get the issue's associated PR ref (`<owner>/<repo>#<pr-n>`).
@@ -273,6 +386,8 @@ The following nine event classes are dispatched per this table. The parent **alw
 ### D.4 — `waiting-for:manual-validation`
 
 **Trigger**: An issue enters `waiting-for:manual-validation` (implementation approved, awaiting manual smoke test). Verbatim event string: `waiting-for:manual-validation`.
+
+**Source of truth**: The dispatch reads `to` and `labels` from the enriched doorbell line per § Enriched-line dispatch contract E3 — no per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check fires on the enriched-line path. On bare / malformed lines the fallback path fires per FR-005. The ledger row carries `· source: enriched-line` on the enriched-line path (no suffix on fallback) per § Enriched-line dispatch contract E6.
 
 **Dispatch**:
 1. **Spawn manual-validation summarizer subagent** — the parent MUST NOT read the spec / issue body / PR body inline (Q4=B, AP-9). All artifact reads happen inside the subagent. Invocation:
@@ -295,8 +410,10 @@ The following nine event classes are dispatched per this table. The parent **alw
 
 **Trigger**: An issue enters `completed:validate` and the PR's checks are all green. Verbatim event string: `completed:validate`.
 
+**Source of truth**: The dispatch reads `to`, `labels`, and `checks` from the enriched doorbell line per § Enriched-line dispatch contract E3/E4 — on decisive `checks: "green"` the merge fires without a per-event re-check. On `checks: absent | pending` (per Q4=B) OR a bare / malformed line the fallback path fires. The ledger row carries `· source: enriched-line` on the enriched-line path (decisive `checks: "green"`); the fallback path writes no suffix (equivalent to `source: re-query`) per § Enriched-line dispatch contract E6.
+
 **Dispatch**:
-1. **Confirm state via `cockpit status --json`** — verify `checks_state == "green"` and no infrastructure/runner failures. A `completed:validate` streamed event whose live state shows red falls through to D.6.
+1. **Resolve `checks` verdict.** Prefer the enriched doorbell line's `checks` field (per § Enriched-line dispatch contract E4). If `checks: "green"` → proceed with merge (step 2). If `checks: "red"` → fall through to D.6. If `checks` is **absent OR `pending`** (per Q4=B), fall back to a single authoritative `cockpit_status(issue=<issue-ref>, json=true)` — verify `checks_state == "green"` and no infrastructure/runner failures; a fallback verdict showing red falls through to D.6.
 2. **Merge**: `cockpit_merge(issue=<issue-ref>)` (squash, branch delete per the tool's default; the tool resolves the issue's linked PR internally — passing a PR ref directly is a distinct failure mode observed in agency#398).
 3. **No gate.** The operator's judgment was recorded at `waiting-for:implementation-review` (D.3). `validate` + green checks is mechanical; no additional prompt.
 
@@ -311,7 +428,9 @@ The following nine event classes are dispatched per this table. The parent **alw
 
 ### D.6 — `completed:validate` (red) / merge red → bounded fixer subagent
 
-**Trigger**: `completed:validate` with `checks_state == "red"` OR a `cockpit merge` call in D.5 returned `result: "red"`.
+**Trigger**: `completed:validate` with an enriched doorbell line's `checks: "red"` verdict (per § Enriched-line dispatch contract E4), OR (on `checks: absent | pending` fallback per Q4=B) a `cockpit_status(issue=<issue-ref>, json=true)` returning `checks_state == "red"`, OR a `cockpit merge` call in D.5 returned `result: "red"`.
+
+**Source of truth**: The dispatch reads `to`, `labels`, and `checks` from the enriched doorbell line per § Enriched-line dispatch contract E3/E4 — on decisive `checks: "red"` the bounded fixer subagent fires without a per-event re-check. On `checks: absent | pending` (per Q4=B) OR a bare / malformed line the fallback path fires. The ledger row carries `· source: enriched-line` on the enriched-line path (decisive `checks: "red"`); the fallback path writes no suffix (equivalent to `source: re-query`) per § Enriched-line dispatch contract E6.
 
 **Dispatch**:
 1. **Classify failing checks** — infrastructure/runner failures abort without burning an attempt (repo-owned CI classes only: tests / lint / typecheck / build).
@@ -342,6 +461,8 @@ The fixer runs **once autonomously** per red event; each further run requires th
 ### D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)
 
 **Trigger**: An issue enters `agent:error` or any `failed:*` state. Verbatim event strings: `agent:error` and `failed:` (matching any `failed:<subtype>`).
+
+**Source of truth**: The dispatch reads `to` (`agent:error` or `failed:<subtype>`) and `labels` from the enriched doorbell line per § Enriched-line dispatch contract E3 — no per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check fires on the enriched-line path. On bare / malformed lines the fallback path fires per FR-005. The ledger row carries `· source: enriched-line` on the enriched-line path (no suffix on fallback) per § Enriched-line dispatch contract E6. Evidence fetch is separate — `cockpit_context(issue=<issue-ref>)` remains the sole evidence-fetch tool (see step 1 below).
 
 **Dispatch classification**: A D.7 event is a **first dispatch** iff it is the issue's first `agent:error` / `failed:*` event within the current contiguous auto invocation. A D.7 event is a **repeat dispatch** iff it is the issue's second-and-subsequent `agent:error` / `failed:*` event within the current contiguous auto invocation, regardless of `failed:<subtype>` match (any second failure-class event on the same issue in one auto invocation is a repeat — subtype match not required). Session restart resets first-vs-repeat state (session-local grain per #406 Q2).
 
@@ -381,6 +502,8 @@ The fixer runs **once autonomously** per red event; each further run requires th
 
 **Trigger**: A phase completes (all its issues reached terminal states). S8 emits `phase-complete` when the epic's next phase is ready to queue. Verbatim event string: `phase-complete`. **Only fires in epic mode (`invocationForm: epic`).**
 
+**Source of truth**: D.8 **retains the per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check** per § Enriched-line dispatch contract E3 — the phase-queue confirmation gate opens a human/consequential surface whose ad-hoc-issues enumeration requires authoritative per-ad-hoc-ref state; a stale-line dispatch could open a gate against superseded state. Low frequency (≈once per phase) makes the authoritative query cost negligible. The ledger row writes no `source: enriched-line` suffix (equivalent to `source: re-query`) per § Enriched-line dispatch contract E6.
+
 **Dispatch**:
 1. **Compute next phase scope** — from `cockpit_status(epic=<epic-ref>, json=true)`, identify the next phase (P<next>) and its N issues.
 2. **Compute open ad-hoc issues** — call `openAdHocIssues(<epic-ref>, ledger)` which filters ledger `scope-add` and `filing-gate+scope-add` action lines (with successful outcomes) to the refs whose live state per `cockpit_status` is non-terminal. Order is scope-add order (chronological).
@@ -402,7 +525,7 @@ If `cockpit_status` fails for one or more ad-hoc refs during the helper call, om
 
 **Trigger**: An issue enters `waiting-for:address-pr-feedback`. Verbatim event string: `waiting-for:address-pr-feedback`.
 
-**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned. The ledger line accounts for the event; the loop continues.
+**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned. The ledger line accounts for the event; the loop continues. The ledger row's `<transition-class>` slot is populated from the enriched doorbell line's `to` field as-received (per § Enriched-line dispatch contract E6); the outcome slot carries the `· source: enriched-line` suffix when dispatched from the enriched line, and no suffix (equivalent to `source: re-query`) when the fallback fired.
 
 **Ledger line**: `<issue-ref> · waiting-for:address-pr-feedback · (no-op) · server-side-owned`.
 
@@ -410,7 +533,7 @@ If `cockpit_status` fails for one or more ad-hoc refs during the helper call, om
 
 **Trigger**: An issue enters `waiting-for:pr-feedback`. Verbatim event string: `waiting-for:pr-feedback`. Legacy alias of the engine-owned feedback loop (D.9 `waiting-for:address-pr-feedback` is the modern shape; some pre-migration epics still emit the shorter `pr-feedback` label).
 
-**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned.
+**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned. The ledger row's `<transition-class>` slot is populated from the enriched doorbell line's `to` field as-received (per § Enriched-line dispatch contract E6); the outcome slot carries the `· source: enriched-line` suffix when dispatched from the enriched line, and no suffix (equivalent to `source: re-query`) when the fallback fired.
 
 **Ledger line**: `<issue-ref> · waiting-for:pr-feedback · (no-op) · server-side-owned`.
 
@@ -418,7 +541,7 @@ If `cockpit_status` fails for one or more ad-hoc refs during the helper call, om
 
 **Trigger**: An epic-container issue enters `waiting-for:children-complete`. Verbatim event string: `waiting-for:children-complete`. Epic-container state — the running auto loop *is* its resolution (children dispatch as they transition; on the last child's completion, this label transitions naturally to `epic-complete` without operator input).
 
-**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned.
+**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned. The ledger row's `<transition-class>` slot is populated from the enriched doorbell line's `to` field as-received (per § Enriched-line dispatch contract E6); the outcome slot carries the `· source: enriched-line` suffix when dispatched from the enriched line, and no suffix (equivalent to `source: re-query`) when the fallback fired.
 
 **Ledger line**: `<issue-ref> · waiting-for:children-complete · (no-op) · server-side-owned`.
 
@@ -426,7 +549,7 @@ If `cockpit_status` fails for one or more ad-hoc refs during the helper call, om
 
 **Trigger**: An issue enters `waiting-for:dependencies`. Verbatim event string: `waiting-for:dependencies`. Engine-owned cross-issue wait — resolved server-side when the depended-on issue transitions.
 
-**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned.
+**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — server-side-owned. The ledger row's `<transition-class>` slot is populated from the enriched doorbell line's `to` field as-received (per § Enriched-line dispatch contract E6); the outcome slot carries the `· source: enriched-line` suffix when dispatched from the enriched line, and no suffix (equivalent to `source: re-query`) when the fallback fired.
 
 **Ledger line**: `<issue-ref> · waiting-for:dependencies · (no-op) · server-side-owned`.
 
@@ -434,13 +557,15 @@ If `cockpit_status` fails for one or more ad-hoc refs during the helper call, om
 
 **Trigger**: An issue enters any `phase:*` state. **Prefix-match**: any transition class whose token begins with the literal `phase:` prefix matches this row (`phase:specify`, `phase:clarify`, `phase:plan`, `phase:tasks`, `phase:implement`, `phase:validate`, and any future workflow-phase addition). The phase set is workflow-dependent and open-ended — speckit-feature and speckit-bugfix already differ; enumeration would break the day a workflow adds a phase.
 
-**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — engine-owned transient transition. Never surface a D.10 escalation gate on a `phase:*` token; D.10 remains the catch-all for genuinely unknown, non-`phase:` labels (per § Dispatch D.10's tightened trigger — an unrecognized `waiting-for:*` or `blocked:*` still fires D.10).
+**Dispatch**: **Ledger line only.** No tool call (in particular, no `cockpit_status` re-check), no subagent, no gate, no status table, no prose recap — engine-owned transient transition. The ledger row's `<transition-class>` slot is populated from the enriched doorbell line's `to` field as-received (per § Enriched-line dispatch contract E6); the outcome slot carries the `· source: enriched-line` suffix when dispatched from the enriched line, and no suffix (equivalent to `source: re-query`) when the fallback fired. Never surface a D.10 escalation gate on a `phase:*` token; D.10 remains the catch-all for genuinely unknown, non-`phase:` labels (per § Dispatch D.10's tightened trigger — an unrecognized `waiting-for:*` or `blocked:*` still fires D.10).
 
 **Ledger line**: `<issue-ref> · <phase:*-token> · (no-op) · engine-owned phase transition`.
 
 ### D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)
 
 **Trigger**: An issue enters a merge-conflicts-family state. Verbatim event strings (either fires this row): `waiting-for:merge-conflicts` (base-sync produced a merge conflict; the branch cannot be advanced without an operator-authored resolution) OR `blocked:stuck-merge-conflicts` (engine auto-remedy attempted AND failed; operator resolution is the only path forward). The classifier applies both labels together for a single stuck-merge incident, so the two events co-occur per issue — the dedup rule in step 1 (dispatched-issues set) ensures one incident produces one escalation gate. The label that surfaced first is treated as the `<source-label>` for the ledger and threaded through the subagent prompt and G.4d presentation.
+
+**Source of truth**: D.11 **retains the per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check** per § Enriched-line dispatch contract E3 — the merge-conflicts escalation gate opens a human/consequential surface where a stale-line dispatch could open a gate against a conflict the engine has already auto-remedied. Low frequency (error/escalation case) makes the authoritative query cost negligible. Evidence fetch is separate — `cockpit_context(issue=<issue-ref>)` remains the sole evidence-fetch tool (see step 1a below). The ledger row writes no `source: enriched-line` suffix (equivalent to `source: re-query`) per § Enriched-line dispatch contract E6.
 
 **Dispatch**:
 1. **Dedup check.** If `<issue-ref>` is already present in the in-memory `dispatched-issues set` (session-scoped, alongside the session mute set referenced at `auto.md:266`, `:305`, `:391`, `:407`, `:749`), the sibling merge-conflicts-family label has already produced one gate for this incident. Write ledger-only line `<issue-ref> · <source-label> · escalation-gate · already-dispatched` and return to the main loop — do NOT fetch context, spawn a subagent, or present a gate. Otherwise, add `<issue-ref>` to the dispatched-issues set and continue to step 1a.
@@ -463,6 +588,8 @@ If `cockpit_status` fails for one or more ad-hoc refs during the helper call, om
 **Ledger line**: `<issue-ref> · <source-label> · escalation-gate · <advanced | advance failed: <code>: <message> | skip (session-local mute) | stop (exit) | already-dispatched>`. `<source-label>` is written verbatim from the triggering event and is one of `waiting-for:merge-conflicts` or `blocked:stuck-merge-conflicts`. The `already-dispatched` outcome is produced by the step 1 dedup check (Entity 3 in `data-model.md`); the four gate-outcome tokens (`advanced` / `advance failed: …` / `skip …` / `stop …`) are produced by the verdict-apply step 3.
 
 ### D.10 — Unrecognized / ambiguous state → escalation gate (Skip / Stop only)
+
+**Source of truth**: D.10 **retains the per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check** per § Enriched-line dispatch contract E3 — by definition the transition class here is unknown, and dispatching an escalation gate off a bare / stale line is meaningless. Low frequency (error case) makes the authoritative query cost negligible. The ledger row writes no `source: enriched-line` suffix (equivalent to `source: re-query`) per § Enriched-line dispatch contract E6.
 
 **Trigger**: The re-check step reads a live state whose transition class is not one of D.1–D.9 (including D.9a/b/c) or D.11. This can happen when: (a) S8 adds a new transition class the playbook doesn't know, (b) the streamed event conflicts with the live state and neither is dispatchable, (c) `cockpit status --json` returns an unexpected shape, **(d) any state token (`waiting-for:*` OR `blocked:*`) does not match a Trigger in any § Dispatch row (D.1–D.9c or D.11)** — future `blocked:*` labels (e.g. `blocked:stuck-validate-fix` from generacy#943) that lack their own dispatch row land here, not in D.11.
 
@@ -1080,6 +1207,19 @@ Stable strings per dispatch table row, so `grep` recipes on `<action>` / `<outco
 
 The `<issue-ref>` slot of the heartbeat row carries the **`<epic-ref>`** (or the tracking ref under `--tracking` / `--new`, matching the ledger header line's `Tracking ref:` field) — heartbeats are epic-scoped, not per-issue.
 
+**`source: enriched-line` marker rule (per § Enriched-line dispatch contract E6)**: Rows D.1, D.2, D.3, D.4, D.7, D.9, D.9a, D.9b, D.9c, and D.9d append the literal `· source: enriched-line` suffix to their `<outcome>` slot when the dispatch was driven by an enriched doorbell line (per § Enriched-line dispatch contract E2 = true and the class is in the E3 "enriched line" column). Rows D.5 and D.6 append the same suffix on decisive `checks: "green" | "red"` from the enriched line (per E4). No suffix is appended (equivalent to `source: re-query`) on fallback re-query rows — bare / malformed lines, D.5/D.6 with `checks: absent | pending`, and the retain-the-re-check classes D.8, D.10, D.11. The four-column ledger format (`<issue-ref> · <transition-class> · <action> · <outcome>`) is preserved verbatim; the marker sits inside the outcome slot.
+
+Example enriched-line rows (post-#437):
+
+```
+christrudelpw/epic#43 · waiting-for:clarification · clarification-batch · advanced · source: enriched-line
+christrudelpw/epic#44 · completed:validate · merge · merged (PR #46) · source: enriched-line
+christrudelpw/epic#45 · completed:validate · merge · merged (PR #47)  ← fallback (checks was pending)
+christrudelpw/epic#42 · phase-complete · phase-queue-gate · queued P2 (4 issues)  ← D.8 retain-the-re-check, no marker
+```
+
+Post-mortem grep semantics: `grep 'source: enriched-line' <ledger>` isolates every enriched-line dispatch row; `grep -v 'source: enriched-line' <ledger>` isolates every re-query row (pre-#437 shape, retain-the-re-check classes, and merge-gate fallbacks).
+
 ### L.4 — Status table policy
 
 The full epic status table (anchor: header row `| Issue | Phase | State |`) is emitted **only** at the following surfaces:
@@ -1135,7 +1275,7 @@ Counts are derived from the ledger file (or the in-memory count if the file is u
 4. **No cross-slash-command invocation** from `auto.md`. Cross-command composition is CLI verb (`generacy cockpit …`) + subagent boundary only. No `/cockpit:*`, `/code-review`, or `/speckit:*` invocation from the parent's execution path.
 5. **Analysis in subagents** whose contracts end with the subagent — the #390 pattern. All four analysis workloads (clarification drafting, review verdict, manual-validation summary, bounded fixer) live inside `subagent_type: "general-purpose"` hops with strict-JSON returns.
 6. **Autonomy *policy* out of scope.** Per-gate auto-approve and "full auto" mode are explicitly out of scope in v1. Every gate prompts; none auto-proceed.
-7. **Stream consumption is unfiltered.** Every non-empty line from `generacy cockpit doorbell` is a doorbell only; doorbell content is a doorbell only; never parsed for content. Content-based filters over the stream are prohibited. If the harness requires a match pattern to arm a reader, it matches any non-empty line, never a JSON field.
+7. **Stream consumption is unfiltered.** Every non-empty line from `generacy cockpit doorbell` is consumed by the parent — content-based filters over the stream (e.g., "only wake on lines matching `waiting-for:*`") are prohibited, because a filter could silently drop legitimate events. Enriched lines (JSON-parseable objects carrying `to` and `labels`) ARE parsed for dispatch inputs per the § Enriched-line dispatch contract; bare lines fall back to `cockpit_await_events` for authoritative state. `cockpit_await_events` remains the sole source of typed batches for the merge-gate fallback path and for D.8/D.10/D.11 escalation surfaces. If the harness requires a match pattern to arm a reader, it matches any non-empty line, never a JSON field.
 8. **Ledger-only rows are cheap by contract.** A transition that dispatches to a ledger-only row (D.9, D.9a, D.9b, D.9c, D.9d) must add no tool calls beyond the ledger append and no prose. Playbook edits that add per-event output — a `cockpit_status` re-check, an epic status table, a prose recap — on a ledger-only row are efficiency regressions.
 9. **MCP-tool-only invariant.** After the migration, `auto.md` invokes no `generacy cockpit <migrated-verb>` Bash form — every dispatch of the six migrated verbs (`status`, `context`, `queue`, `advance`, `resume`, `merge`) goes through its `cockpit_*` MCP tool. Playbook edits that reintroduce the Bash form are drift regressions.
 
