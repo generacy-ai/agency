@@ -48,6 +48,72 @@ The plugin ships on two rails:
 | `/cockpit:merge` | Merge a PR via `generacy cockpit merge`; on red, spawn a bounded fixer subagent and re-evaluate. Never merges on red |
 | `/cockpit:auto` | Drive an epic to `epic-complete` — watch transitions, dispatch through CLI verbs + subagents, gate on judgment surfaces. Never merges on red; every gate prompts (no auto-approve). |
 
+## Quick start — from bug discovery to processed PRs
+
+The end-to-end conversational flow: a developer discovers bugs while collaborating with Claude, files them as GitHub issues, and hands them to `/cockpit:auto` for automated processing — no epic required.
+
+### 1. Discover in conversation
+
+Bugs surface during any collaboration — investigation, code review, testing, reproducing a customer report:
+
+```
+> the login page 500s when the session cookie is stale — I can repro it locally
+```
+
+### 2. File the issues
+
+File with `gh` directly, or let the auto session's G.6 filing gate draft them for you:
+
+```bash
+gh issue create --title "Login page 500s on stale session cookie" --body "…"
+# → https://github.com/generacy-ai/agency/issues/223
+gh issue create --title "Session refresh silently no-ops after expiry" --body "…"
+# → https://github.com/generacy-ai/agency/issues/224
+```
+
+Alternatively, an auto session launched with `--new "<title>"` drafts the tracking issue's title and body and presents them at the G.6 filing gate; approved drafts land as real issues via `gh issue create`.
+
+### 3. Kick off auto
+
+Pass the resolved issue numbers directly — no epic, no tracking issue required:
+
+```
+/cockpit:auto 223, 224
+```
+
+The auto loop drives both issues to terminal state, gating on the same judgment surfaces (clarifications, reviews, phase-queue confirmations, red/error escalations) as an epic-driven run.
+
+### Growing scope mid-run
+
+While an auto session is running, either intent works as a mid-run message:
+
+- **Add-existing** — `also process #226` → `cockpit_scope_add` + `cockpit_queue` (no gate; the ref must already exist).
+- **File-new** — `file an issue for the flaky test in module foo` → drafter subagent → G.6 filing gate → on `Approve & file`, `gh issue create` runs and the new ref lands in scope via `cockpit_scope_add` + `cockpit_queue`.
+
+See `commands/auto.md § Add-issue flow (mid-run)` for the parsing rules and gate behavior.
+
+### Running multiple conversations
+
+Concurrent auto sessions with different issue sets are supported — each session has its own tracking ref and ledger, and their watch / dispatch loops run in parallel. **Execution interleaves through a single cluster worker per user**: the *watch* side is parallel, but the actual issue-processing runs one at a time on the cluster. Frame the expectation as "parallel observability, serialized execution" — two concurrent sessions do not deliver 2× throughput on the same cluster.
+
+## Offer guidance — when should a session offer /cockpit:auto?
+
+Companion guidance for Claude sessions collaborating with a developer: after helping file one or more issues, when should the session suggest running `/cockpit:auto <numbers>` on them? The rules below mirror `commands/auto.md § Offering auto`.
+
+**When to offer** (R1): after any 1+ issues have been successfully filed to the workspace's repo during the current session, regardless of who drafted the text. No provenance filter, no content heuristic — the offer is cheap and confirmation-gated.
+
+**How to offer** — three hard rules:
+
+1. **R2 — concrete numbers only.** The offer MUST include the resolved issue-number list (e.g. `/cockpit:auto 223, 224`), never a placeholder.
+2. **R3 — confirmation-gated.** The offer MUST be a suggestion the developer confirms. Never auto-run `/cockpit:auto` on the operator's behalf.
+3. **R4 — at most once per batch.** The offer SHOULD fire at most once per batch of filed issues; if the developer declines, don't re-nag.
+
+**Suggested phrasing** (not prescribed): e.g. "Want me to run `/cockpit:auto 223, 224` to process these?" — with room for session-level variation.
+
+**What it is NOT**: not a gate, not an `AskUserQuestion`, not part of the auto loop — pre-invocation conversational surface only.
+
+Source of truth: `commands/auto.md § Offering auto`.
+
 ## Error Handling
 
 Every command classifies failures identically. Each command file inlines the three-class block below verbatim as its terminal `Instructions` step; this section is the canonical source of truth those inlined blocks cite.
