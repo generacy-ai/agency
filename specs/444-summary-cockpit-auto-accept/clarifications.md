@@ -13,7 +13,7 @@ Questions and answers to clarify the feature specification.
 - C: Include all refs, but hard-cap the title at 200 chars and append `…` if truncated.
 - D: Drop the ref list entirely from the title once count > 5 and use `Tracking: auto session YYYY-MM-DD — N issues` instead.
 
-**Answer**: *Pending*
+**Answer**: A — Up to 5 refs then ` (+K more)`. Keeps the title scannable and safely under GitHub's 256-char limit even when some refs are qualified `owner/repo#N` forms.
 
 ### Q2: Re-invocation duplicate handling
 **Context**: If an operator runs `/cockpit:auto 512 513` twice (e.g. after the first run crashed, or by accident), the spec does not say whether the second invocation should reuse the existing open tracking issue, create a fresh one, or refuse. This affects idempotency, wasted work, and operator confusion when two tracking issues target the same refs.
@@ -24,7 +24,7 @@ Questions and answers to clarify the feature specification.
 - C: Detect any open tracking issue whose ref-set overlaps with the new refs and refuse, telling the operator to close it or use `--tracking` explicitly.
 - D: Skip detection entirely — treat every Form-4 invocation as new, matching current Form-3 `--new` behavior.
 
-**Answer**: *Pending*
+**Answer**: B — Detect an open `cockpit:tracking` issue whose resolved ref-set is identical and reuse it (proceed as `--tracking <existing-ref>`, print a "resuming existing session" notice). Crash-and-reinvoke is the common case; a fresh duplicate creates two containers for the same work and collides with the same-scope claim guard being designed in generacy-ai/generacy#1015. Overlapping-but-not-identical ref-sets do NOT trigger reuse or refusal — create a fresh tracking issue (the operator may legitimately be splitting work).
 
 ### Q3: Duplicate token dedup
 **Context**: If the operator passes `/cockpit:auto 512 512` or `/cockpit:auto 512 generacy-ai/agency#512` (bare + qualified pointing to the same issue), the spec is silent on whether the two tokens should be deduped in the tracking-issue body, or if duplicates should error out.
@@ -34,7 +34,7 @@ Questions and answers to clarify the feature specification.
 - B: Preserve duplicates in the body as written; let the engine reject/handle them downstream.
 - C: Reject the invocation with a diagnostic that names the duplicate token(s) — do not create any issue.
 
-**Answer**: *Pending*
+**Answer**: A — Silently dedupe after resolution, first-seen order, so `512` and `owner/repo#512` collapse to one entry. This matches the engine's existing `allRefs` dedup semantics; rejecting (C) punishes a harmless input.
 
 ### Q4: Referenced issue existence
 **Context**: The spec does not say whether Form 4 verifies that each referenced issue actually exists in its repo before filing the tracking issue. Skipping validation is faster but produces tracking issues that reference non-existent numbers, which the engine may or may not surface gracefully.
@@ -44,7 +44,7 @@ Questions and answers to clarify the feature specification.
 - B: Skip validation — file the tracking issue as-is and let the engine surface any bad refs during its first scope pass.
 - C: Validate only bare-number refs against the workspace repo (the ones we just resolved), but pass qualified cross-repo refs through unchecked.
 
-**Answer**: *Pending*
+**Answer**: A — Validate every ref up front (existence + accessibility, including qualified cross-repo refs) and exit with a single diagnostic naming ALL bad refs (not just the first) without creating anything. A handful of REST reads is cheap, and a tracking issue referencing nonexistent numbers produces confusing engine behavior that's much harder to diagnose than an upfront error.
 
 ### Q5: Malformed comma-split tokens
 **Context**: FR-001 splits args on commas and whitespace. Inputs like `/cockpit:auto 512,,513`, `/cockpit:auto 512, ,513`, or a trailing comma produce empty tokens. The spec doesn't say whether empty tokens are silently discarded or trigger the FR-002 'reject anything else with usage' path.
@@ -53,5 +53,5 @@ Questions and answers to clarify the feature specification.
 - A: Silently discard empty tokens; process the remaining non-empty tokens normally.
 - B: Treat empty tokens as a malformed invocation — print usage and exit before any resolution or issue creation.
 
-**Answer**: *Pending*
+**Answer**: A — Silently discard empty tokens; `512,,513`, `512, ,513`, and trailing commas are natural typing artifacts. The usage-error path applies only when zero non-empty tokens remain after splitting.
 
