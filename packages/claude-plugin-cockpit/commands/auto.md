@@ -1,5 +1,5 @@
 ---
-description: Drive an epic (or a tracking issue) to terminal by dispatching Monitor-delivered wake-ups through cockpit_await_events with fused human gates
+description: Drive one or more issues — an epic, a tracking-issue scope, or an ad-hoc issue list — to terminal by dispatching Monitor-delivered wake-ups through cockpit_await_events with fused human gates
 arguments:
   - name: tracking-ref
     description: "Tracking reference — one of: <epic-ref> positional (`owner/repo#N`), `--tracking <issue-ref>`, or `--new \"<title>\"`. Exactly one form per invocation."
@@ -647,6 +647,22 @@ On any error from `cockpit_scope_add` or `cockpit_queue`, write the error ledger
 On any error from `gh issue create` / `cockpit_scope_add` / `cockpit_queue` after `Approve & file`, write the corresponding error ledger line (`filing-gate+scope-add · error: <description>` / `error: scope-add failed: <description>` / `error: queue failed: <description>`) and continue the main loop. Do **not** attempt retraction on a successful `gh issue create` — closing the just-created issue would compound the failure; the operator can manually add the ref via the add-existing intent flow.
 
 **Restart safety**: scope mutations are ledger-lined and reflected on the tracking issue's task list at the engine boundary. A restarted session re-orients from the tracking ref's live task list (spec § Changes item 5); mutes/cursors stay session-local.
+
+## Offering auto
+
+Guidance for the *pre-invocation* conversational surface — the point at which a Claude session, having just helped file one or more issues, decides whether to suggest driving them to terminal with `/cockpit:auto`. This is skill-level guidance, not part of the auto loop.
+
+**When to offer** (R1): after any 1+ issues have been successfully filed to the workspace's repo during the current session, regardless of who drafted the text (developer, subagent, or the auto session's G.6 filing gate). No provenance filter, no content heuristic — the offer is cheap and confirmation-gated, so an occasional unwanted offer costs one "no".
+
+**How to offer** — three hard rules:
+
+1. **R2 — concrete numbers only.** The offer MUST include the resolved issue-number list (e.g. `/cockpit:auto 223, 224`), never a placeholder like `<n>` or `<numbers>`. A placeholder-numbered offer is broken; resolve the numbers before making the offer.
+2. **R3 — confirmation-gated.** The offer MUST be a suggestion the developer confirms. Never auto-run `/cockpit:auto` on the operator's behalf; the developer decides whether to start an auto session at all.
+3. **R4 — at most once per batch.** The offer SHOULD fire at most once per batch of filed issues. If the developer declines, don't re-nag; if a later batch of issues is filed, that's a new batch and a fresh offer is fine.
+
+**Suggested phrasing** (not prescribed): e.g. "Want me to run `/cockpit:auto 223, 224` to process these?" — with room for session-level variation. Exact wording is not fixed; the invariants above are.
+
+**What it is NOT**: this is not a gate, not an `AskUserQuestion`, and not part of the auto loop. It is the pre-invocation conversational surface — where the developer decides whether to *start* an auto session — not a step inside a running session. The auto loop's gates (G.1–G.7) are unaffected by this guidance.
 
 ## Gate contract
 
