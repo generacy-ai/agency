@@ -2,7 +2,7 @@
 description: Drive one or more issues — an epic, a tracking-issue scope, or an ad-hoc issue list — to terminal by dispatching Monitor-delivered wake-ups through cockpit_await_events with fused human gates
 arguments:
   - name: tracking-ref
-    description: "Tracking reference — one of: <epic-ref> positional (`owner/repo#N`), `--tracking <issue-ref>`, or `--new \"<title>\"`. Exactly one form per invocation."
+    description: "Tracking reference — one of: <epic-ref> positional (`owner/repo#N`), `--tracking <issue-ref>`, `--new \"<title>\"`, or an <issue-list> of one or more comma/whitespace-separated refs (bare `N` resolves against the workspace repo, or qualified `owner/repo#N`). Exactly one form per invocation."
     required: true
 ---
 
@@ -18,15 +18,92 @@ $ARGUMENTS
 
 ## Instructions
 
-1. **Parse arguments + pre-flight.** Recognize exactly one of three invocation forms per invocation — the tracking ref is the run's identity under all three forms (see `contracts/invocation-forms.md`):
+1. **Parse arguments + pre-flight.** Recognize exactly one of four invocation forms per invocation — the tracking ref is the run's identity under all four forms (see `contracts/invocation-forms.md` for Forms 1–3; `specs/444-summary-cockpit-auto-accept/contracts/invocation-form-4-parse.md` for Form 4):
 
    - **Form 1 (epic mode)**: `/cockpit:auto <epic-ref>` — one positional matching `<owner>/<repo>#<n>`. `invocationForm: epic`. D.8 phase-queue gate fires on `phase-complete`; run exits on `epic-complete`.
    - **Form 2 (epic-less: existing tracking)**: `/cockpit:auto --tracking <issue-ref>` — `--tracking` flag with one positional matching `<owner>/<repo>#<n>`. `invocationForm: tracking-existing`. G.7 scope-drained gate fires when every task-list ref is terminal per `cockpit_status`.
    - **Form 3 (epic-less: new tracking)**: `/cockpit:auto --new "<title>"` — `--new` flag with one quoted free-text title. `invocationForm: tracking-new`. **G.6 filing gate fires immediately** (drafts title/body from the operator-supplied `<title>` — same drafter shape as a mid-run file-new intent — presents G.6; on `Approve & file`, `gh issue create` produces the tracking ref; on `Skip (don't file)`, the run exits cleanly). Subsequent behavior identical to Form 2.
+   - **Form 4 (epic-less: issue-number list)**: `/cockpit:auto <issue-list>` — one or more comma/whitespace-separated GitHub issue references (bare integers resolve against the workspace repo, or qualified `owner/repo#N`; mix freely). `invocationForm: tracking-list` on fresh creation; `tracking-existing` when an open `cockpit:tracking` issue in the workspace repo has the identical resolved ref-set. Form 4 machine-generates the tracking issue's title, body, and label — no G.6 gate — then falls through to Form 2's loop shape. See § Form 4 branch below for the parse/resolve/validate/reuse/create pipeline.
 
-   On ambiguous input (e.g., both `--tracking` and `--new`, or neither flag with a non-parseable positional), print `Usage: /cockpit:auto <epic-ref> | --tracking <issue-ref> | --new "<title>"` and exit non-zero.
+   **Ambiguity table** (extends `contracts/invocation-forms.md`; per `specs/444-summary-cockpit-auto-accept/research.md § R9`):
 
-   **Print startup line** naming the tracking ref (verbatim `owner/repo#n`) and the resolved `invocationForm`; under Form 3, the startup line prints after G.6 approval, once the new tracking ref exists.
+   | Input pattern | Form | Notes |
+   |---------------|------|-------|
+   | One positional matching `<owner>/<repo>#<n>` and no flags | 1 (epic) | Unchanged — qualified single ref keeps epic-mode meaning. |
+   | `--tracking <owner>/<repo>#<n>` | 2 | Unchanged. |
+   | `--new "<title>"` | 3 | Unchanged. |
+   | Any other non-flag positional stream (bare numbers, mixed lists, multiple qualified refs, single bare number) | **4** | New. |
+   | Both `--tracking` and `--new` present | usage error | Existing — reason `both-flags`. |
+   | A flag combined with a positional list | usage error | New — reason `tracking-arg-shape` / `new-arg-shape`. |
+   | Unknown `--*` flag (e.g. `--tracing`) | usage error | New — reason `unknown-flag`. Do NOT guess intent. |
+   | Zero non-empty tokens after splitting | usage error | New (Q5=A boundary) — reason `empty`. |
+
+   On any usage error, print `Usage: /cockpit:auto <epic-ref> | --tracking <issue-ref> | --new "<title>" | <issue-list>` (optionally followed by a `Reason: <reason> (<detail>)` line naming the ambiguity-table row) and exit non-zero.
+
+   ### Form 4 branch — parse, resolve, validate, reuse, create
+
+   Runs at the top of pre-flight, BEFORE the `Monitor`-presence check (below) and BEFORE any ledger directory creation. All state-changing actions (`gh label create`, `gh issue create`, `mkdir -p .generacy/cockpit/auto-runs`, ledger header write) fire ONLY after parse + workspace-resolve + ref-validate + reuse-detect all succeed. Reference implementation: `packages/claude-plugin-cockpit/lib/invocation-form-4.ts` — the prose below is authoritative; the library exists for machine-checkable fixtures.
+
+   **F4.1 — Workspace repo inference (R1).** Run `git remote get-url origin` via Bash in the operator's cwd. Capture stdout/stderr and exit code. This step MUST run in the operator's Claude Code session (before any MCP tool binds); the cockpit MCP server runs in the orchestrator container whose cwd is meaningless for workspace inference.
+
+   - On non-zero exit (not a git repo, or `origin` unset), print + exit:
+     ```
+     /cockpit:auto Form 4 needs a workspace with a GitHub `origin` to resolve bare issue numbers.
+     Observed: `git remote get-url origin` failed with: <stderr>
+     ```
+   - On zero exit, parse the URL against the three GitHub remote shapes (HTTPS `https://github.com/<owner>/<repo>(.git)?`, SSH shorthand `git@github.com:<owner>/<repo>(.git)?`, SSH long form `ssh://git@github.com/<owner>/<repo>(.git)?`). On no match, print + exit:
+     ```
+     /cockpit:auto Form 4 needs a workspace whose `origin` is a GitHub repo. Observed: <originUrl>.
+     ```
+
+   **F4.2 — Token resolution + dedup (Q3=A, Q5=A).** Split `$ARGUMENTS` on commas + whitespace (`split(/[,\s]+/).filter(t => t.length > 0)`) — empty tokens discard silently (Q5=A). For each remaining token: bare integer (`^\d+$`) → `{owner: workspace.owner, repo: workspace.repo, number, supplied: "bare"}`; qualified `owner/repo#N` → parse the three groups directly. Dedup the resulting `QualifiedRef[]` in first-seen order using `(owner, repo, number)` tuple equality (Q3=A) — a bare `512` and a qualified `<workspace>/<repo>#512` collapse to one entry.
+
+   **F4.3 — Up-front ref validation (Q4=A).** For each resolved ref, probe via `gh api -X GET repos/<owner>/<repo>/issues/<number> --silent --include`. Success codes: `200`, `301`. Any other status → collect into `bad[]`. Probes run sequentially (never parallel — GitHub abuse-detection tolerates sequential fine for realistic ref-list sizes). Do NOT short-circuit on the first miss; probe every ref, then decide. On `bad.length > 0`, print the aggregated diagnostic and exit — atomic (create nothing) per Q4=A:
+
+   ```
+   Cannot create tracking issue — the following refs are missing or inaccessible:
+
+     - <owner>/<repo>#<n>   (<reason>)
+     - <owner>/<repo>#<n>   (<reason>)
+     ...
+
+   Fix or remove these refs and re-run.
+   ```
+
+   **F4.4 — Reuse detection (Q2=B).** Query workspace-scoped open tracking issues: `gh issue list --repo <workspace.owner>/<workspace.repo> --label cockpit:tracking --state open --json number,body,createdAt`. If the query itself fails (network, auth, 5xx), do NOT fall through to creation — print + exit with the "connectivity" diagnostic and suggest `--tracking <ref>` as the bypass. Otherwise, for each candidate, parse `- [ ] <owner>/<repo>#<n>` lines from its body (regex `^\s*- \[ \] ([\w.-]+)\/([\w.-]+)#(\d+)\s*$`, case-sensitive, whitespace-tolerant leading, other bullet shapes ignored). Compare candidate's parsed body-refs against this invocation's resolved ref-set as an order-agnostic set on `(owner, repo, number)`.
+
+   - **Set-match (identical)** → **reuse** (Q2=B). Print the reuse notice BEFORE the standard startup line:
+     ```
+     Resuming existing tracking session <owner>/<repo>#<n> (opened <YYYY-MM-DD HH:MM UTC>) — ref-set matches this invocation exactly.
+     ```
+     Bind `trackingRef = <owner>/<repo>#<n>`, `invocationForm = tracking-existing`. Skip F4.5–F4.6. Emit the ledger header `Tracking ref: <owner>/<repo>#<n> · form: tracking-existing · resumed: <YYYY-MM-DD HH:MM UTC>` (the `· resumed:` suffix distinguishes reuse from first-time Form 2; per contract `tracking-issue-reuse.md § R7`) and fall through to F4.7.
+   - **No match / overlap-only** → proceed to F4.5. Overlapping-but-not-identical ref-sets do NOT trigger reuse or refusal (Q2 verbatim) — create a fresh tracking issue.
+   - **Multiple identical matches** (should be dead code post-generacy#1015; retain as defence-in-depth) → log the warning and reuse the oldest by `createdAt`.
+
+   **F4.5 — Label idempotency (R6).** Before `gh issue create`, ensure the `cockpit:tracking` label exists in the workspace repo:
+   ```
+   gh label create cockpit:tracking --color cccccc --description "Auto-created tracking issue for /cockpit:auto" --repo <workspace.owner>/<workspace.repo>
+   ```
+   Swallow the `label already exists` failure (idempotent success). Any other failure → print + exit per contract `tracking-issue-body.md § L1`.
+
+   **F4.6 — Fresh tracking-issue creation (Q1=A, R5, R7, R8).** Machine-generate `TrackingIssueSeed`:
+   - **Title** (Q1=A / R5): `Tracking: auto session <YYYY-MM-DD UTC> — <ref1> <ref2> ... <ref5> (+K more)`. Refs render short-form (`#N`) when workspace-local; qualified (`owner/repo#N`) otherwise. ` (+K more)` suffix appears only when `refs.length > 5`.
+   - **Body** (R7): flat markdown task list, one `- [ ] <owner>/<repo>#<number>` line per resolved ref (always fully-qualified regardless of workspace-locality — the engine's resolver rejects bare `#N` in bodies). No blank lines, no headings, no `## Ad-hoc` section.
+   - **Label**: `cockpit:tracking` (from F4.5).
+
+   Write the body to `/tmp/cockpit-auto-form4-<workspace-slug>-<unix_ts>.md`, then reuse Form 3's `gh issue create` shape (from § File-new path step 4 below, line ~640):
+   ```
+   gh issue create --repo <workspace.owner>/<workspace.repo> --title "<title>" --body-file <tmpfile> --label cockpit:tracking
+   ```
+   Use `--body-file` exclusively (never `-b` / `--body`; shell quoting can strip newlines and mangle bullets). Capture the new ref from the returned URL; bind `trackingRef` and `invocationForm = tracking-list`. On non-zero exit → print + exit with the `gh issue create` stderr. Do NOT retry (a transient failure produces the same diagnostic; the operator re-invokes).
+
+   **F4.7 — Ledger header + fall-through (R8).** Emit the ledger header line as the FIRST line of the ledger file:
+   - Fresh Form 4 creation path (F4.6 succeeded): `Tracking ref: <new-ref> · form: tracking-list`. The `tracking-list` value is new — it is the fourth `form:` value (alongside `epic`, `tracking-existing`, `tracking-new`); every grep of `form:` in ledger post-mortems must find it.
+   - Reuse path (F4.4 hit): `Tracking ref: <existing-ref> · form: tracking-existing · resumed: <YYYY-MM-DD HH:MM UTC>` (already emitted at F4.4).
+
+   Then fall through to the standard startup line (below) and step 3's startup sweep. From this point on, Form 4 is byte-identical to a Form 2 invocation against `trackingRef` — no new gate, no new dispatch class, no new cursor behavior. Form 4 has no gate of its own; every failure mode above is `Print + exit`, matching the tool-presence-check precedent below (a prompt whose every option means "abort" is not a decision).
+
+   **Print startup line** naming the tracking ref (verbatim `owner/repo#n`) and the resolved `invocationForm`; under Form 3, the startup line prints after G.6 approval, once the new tracking ref exists. Under Form 4, the startup line prints after F4.6 (fresh creation) or after the reuse notice (F4.4 hit), once `trackingRef` is bound.
 
    Pre-flight: **first**, check whether the harness `Monitor` tool is bound in the current session's tool binding. If `Monitor` is absent, print verbatim:
 
@@ -48,7 +125,7 @@ $ARGUMENTS
 
    On probe success, continue: `gh auth status` (on failure → **Error handling** class `AUTH_FAILURE`); confirm the operator's cwd is a writable git repo; create the ledger directory with `mkdir -p .generacy/cockpit/auto-runs` (on failure → **Error handling** class `OTHER`). Compute the run's ledger filename: `.generacy/cockpit/auto-runs/<tracking-ref-slug>-<timestamp>.ledger`, where `<tracking-ref-slug>` is the tracking reference with `/` replaced by `-` and `#` stripped, and `<timestamp>` is `YYYYMMDD-HHMMSS` in the operator's local time captured now.
 
-   **Ledger header line** — the FIRST line of the ledger file, written above the dispatch stream: `Tracking ref: <tracking-ref> · form: <invocationForm>`. Under Forms 1 and 2 the header is written at step 1 (before the startup sweep). Under Form 3 the header is written after G.6 approval; if G.6 was skipped at the initial fire, the header carries `form: tracking-new (abandoned before creation)` and the run exits.
+   **Ledger header line** — the FIRST line of the ledger file, written above the dispatch stream: `Tracking ref: <tracking-ref> · form: <invocationForm>`. Under Forms 1 and 2 the header is written at step 1 (before the startup sweep). Under Form 3 the header is written after G.6 approval; if G.6 was skipped at the initial fire, the header carries `form: tracking-new (abandoned before creation)` and the run exits. Under Form 4 the header is written at F4.7 — `form: tracking-list` on the fresh-creation path, `form: tracking-existing · resumed: <YYYY-MM-DD HH:MM UTC>` on the reuse path. Grep for `form:` in ledger post-mortems will find all four values: `epic`, `tracking-existing`, `tracking-new`, `tracking-list`.
 
 2. **Arm the background sensor under harness `Monitor`.** Spawn `generacy cockpit doorbell <epic-ref>` under the harness `Monitor` tool at loop start. The verb's positional is named `<epic-ref>` (matching `generacy cockpit help doorbell`), but it takes the epic ref under `invocationForm: epic` or the tracking ref under `--tracking` / `--new` (matching the ledger header line's `Tracking ref:` field) — any task-list-bearing scope issue is accepted. The `Monitor.spawn(...)` call binds `monitorHandle` (see `data-model.md § In-memory loop state`) and re-invokes the model exactly when the child emits a stdout line — idle cost is zero. The stdout content is **NDJSON per-line** — the parent parses each line as a candidate enriched event per § Enriched-line dispatch contract (E2 detection gate). Enriched lines (JSON-parseable objects carrying `to` and `labels`) drive label-driven dispatch (D.1–D.4, D.7, D.9, D.9a–D.9d) and inform the D.5/D.6 merge gate via the baked `checks` verdict; bare or malformed lines fall back to `cockpit_await_events` for authoritative state. `cockpit_await_events` remains the sole source of typed batches for the merge-gate fallback and D.8/D.10/D.11 escalation surfaces (step 4). **No ledger line for sensor arm-up** — the doorbell subprocess is engine-owned per generacy#974 (it internally attaches to the shared event-bus poll loop `cockpit_await_events` drains rather than running its own poll cycle), and skill-side arm-up produces no ledger row. The pre-#431 `watch-lifecycle · spawn · armed` row is retired along with the C5 re-spawn state machine.
 

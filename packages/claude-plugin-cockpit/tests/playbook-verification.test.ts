@@ -24,6 +24,18 @@ import {
   type AddExistingIntent,
   type FileNewIntent,
 } from "../lib/intent-recognition.js";
+import {
+  parseTokens,
+  dispatchForm,
+  parseWorkspaceRepo,
+  resolveRefs,
+  formatTitle,
+  formatBody,
+  refSetEqual,
+  parseBodyRefs,
+  type QualifiedRef,
+  type WorkspaceRepo,
+} from "../lib/invocation-form-4.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, "fixtures");
@@ -2558,6 +2570,245 @@ describe("437 — auto.md enriched-line dispatch drops per-event cockpit_status 
         `positive pin (${header}): narration must state the retain-the-re-check obligation`,
       ).toMatch(/retain[s]?\s+the\s+per-event\s+`cockpit_status/);
     }
+  });
+});
+
+describe("444 — /cockpit:auto Form 4 — token parsing, dispatch, and library contracts", () => {
+  const WORKSPACE: WorkspaceRepo = {
+    owner: "generacy-ai",
+    repo: "agency",
+    originUrl: "https://github.com/generacy-ai/agency.git",
+  };
+
+  it("444-lib-1 parseTokens: empty-token discard (Q5=A), trailing-comma tolerance, whitespace normalization", () => {
+    const singleBare = readFileSync(resolve(FIXTURES, "444-parse-tokens-single-bare.txt"), "utf-8");
+    const multiComma = readFileSync(resolve(FIXTURES, "444-parse-tokens-multi-comma.txt"), "utf-8");
+    const multiSpace = readFileSync(resolve(FIXTURES, "444-parse-tokens-multi-space.txt"), "utf-8");
+    const mixed = readFileSync(resolve(FIXTURES, "444-parse-tokens-mixed.txt"), "utf-8");
+    const trailing = readFileSync(resolve(FIXTURES, "444-parse-tokens-trailing-comma.txt"), "utf-8");
+    const unknownFlag = readFileSync(resolve(FIXTURES, "444-parse-tokens-unknown-flag.txt"), "utf-8");
+    const bothFlags = readFileSync(resolve(FIXTURES, "444-parse-tokens-both-flags.txt"), "utf-8");
+
+    expect(parseTokens(singleBare).tokens).toEqual(["512"]);
+    expect(parseTokens(singleBare).isEmpty).toBe(false);
+    expect(parseTokens(multiComma).tokens).toEqual(["512", "513", "514"]);
+    expect(parseTokens(multiSpace).tokens).toEqual(["512", "513", "514"]);
+    expect(parseTokens(mixed).tokens).toEqual(["512", "other/repo#41", "513"]);
+    expect(parseTokens(trailing).tokens).toEqual(["512", "513"]);
+    expect(parseTokens("").isEmpty).toBe(true);
+    expect(parseTokens("   ,, ,, ").isEmpty).toBe(true);
+
+    const uf = parseTokens(unknownFlag);
+    expect(uf.flags.unknown).toEqual(["--tracing"]);
+    expect(uf.tokens).toEqual(["512"]);
+
+    const bf = parseTokens(bothFlags);
+    expect(bf.flags.tracking).toBe(true);
+    expect(bf.flags.new).toBe(true);
+  });
+
+  it("444-lib-2 dispatchForm: seven-branch table from data-model.md § E3", () => {
+    // 1. Both flags.
+    expect(dispatchForm(parseTokens("--tracking foo/bar#1 --new title"))).toEqual({
+      form: "usage-error",
+      reason: "both-flags",
+    });
+    // 2. Unknown flag.
+    expect(dispatchForm(parseTokens("--tracing 512"))).toEqual({
+      form: "usage-error",
+      reason: "unknown-flag",
+    });
+    // 3. --tracking with correct shape → tracking-existing.
+    const trackingOk = dispatchForm(parseTokens("--tracking foo/bar#42"));
+    expect(trackingOk.form).toBe("tracking-existing");
+    if (trackingOk.form === "tracking-existing") {
+      expect(trackingOk.trackingRef.owner).toBe("foo");
+      expect(trackingOk.trackingRef.repo).toBe("bar");
+      expect(trackingOk.trackingRef.number).toBe(42);
+    }
+    // 3-bad: --tracking with wrong shape.
+    expect(dispatchForm(parseTokens("--tracking 42")).form).toBe("usage-error");
+    // 4. --new with title.
+    const newOk = dispatchForm(parseTokens('--new some-title'));
+    expect(newOk.form).toBe("tracking-new");
+    // 5. Single qualified ref → epic.
+    const epic = dispatchForm(parseTokens("foo/bar#99"));
+    expect(epic.form).toBe("epic");
+    if (epic.form === "epic") expect(epic.epicRef.number).toBe(99);
+    // 6a. Single bare number → tracking-list (Form 4).
+    expect(dispatchForm(parseTokens("512")).form).toBe("tracking-list");
+    // 6b. Multi-bare → tracking-list.
+    expect(dispatchForm(parseTokens("512 513 514")).form).toBe("tracking-list");
+    // 6c. Mixed bare + qualified (multiple) → tracking-list (not epic).
+    expect(dispatchForm(parseTokens("512 foo/bar#41")).form).toBe("tracking-list");
+    // 7. Empty invocation.
+    expect(dispatchForm(parseTokens(""))).toEqual({
+      form: "usage-error",
+      reason: "empty",
+    });
+  });
+
+  it("444-lib-3 parseWorkspaceRepo: HTTPS, SSH shorthand, SSH long form; non-GitHub returns null", () => {
+    const https = parseWorkspaceRepo("https://github.com/generacy-ai/agency.git");
+    expect(https).not.toBeNull();
+    expect(https!.owner).toBe("generacy-ai");
+    expect(https!.repo).toBe("agency");
+
+    const httpsNoDotGit = parseWorkspaceRepo("https://github.com/generacy-ai/agency");
+    expect(httpsNoDotGit!.owner).toBe("generacy-ai");
+    expect(httpsNoDotGit!.repo).toBe("agency");
+
+    const sshShort = parseWorkspaceRepo("git@github.com:generacy-ai/agency.git");
+    expect(sshShort!.owner).toBe("generacy-ai");
+    expect(sshShort!.repo).toBe("agency");
+
+    const sshLong = parseWorkspaceRepo("ssh://git@github.com/generacy-ai/agency.git");
+    expect(sshLong!.owner).toBe("generacy-ai");
+    expect(sshLong!.repo).toBe("agency");
+
+    expect(parseWorkspaceRepo("git@gitlab.example.com:owner/repo.git")).toBeNull();
+    expect(parseWorkspaceRepo("https://gitlab.com/owner/repo.git")).toBeNull();
+    expect(parseWorkspaceRepo("")).toBeNull();
+  });
+
+  it("444-lib-4 resolveRefs: bare/qualified dedup collapses to one; first-seen order preserved", () => {
+    const resolved = resolveRefs(["512", "generacy-ai/agency#512", "513"], WORKSPACE);
+    expect(resolved.refs).toHaveLength(2);
+    expect(resolved.refs[0]!.number).toBe(512);
+    expect(resolved.refs[0]!.supplied).toBe("bare");
+    expect(resolved.refs[1]!.number).toBe(513);
+
+    // First-seen order preserved: 513, 512 → order 513, 512.
+    const reversed = resolveRefs(["513", "512"], WORKSPACE);
+    expect(reversed.refs.map((r) => r.number)).toEqual([513, 512]);
+
+    // Mixed workspace + cross-repo.
+    const mixed = resolveRefs(["512", "other/repo#41", "513"], WORKSPACE);
+    expect(mixed.refs).toHaveLength(3);
+    expect(mixed.refs[1]!.owner).toBe("other");
+    expect(mixed.refs[1]!.repo).toBe("repo");
+    expect(mixed.refs[1]!.number).toBe(41);
+  });
+
+  it("444-lib-5 formatTitle: ≤5 refs inline, (+K more) for >5, short-form vs qualified rendering", () => {
+    const oneRef = resolveRefs(["512"], WORKSPACE);
+    expect(formatTitle(oneRef.refs, WORKSPACE, "2026-07-21")).toBe(
+      "Tracking: auto session 2026-07-21 — #512",
+    );
+
+    const fiveRefs = resolveRefs(["1", "2", "3", "4", "5"], WORKSPACE);
+    expect(formatTitle(fiveRefs.refs, WORKSPACE, "2026-07-21")).toBe(
+      "Tracking: auto session 2026-07-21 — #1 #2 #3 #4 #5",
+    );
+
+    const eightRefs = resolveRefs(["1", "2", "3", "4", "5", "6", "7", "8"], WORKSPACE);
+    expect(formatTitle(eightRefs.refs, WORKSPACE, "2026-07-21")).toBe(
+      "Tracking: auto session 2026-07-21 — #1 #2 #3 #4 #5 (+3 more)",
+    );
+
+    // Mixed: workspace-local short-form, cross-repo qualified.
+    const mixed = resolveRefs(["512", "other/repo#41"], WORKSPACE);
+    expect(formatTitle(mixed.refs, WORKSPACE, "2026-07-21")).toBe(
+      "Tracking: auto session 2026-07-21 — #512 other/repo#41",
+    );
+  });
+
+  it("444-lib-6 formatBody: every line fully-qualified regardless of workspace-locality", () => {
+    const refs = resolveRefs(["512", "other/repo#41", "513"], WORKSPACE);
+    expect(formatBody(refs.refs)).toBe(
+      "- [ ] generacy-ai/agency#512\n- [ ] other/repo#41\n- [ ] generacy-ai/agency#513",
+    );
+    expect(formatBody([])).toBe("");
+  });
+
+  it("444-lib-7 refSetEqual + parseBodyRefs: reuse HIT on identical, MISS on superset; malformed ignored", () => {
+    const hitBody = readFileSync(resolve(FIXTURES, "444-body-reuse-hit.md"), "utf-8");
+    const missBody = readFileSync(resolve(FIXTURES, "444-body-reuse-miss.md"), "utf-8");
+    const invocation = resolveRefs(["512", "513", "other/repo#41"], WORKSPACE);
+
+    const hitRefs = parseBodyRefs(hitBody);
+    expect(hitRefs).toHaveLength(3);
+    expect(refSetEqual(invocation.refs, hitRefs)).toBe(true);
+
+    const missRefs = parseBodyRefs(missBody);
+    expect(missRefs).toHaveLength(4);
+    expect(refSetEqual(invocation.refs, missRefs)).toBe(false);
+
+    // Order-agnostic + dedup-agnostic set equality.
+    const a: QualifiedRef[] = [
+      { owner: "o", repo: "r", number: 1, supplied: "bare" },
+      { owner: "o", repo: "r", number: 2, supplied: "qualified" },
+    ];
+    const b: QualifiedRef[] = [
+      { owner: "o", repo: "r", number: 2, supplied: "bare" },
+      { owner: "o", repo: "r", number: 1, supplied: "qualified" },
+      { owner: "o", repo: "r", number: 1, supplied: "bare" }, // duplicate
+    ];
+    expect(refSetEqual(a, b)).toBe(true);
+
+    // Malformed body lines: parseBodyRefs ignores non-matching bullets.
+    const malformed = "- [ ] not-a-ref\n- some prose\n* [ ] o/r#5\n- [ ] o/r#7\n";
+    expect(parseBodyRefs(malformed).map((r) => r.number)).toEqual([7]);
+  });
+
+  it("444-1 form-list pin: step 1 lists exactly four Form bullets in order (epic, tracking-existing, tracking-new, tracking-list)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1);
+    expect(step1, "step 1 must exist in auto.md § Instructions").toBeDefined();
+
+    // Four form bullets must appear in order.
+    const idxForm1 = step1!.indexOf("**Form 1 (epic mode)**");
+    const idxForm2 = step1!.indexOf("**Form 2 (epic-less: existing tracking)**");
+    const idxForm3 = step1!.indexOf("**Form 3 (epic-less: new tracking)**");
+    const idxForm4 = step1!.indexOf("**Form 4 (epic-less: issue-number list)**");
+
+    expect(idxForm1, "Form 1 bullet must appear in step 1").toBeGreaterThanOrEqual(0);
+    expect(idxForm2, "Form 2 bullet must appear in step 1").toBeGreaterThan(idxForm1);
+    expect(idxForm3, "Form 3 bullet must appear in step 1").toBeGreaterThan(idxForm2);
+    expect(idxForm4, "Form 4 bullet must appear in step 1").toBeGreaterThan(idxForm3);
+
+    // Each form's usage-string fragment must appear exactly once in step 1.
+    const fragments = [
+      "/cockpit:auto <epic-ref>",
+      "/cockpit:auto --tracking <issue-ref>",
+      '/cockpit:auto --new "<title>"',
+      "/cockpit:auto <issue-list>",
+    ];
+    for (const frag of fragments) {
+      const count = step1!.split(frag).length - 1;
+      expect(count, `fragment '${frag}' must appear at least once in step 1`).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("444-2 usage-string pin: step 1 contains the literal extended usage line", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    expect(step1).toContain(
+      'Usage: /cockpit:auto <epic-ref> | --tracking <issue-ref> | --new "<title>" | <issue-list>',
+    );
+  });
+
+  it("444-3 cockpit:tracking label prose pin: literal appears in auto.md step 1 Form 4 branch AND in tracking-issue-body contract", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    expect(step1, "auto.md step 1 must reference the cockpit:tracking label (Form 4 branch)").toContain(
+      "cockpit:tracking",
+    );
+
+    const contractPath = resolve(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "specs",
+      "444-summary-cockpit-auto-accept",
+      "contracts",
+      "tracking-issue-body.md",
+    );
+    const contract = readFileSync(contractPath, "utf-8");
+    expect(contract, "tracking-issue-body.md must reference the cockpit:tracking label").toContain(
+      "cockpit:tracking",
+    );
   });
 });
 
