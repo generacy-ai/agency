@@ -3013,6 +3013,13 @@ describe("449 UI-mode gates", () => {
     expect(block).toContain('outcome: "applied"');
     expect(block).toContain('outcome: "superseded"');
     expect(block).toContain('outcome: "failed"');
+    // Reconciliation (generacy#1034): every ack passes the answered delivery's
+    // generation, and the § Ack envelope note documents the full gate-ack
+    // envelope the orchestrator's GateAckSchema requires. Omitting generation
+    // 400s the ack.
+    expect(block).toContain("generation: event.generation");
+    expect(block).toContain("Ack envelope");
+    expect(block).toContain('kind: "gate-ack"');
   });
 
   it("449-14 D.12 subsection includes the revised-draft re-open path (make-changes → generation +1)", () => {

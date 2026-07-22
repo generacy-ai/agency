@@ -175,6 +175,7 @@ export interface GateAnswerEvent {
  */
 export interface GateAckParams {
   gateId: GateId;
+  generation: GateGeneration; // the answered delivery's generation (event.generation)
   outcome: "applied" | "superseded" | "failed";
   detail?: string;
 }
