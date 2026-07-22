@@ -50,9 +50,17 @@ export type GateId = string;
 export type GateGeneration = number;
 
 /**
- * Dispatch classes that map to gates opened via `cockpit_gate_open` under
- * UI mode. D.5 (green merge) and D.9/D.9a–D.9d (ledger-only) are omitted —
- * they never open gates. D.12 is the completion class for gate answers.
+ * Label-driven dispatch classes that map to gates opened via
+ * `cockpit_gate_open` under UI mode. D.5 (green merge) and D.9/D.9a–D.9d
+ * (ledger-only) are omitted — they never open gates. D.12 is the completion
+ * class for gate answers.
+ *
+ * Synthetic gates G.6 (filing) and G.7 (scope-drained) are NOT covered by
+ * this union — they fire from the § Add-issue path and the scope-drain
+ * check, not from a label transition, and have no D.x label class to
+ * re-check in V4. On their `GateRecord`, `dispatchClass` is `undefined`;
+ * their identifier lives in `transitionClass` (`"filing-gate"` /
+ * `"scope-drained"`) per data-model.md § DispatchClass.
  */
 export type DispatchClass =
   | "D.1"    // waiting-for:clarification (G.1)
@@ -182,7 +190,7 @@ export interface GateRecord {
   generation: GateGeneration;
   issueRef: string;
   transitionClass: string;
-  dispatchClass: DispatchClass;  // used for the V4 live-state supersession check
+  dispatchClass?: DispatchClass; // used for the V4 live-state supersession check; `undefined` for synthetic G.6 / G.7 gates (no D.x label class to re-check — they're driven by the § Add-issue path and scope-drain check, respectively)
   openedAt: string;
   inboxUrl: string;
   originalDraft: GateDraft;      // retained for revised-draft re-open comparisons
