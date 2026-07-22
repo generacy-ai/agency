@@ -25,6 +25,8 @@ $ARGUMENTS
    - **Form 3 (epic-less: new tracking)**: `/cockpit:auto --new "<title>"` — `--new` flag with one quoted free-text title. `invocationForm: tracking-new`. **G.6 filing gate fires immediately** (drafts title/body from the operator-supplied `<title>` — same drafter shape as a mid-run file-new intent — presents G.6; on `Approve & file`, `gh issue create` produces the tracking ref; on `Skip (don't file)`, the run exits cleanly). Subsequent behavior identical to Form 2.
    - **Form 4 (epic-less: issue-number list)**: `/cockpit:auto <issue-list>` — one or more comma/whitespace-separated GitHub issue references (bare integers resolve against the workspace repo, or qualified `owner/repo#N`; mix freely). `invocationForm: tracking-list` on fresh creation; `tracking-existing` when an open `cockpit:tracking` issue in the workspace repo has the identical resolved ref-set. Form 4 machine-generates the tracking issue's title, body, and label — no G.6 gate — then falls through to Form 2's loop shape. See § Form 4 branch below for the parse/resolve/validate/reuse/create pipeline.
 
+   **`--gates=<value>` (orthogonal flag; V1 parse)**. Accepted alongside any of Forms 1–4. Values: exactly one of `ui` / `local` / `auto`. Default when absent: `auto`. Parsed exactly once at step-1 pre-flight; a duplicate `--gates=*` in the argument stream → usage error with reason `gates-duplicate`; a value outside `{ui, local, auto}` → usage error with reason `gates-value-invalid (<observed>)`. Both errors fall through the § step-1 ambiguity-table exit pattern (below) — same `Usage: /cockpit:auto …` print + non-zero exit as any other Form 1–4 ambiguity. Contract: `contracts/gates-flag-parse.md`. Semantics per resolved value: `--gates=local` preserves today's byte-path exactly (no `cockpit_gate_open` calls, no `openGates` map, no D.12 dispatch, no `· source: ui-gate` ledger suffix); `--gates=ui` forces UI mode (see § UI-mode gate mapping) and hard-fails at pre-flight if `cockpit_gate_open` is absent from the session's MCP tool binding (below, before ledger directory creation); `--gates=auto` resolves per the two-part check below (`cockpit_gate_open` bound AND cluster cloud-activated → `ui`; else `local`), decided ONCE at pre-flight and does not flip mid-run.
+
    **Ambiguity table** (extends `contracts/invocation-forms.md`; per `specs/444-summary-cockpit-auto-accept/research.md § R9`):
 
    | Input pattern | Form | Notes |
@@ -35,10 +37,36 @@ $ARGUMENTS
    | Any other non-flag positional stream (bare numbers, mixed lists, multiple qualified refs, single bare number) | **4** | New. |
    | Both `--tracking` and `--new` present | usage error | Existing — reason `both-flags`. |
    | A flag combined with a positional list | usage error | New — reason `tracking-arg-shape` / `new-arg-shape`. |
-   | Unknown `--*` flag (e.g. `--tracing`) | usage error | New — reason `unknown-flag`. Do NOT guess intent. |
+   | Unknown `--*` flag (e.g. `--tracing`) | usage error | New — reason `unknown-flag`. Do NOT guess intent. Note: `--gates=<value>` is now recognized (see the `--gates` flag row above and the two `--gates`-specific rows below); it is no longer an unknown flag. |
    | Zero non-empty tokens after splitting | usage error | New (Q5=A boundary) — reason `empty`. |
+   | `--gates=<value>` where `<value>` ∉ `{ui, local, auto}` | usage error | New — reason `gates-value-invalid (<observed>)`. |
+   | Multiple `--gates=*` flags | usage error | New — reason `gates-duplicate`. |
 
-   On any usage error, print `Usage: /cockpit:auto <epic-ref> | --tracking <issue-ref> | --new "<title>" | <issue-list>` (optionally followed by a `Reason: <reason> (<detail>)` line naming the ambiguity-table row) and exit non-zero.
+   On any usage error, print the two-line usage string verbatim (extended in R1 to include the `--gates` flag) and exit non-zero — optionally followed by a `Reason: <reason> (<detail>)` line naming the ambiguity-table row:
+
+   ```
+   Usage: /cockpit:auto <epic-ref> | --tracking <issue-ref> | --new "<title>" | <issue-list>
+          [--gates=ui|local|auto]  (default: auto)
+   ```
+
+   ### `--gates` resolution and pre-flight absence
+
+   After arg parse succeeds (Forms 1–4 recognized + `--gates=<value>` validated per V1 above) and BEFORE any of ledger directory creation, ledger header write, the Form 4 workspace-repo inference (F4.1 below), or the seven-cockpit-tools presence check (step 3 startup sweep) — resolve the run's gate mode and check for pre-flight absence. Contract: `contracts/gates-flag-parse.md`. Reference: `cockpit-remote-gates-plan.md § Skill-side presence check`.
+
+   **`--gates=auto` resolution (two-part check, decided ONCE)**. When the parsed value is `auto`, resolve to `ResolvedGateMode` via a two-part check performed at this point in pre-flight:
+
+   1. **Tool binding**: Is `cockpit_gate_open` present in the session's MCP tool binding? (same shape as the seven-cockpit-tools check at step 3 below.)
+   2. **Cluster cloud-activation**: Is the cluster cloud-activated? Query surface pinned by the epic — implementation piggybacks on either the doorbell handshake or a startup field returned by `cockpit_context` (per `cockpit-remote-gates-plan.md § Skill-side presence check`).
+
+   If BOTH are YES → `ResolvedGateMode = ui`. If EITHER is NO → `ResolvedGateMode = local` (byte-identical to explicit `--gates=local`). The resolution is decided ONCE at pre-flight — it does not flip mid-run — because both inputs are static session properties; a mid-run flip would produce an ambiguous partial-UI / partial-local ledger. When `--gates=ui` is explicit, this two-part check is skipped and `ResolvedGateMode = ui` unconditionally (the absence check below covers tool-binding failure).
+
+   **`--gates=ui` pre-flight absence (Q3=A — hard-fail, Print + exit)**. When the parsed value is `ui` (explicit) AND `cockpit_gate_open` is absent from the session's MCP tool binding at this pre-flight point, print the verbatim error string and exit non-zero — matching the seven-cockpit-tools presence check (line ~136 below) `Print + exit` precedent:
+
+   ```
+   --gates=ui specified but cockpit_gate_open is not available in this session; re-invoke with --gates=local or --gates=auto
+   ```
+
+   Exit non-zero. Do **NOT** create the ledger directory (`mkdir -p .generacy/cockpit/auto-runs`). Do **NOT** write the ledger header line (`Tracking ref: <ref> · form: <form>`). Do **NOT** emit the `Auto run starting …` line. The operator sees only the error string. Rationale: `--gates=ui` is an explicit operator override the environment cannot satisfy; a silent whole-run downgrade would reintroduce exactly the session-blocking behavior that `--gates=ui` was chosen to escape, and a prompt whose every option means "abort" is not a decision. Under `--gates=auto` the same tool-binding absence resolves silently to `local` (per the two-part check above); the hard-fail is specific to explicit `ui`. Distinct from US4 fallback: absence at pre-flight is a static session property (hard-fail); `cockpit_gate_open` **error at call time** is transient and covered by the per-gate `UI-mode fallback` block below (see § UI-mode fallback on `cockpit_gate_open` call error).
 
    ### Form 4 branch — parse, resolve, validate, reuse, create
 
@@ -127,6 +155,18 @@ $ARGUMENTS
 
    **Ledger header line** — the FIRST line of the ledger file, written above the dispatch stream: `Tracking ref: <tracking-ref> · form: <invocationForm>`. Under Forms 1 and 2 the header is written at step 1 (before the startup sweep). Under Form 3 the header is written after G.6 approval; if G.6 was skipped at the initial fire, the header carries `form: tracking-new (abandoned before creation)` and the run exits. Under Form 4 the header is written at F4.7 — `form: tracking-list` on the fresh-creation path, `form: tracking-existing · resumed: <YYYY-MM-DD HH:MM UTC>` on the reuse path. Grep for `form:` in ledger post-mortems will find all four values: `epic`, `tracking-existing`, `tracking-new`, `tracking-list`.
 
+   **`Auto run starting …` line** (print + ledger-header extension, per `contracts/gates-flag-parse.md § --gates=auto resolution`) — printed IMMEDIATELY BEFORE the ledger header line (Tracking ref: … line above), once the ledger directory is created and `ResolvedGateMode` is known. This line makes the resolved gate mode observable both in the transcript and at the top of the ledger file. Format:
+
+   ```
+   Auto run starting · gates: <ui|local> (source: --gates=<value>[ → <resolution reason>])
+   ```
+
+   Two illustrative examples (per `quickstart.md § Expected output`):
+   - Explicit `--gates=ui`, resolved to UI (tool binding + cluster cloud-activation both YES): `Auto run starting · gates: ui (source: --gates=ui)`.
+   - `--gates=auto`, resolved to local because `cockpit_gate_open` is unbound: `Auto run starting · gates: local (source: --gates=auto → cockpit_gate_open unbound)`.
+
+   The `→ <resolution reason>` suffix appears only when `--gates=auto` resolved down to `local` (naming which of the two-part checks failed); it is omitted for explicit `--gates=ui` / `--gates=local` and for `--gates=auto` that cleanly resolves to `ui`. Under a `--gates=ui` pre-flight absence hard-fail (above), this line is NOT emitted (the run refuses to touch the ledger surface for a run that can never succeed).
+
 2. **Arm the background sensor under harness `Monitor`.** Spawn `generacy cockpit doorbell <epic-ref>` under the harness `Monitor` tool at loop start. The verb's positional is named `<epic-ref>` (matching `generacy cockpit help doorbell`), but it takes the epic ref under `invocationForm: epic` or the tracking ref under `--tracking` / `--new` (matching the ledger header line's `Tracking ref:` field) — any task-list-bearing scope issue is accepted. The `Monitor.spawn(...)` call binds `monitorHandle` (see `data-model.md § In-memory loop state`) and re-invokes the model exactly when the child emits a stdout line — idle cost is zero. The stdout content is **NDJSON per-line** — the parent parses each line as a candidate enriched event per § Enriched-line dispatch contract (E2 detection gate). Enriched lines (JSON-parseable objects carrying `to` and `labels`) drive label-driven dispatch (D.1–D.4, D.7, D.9, D.9a–D.9d) and inform the D.5/D.6 merge gate via the baked `checks` verdict; bare or malformed lines fall back to `cockpit_await_events` for authoritative state. `cockpit_await_events` remains the sole source of typed batches for the merge-gate fallback and D.8/D.10/D.11 escalation surfaces (step 4). **No ledger line for sensor arm-up** — the doorbell subprocess is engine-owned per generacy#974 (it internally attaches to the shared event-bus poll loop `cockpit_await_events` drains rather than running its own poll cycle), and skill-side arm-up produces no ledger row. The pre-#431 `watch-lifecycle · spawn · armed` row is retired along with the C5 re-spawn state machine.
 
    On **immediate spawn failure** (`Monitor.spawn(...)` returns a spawn error — should not happen when pre-flight passed, but may surface as a transient cluster-registration race), the skill **stays passive**: no ledger line, no re-spawn branch (Q3=A). The C4 heartbeat (step 4) is the sole recovery signal — the loop degrades to heartbeat-only cost until the engine restores the doorbell surface. Transport resilience lives behind the doorbell surface itself, not in a skill-side state machine. The cursor is unchanged from pre-#420: the first `cockpit_await_events` call in step 4 arms the in-memory cursor from the tool server's connect-time position. Maps to FR-001, FR-009, SC-004.
@@ -143,6 +183,21 @@ $ARGUMENTS
    **Synthetic-event dispatch (only reached when all seven tools are present).** Call `cockpit_status(epic=<epic-ref>, json=true)` and treat every issue whose current transition class is one of D.1–D.9 (below) as a synthetic event. Dispatch each one by one (per § Dispatch and § Ledger) before entering the main loop. This handles the case where the epic already has open work when `/cockpit:auto` is invoked. The sweep ends with exactly one full status table (per § Ledger L.4 policy) and then hands off to step 4.
 
    Under `--tracking <issue-ref>` / `--new "<title>"` (epic-less mode), the sweep reads the task list from the tracking issue via `cockpit_status(issue=<tracking-ref>, json=true)` and treats each live-state ref as a synthetic event — structurally identical to the epic-ref sweep. This is the restart-safety mechanism: the scope survives restarts because it lives on the tracking issue, not in session state (spec § Changes item 5).
+
+   **UI-mode extended trigger set (Q2=B)**. When `ResolvedGateMode === "ui"` (per § step-1 `--gates` resolution), the startup sweep re-opens remote gates via `cockpit_gate_open` for **every persistent gate-trigger state** — a superset of the `waiting-for:*` baseline. Contract: `contracts/ui-startup-sweep.md`. Under `local`, the sweep behaves EXACTLY as today (this callout is a UI-only extension; local-mode byte-path unchanged). Trigger states:
+
+   - **All `waiting-for:*` labels** (matches FR-013 baseline): `waiting-for:clarification` (D.1), `waiting-for:<artifact>-review` (D.2 — spec / clarification / plan / tasks), `waiting-for:implementation-review` (D.3), `waiting-for:manual-validation` (D.4), `waiting-for:merge-conflicts` (D.11 — co-occurs with `blocked:stuck-merge-conflicts`).
+   - **Persistent NON-`waiting-for:*` triggers** (added under Q2=B): `agent:error` (D.7), `failed:<subtype>` (D.7), `completed:validate` with red checks (D.6 — after fixer, if the fixer state is not in-memory-only), `phase-complete` (D.8 — G.5), `blocked:stuck-merge-conflicts` (D.11 — co-occurs with `waiting-for:merge-conflicts`; either alone triggers).
+
+   **Rationale**: these non-`waiting-for` triggers are persistent labels — the engine sets them and they sit until dispatched; they do NOT self-re-fire. Restricting the UI sweep to `waiting-for:*` only would silently drop them across a restart / takeover — a real operator hazard the local sweep does not have.
+
+   **G.4(e) exclusion**: consecutive `invalid-cursor` streak (per-epic in-memory cursor-mechanism fault; § step 5 Branch B) is NOT swept. It is an in-memory state that does not survive a session restart by definition, and it has no `<issue-ref>` to key a per-issue gate record on.
+
+   **gateId idempotency**: every sweep-time `cockpit_gate_open` call uses `gateId = hash(issueRef, dispatchClass, generation=1)` per plan-doc rules (`generation=1` is the sweep-time default since a restart forgets in-memory generation state). The tool server MUST recognize a duplicate `gateId` and return the existing record's `inboxUrl` rather than creating a duplicate — cluster-side property owned by the epic (see `cockpit-remote-gates-plan.md § Idempotency`). Plugin-side, on a duplicate return the sweep still adds an entry to `openGates` in-memory (the record's `openedAt` may be earlier than the run's start — expected on a takeover / restart).
+
+   **Deferred-to-loop behavior on sweep-time `cockpit_gate_open` failure**: the sweep is "best-effort UI-open". If `cockpit_gate_open` fails for a specific sweep-time gate, the first-failure ledger note fires (per § UI-mode fallback rule 5), but "fall through to local `AskUserQuestion` mid-sweep" is problematic (blocking on an AskUserQuestion mid-sweep would defeat the sweep's non-blocking model). Instead: the specific gate's initiation is DEFERRED to the main loop's first natural wake (a `Monitor` line or `ScheduleWakeup` heartbeat). The record is NOT opened, but the underlying event WILL re-fire naturally because the label is persistent. The main loop's per-wake iteration retries `cockpit_gate_open` for that issue's transition class; on success the gate opens normally, on repeated failure the § UI-mode fallback AskUserQuestion path fires (single-gate blocking is acceptable in the main loop; sweep is the special case). A hostile cluster (constantly-failing `cockpit_gate_open`) degrades to loop-time fallback but does not stall.
+
+   **Status table** (per § L.4 policy): under UI mode the sweep's status table is printed AFTER the sweep-time `cockpit_gate_open` calls; the table's rows show the same issues that just had gates opened. The "sweep ends with exactly one full status table" rule is unaffected.
 
 4. **Main loop (wake-driven).** Post-#420, the loop is **wake-driven**, not long-polling. The model does nothing between wakes — the harness re-invokes the loop only when a wake signal arrives:
 
@@ -332,7 +387,7 @@ Under the post-#437 contract each dispatch class falls into one of two source co
 
 ## Dispatch
 
-The following nine event classes are dispatched per this table. The parent resolves authoritative state per step 4a — the enriched doorbell line's `to` / `labels` (and, for D.5/D.6, `checks`) are the source of truth for label-driven classes (D.1–D.4, D.5/D.6 on decisive `checks`, D.7, D.9, D.9a–D.9d); the per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check is retained for D.8, D.10, and D.11 (human/consequential gates), and fires as fallback for the label-driven classes when the doorbell line is bare (per FR-005 graceful degradation) or for D.5/D.6 when `checks` is absent or `pending` (per Q4=B). Ledger-only rows (D.9, D.9a, D.9b, D.9c, D.9d) skip any query entirely per § Invariants #8's cost contract. Each dispatch is composed of **CLI verb + optional subagent + optional gate**; no dispatch invokes a `/cockpit:*` slash command (invariant §4).
+The dispatch table below covers the label-driven classes (D.1–D.11) plus the UI-mode gate-answer completion class D.12 (fires only under `ResolvedGateMode === "ui"`). The parent resolves authoritative state per step 4a — the enriched doorbell line's `to` / `labels` (and, for D.5/D.6, `checks`) are the source of truth for label-driven classes (D.1–D.4, D.5/D.6 on decisive `checks`, D.7, D.9, D.9a–D.9d); the per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check is retained for D.8, D.10, and D.11 (human/consequential gates), and fires as fallback for the label-driven classes when the doorbell line is bare (per FR-005 graceful degradation) or for D.5/D.6 when `checks` is absent or `pending` (per Q4=B). Ledger-only rows (D.9, D.9a, D.9b, D.9c, D.9d) skip any query entirely per § Invariants #8's cost contract. **D.12** is the UI-mode completion class: under `ResolvedGateMode === "ui"`, every gate contract G.1–G.7 that maps to the wire record (per § UI-mode gate mapping) OPENS via `cockpit_gate_open` instead of `AskUserQuestion`; the operator's answer arrives as a D.12 `gate-answer` event and D.12 routes `{optionId, freeText}` onto the SAME downstream handling the local `AskUserQuestion` path performs today, closing the record with `cockpit_gate_ack(applied | superseded | failed)`. Each dispatch is composed of **CLI verb + optional subagent + optional gate**; no dispatch invokes a `/cockpit:*` slash command (invariant §4).
 
 | # | Event | Action shape |
 |---|-------|--------------|
@@ -351,6 +406,7 @@ The following nine event classes are dispatched per this table. The parent resol
 | D.9d | `phase:*` (prefix-match) | Ledger line only (engine-owned phase transition) |
 | D.11 | `waiting-for:merge-conflicts` **or** `blocked:stuck-merge-conflicts` (labels co-occur when the engine escalates; deduplicated per-issue for one incident) | Escalation gate (`I've resolved it` / `Skip` / `Stop`) |
 | D.10 | Unrecognized / ambiguous | Escalation gate (Skip / Stop only, never Retry) |
+| D.12 | `gate-answer` (typed event `kind: "gate-answer"` on the doorbell NDJSON line and as a `cockpit_await_events` batch item; carries `gateId`, `generation`, `optionId`, `freeText?`; fires only under `ResolvedGateMode === "ui"`) | Live-state supersession check → generation-match check → route optionId (+freeText) to the SAME downstream handling the local `AskUserQuestion` path performs (per § UI-mode gate mapping) → `cockpit_gate_ack(applied | superseded | failed)` |
 
 ### D.1 — `waiting-for:clarification`
 
@@ -681,6 +737,64 @@ If `cockpit_status` fails for one or more ad-hoc refs during the helper call, om
 **Never guess** — the escalation gate is the surface for any state class the playbook cannot dispatch.
 
 **Ledger line**: `<issue-ref> · <observed-state> · unrecognized-state · <skip (session-local mute) | stop (exit)>`.
+
+### D.12 — `gate-answer`
+
+**Trigger**: A `gate-answer` typed event arriving on either wake path — the enriched doorbell NDJSON line whose parsed object has `kind: "gate-answer"`, or a batch item returned by `cockpit_await_events(...)` whose event `kind` field is `"gate-answer"`. D.12 fires **only** when `ResolvedGateMode === "ui"`. Under `--gates=local` (or `--gates=auto` resolved to local) no remote records are open, the doorbell surface does not emit `gate-answer` events for this run, and D.12 is dead code on that path. Contract: `contracts/dispatch-d12-gate-answer.md`. Source of truth: the event payload IS the source of truth for the operator's answer (per § Enriched-line dispatch contract E3); the event does NOT carry the underlying label state — that comes from the SAME enriched-line `to` / `labels` fields OR from the § D.12 fallback re-query per E6.
+
+**Payload shape** (per `data-model.md § GateAnswerEvent`):
+
+- `gateId: string` — matches an entry in `openGates` (§ In-memory loop state additions above).
+- `generation: number` — must match `openGates[gateId].generation` (V3).
+- `issueRef: string` — the issue the gate belongs to (redundant with the record; used for the ledger row's `<issue-ref>` slot).
+- `transitionClass: string` — matches the record's `transitionClass` (redundant, used for the ledger row).
+- `answer.optionId: string` — one of the gate's option ids per the § UI-mode gate mapping row.
+- `answer.freeText?: string` — optional; **required** when `optionId === "add-more-work"` for G.7 per Q4=A (`required-if` affordance).
+- `answeredAt: string` — ISO-8601 UTC.
+
+**Dispatch steps**:
+
+1. **Look up record**: `record = openGates[event.gateId]`. If absent → `cockpit_gate_ack(gateId, outcome: "superseded", detail: "no matching open record — likely startup-race or duplicate delivery")` and write ledger row: `<issue-ref> · <transition-class> · <original-action> · superseded (no record) · source: ui-gate`. Do NOT dispatch further.
+
+2. **Generation-match check (V3)**: if `event.generation !== record.generation` → `cockpit_gate_ack(gateId, outcome: "superseded", detail: "stale generation <g_event> (current: <g_record>)")` and write ledger row: `<issue-ref> · <transition-class> · <original-action> · superseded (stale generation) · source: ui-gate`. Do NOT dispatch further.
+
+3. **Live-state supersession check (V4)**: read the underlying trigger label / state via the enriched doorbell line (if the D.12 event arrived via a doorbell-line drain that also carries `to` / `labels`) OR fall back to `cockpit_status(issue=<issueRef>, json=true)` per E6 retain-the-re-check pattern for consequential gates. If the trigger has been resolved out-of-band (e.g., `waiting-for:clarification` label removed, or `phase-complete` has advanced) → `cockpit_gate_ack(gateId, outcome: "superseded", detail: "live state moved past <transition-class>")` and write ledger row: `<issue-ref> · <transition-class> · <original-action> · superseded (state advanced) · source: ui-gate`. Do NOT dispatch further.
+
+4. **Route answer to downstream** (per § UI-mode gate mapping): each `(dispatchClass, optionId)` pair has a downstream handler in the mapping table's `downstream action per optionId` column. Invoke that handler with `answer.freeText` where applicable (G.1 `make-changes`, G.2 `request-changes`, G.6 `make-changes`, G.7 `add-more-work`). The handler performs the SAME tool call(s) / subagent spawn(s) / state mutation(s) the local `AskUserQuestion` path performs today (per the corresponding G.n subsection above) — no new downstream behavior is introduced by D.12; the handler is reused verbatim across UI-mode and local-mode paths.
+
+5. **Ack outcome**:
+   - Handler success → `cockpit_gate_ack(gateId, outcome: "applied")`; ledger row uses the mapping-table `<original-action>` + local-vocabulary `<outcome>` + `· source: ui-gate` suffix (per § Ledger UI-mode extensions).
+   - Handler failure (downstream tool error) → `cockpit_gate_ack(gateId, outcome: "failed", detail: "<handler-name> returned: <description>")`; ledger row: `<issue-ref> · <transition-class> · <original-action> · failed: <detail> · source: ui-gate`.
+   - Handler ambiguity (D.11 typed error → re-present the gate) — apply the § D.12 revised-draft re-open path (below): bump `generation`, re-open with the revised body; do NOT ack the original record yet (the re-open supersedes the pending ack when its answer arrives).
+
+6. **Remove from openGates**: on `applied` / `superseded` / `failed`, `openGates.delete(event.gateId)`. Revised-draft re-open (step 5 handler-ambiguity path) creates a NEW record under a fresh `gateId` — hashes over `generation` too, so a bump changes the id; the prior record is left in `openGates` and will match a stale-generation answer to `superseded` per V3.
+
+**Mandatory-per-dispatch ledger**: exactly one ledger line per D.12 event, per Invariant #8. The `cockpit_gate_open` call at initiation is print-only (per § Ledger UI-mode extensions) — the D.12 event is the resolving dispatch, and its ledger row is the mandatory one. Local mode's "one ledger line per gate dispatch at resolution" == UI mode's "one D.12 ledger line at resolution." Symmetry preserved.
+
+**No content-based filter**: D.12 events are consumed in the same stream order as every other event in a batch, per Invariants #7. No pre-filter drops a `gate-answer` event because a downstream handler is currently retrying; the retry is downstream of D.12's own handling.
+
+**Revised-draft re-open path (edit-directive from `make-changes`)**. When the resolved action for an arriving `gate-answer` is `make-changes` (G.1 / G.2 / G.6) — the edit-directive path — the handler applies the operator's edit directive (per the corresponding local G.n edit-directive handling), then re-opens the gate under a fresh generation instead of acking the original record `applied`. Concretely:
+
+1. Apply the edit directive per the corresponding G.n subsection above (G.1 § Directive grammar; G.2 revised draft; G.6 iterative edit branch).
+2. Increment the record's generation counter: `nextGeneration = record.generation + 1`.
+3. Compose the revised `GateDraft` (title, body, options, freeTextAffordance) — the body carries the edited content; options and freeTextAffordance are re-used verbatim from the original row's mapping-table entry.
+4. Call `cockpit_gate_open(GateOpenParams{ generation: nextGeneration, gate: <revised draft>, ..., gateId = hash(issueRef, dispatchClass, nextGeneration) })`. On success, add the NEW `GateRecord` to `openGates` under the new `gateId`; the ORIGINAL record is left in `openGates`.
+5. The original record is NOT acked at this point. If its answer arrives late (a race between the operator's `make-changes` selection and a duplicate delivery of the same original-generation answer), the V3 generation-match check on step 2 above will ack it `superseded (stale generation)` — no downstream duplicate action.
+6. Print the "one pointer line" for the new gate (per § UI-mode fallback / One pointer line rule); write a ledger row noting the re-open, e.g., G.1's `<ref> · waiting-for:clarification · clarification-batch · make-changes (re-opened g<n>) · source: ui-gate` (see § Ledger UI-mode extensions).
+7. On `cockpit_gate_open` call-time error at re-open, the § UI-mode fallback path fires for the revised draft (local `AskUserQuestion` on the same revised body). The generation increment still happened; any late-arriving prior-generation answer is still `superseded` per V3.
+
+Reference: `data-model.md § Revised-draft re-open path`. See also G.1 `make-changes` / G.2 `request-changes` on typed-error re-present / G.6 `make-changes` for how each local G.n contract's edit-directive semantics feed into this path.
+
+**Interactions with existing dispatch classes**:
+
+- D.1–D.4, D.6, D.7, D.10, D.11 — under `ResolvedGateMode === "ui"`, these dispatch classes' gates are OPENED via `cockpit_gate_open` instead of `AskUserQuestion`; the answer arrives as a D.12 event and is routed BACK to the same-class downstream handling. D.12 is the completion path; the label-driven dispatch is the initiation path. The pair `(D.n → open gate → D.12 → downstream)` is a two-hop sequence separated by an operator turn.
+- D.5 (green merge) — no gate, unaffected. `cockpit_gate_open` is never called for D.5.
+- D.8 (phase-complete) — G.5 opens under `<epic-ref>` (sole per-issue exception per the mapping table G.5 row). D.12 handles the answer identically to per-issue gates; the ledger row's `<issue-ref>` slot carries `<epic-ref>`.
+- D.9 / D.9a–D.9d — ledger-only rows, no gate, unaffected. `cockpit_gate_open` is never called for the D.9 family.
+
+**Interactions with the fallback path** (§ UI-mode fallback on `cockpit_gate_open` call error). If a `cockpit_gate_open` call errors during the INITIATION hop, the local `AskUserQuestion` fires for that gate. No `openGates` record is created; no D.12 event arrives for that gate (the record was never opened). The ledger row for that gate is written by the local flow at resolution time in the pre-change vocabulary, with the `· source: ui-gate-fallback` suffix (distinct from clean UI `· source: ui-gate`).
+
+**Ledger line** (per row of the § UI-mode gate mapping table): `<issue-ref> · <transition-class> · <original-action> · <outcome> · source: ui-gate` — `<original-action>` reuses the pre-change vocabulary (`clarification-batch`, `review-analysis+advance`, `phase-queue-gate`, `escalation-gate`, `filing-gate+scope-add`, `scope-drained-gate`, etc.); `<outcome>` reuses the local-vocabulary `applied` outcomes (`advanced`, `queued P<n> (<N> issues)`, `manually validated`, `filed + queued (<new-ref>)`, `keep-watching`, `finish (tracking closed)`, etc.) OR the UI-specific outcomes for non-applied cases (`superseded (no record)`, `superseded (stale generation)`, `superseded (state advanced)`, `failed: <detail>`). Additional row for `make-changes` (revised-draft re-open): outcome slot carries `make-changes (re-opened g<n>)` per the corresponding mapping-table entry.
 
 ## Add-issue flow (mid-run)
 
@@ -1211,6 +1325,83 @@ Per-ref disposition ordering is the same as the tracking issue's task-list markd
 
 G.7 fires exactly once per drain event; subsequent drains (after `Keep watching` and further ad-hoc work reaching terminal) fire again as fresh gates.
 
+## UI-mode gate mapping (G.1–G.7)
+
+Applies only when `ResolvedGateMode === "ui"` (from § step-1 `--gates` resolution). Under `local`, every gate presents via `AskUserQuestion` per § Gate contract above and this section is dead prose. Under `ui`, every gate contract G.1–G.7 that maps to a per-issue wire record opens a remote gate via `cockpit_gate_open(GateOpenParams)` instead of `AskUserQuestion`; the operator's answer arrives as a D.12 `gate-answer` event (see § D.12 gate-answer below) and D.12 routes `{optionId, freeText}` onto the SAME downstream handling the local `AskUserQuestion` path performs today — no new downstream behavior. Contract: `contracts/ui-gate-mapping.md`. Reference wire types: `packages/claude-plugin-cockpit/lib/gate-wire-types.ts` (and `specs/449-part-cockpit-remote-gates/data-model.md § Types`).
+
+**Row count**: EXACTLY 10 rows below — G.1, G.2, G.3, G.4a, G.4b, G.4c, G.4d, G.5, G.6, G.7. Never 7 (consolidated) or 11 (including G.4e). Per Q1=C. G.4(e) escalation stays local-only — per-epic in-memory cursor-fault has no `<issue-ref>` to key on, so the wire record's per-issue fields (`issueRef`, `issueTitle`, `issueUrl`, `branch`) cannot be populated for it; see § G.4(e) exclusion note below.
+
+**Row shape**: every row names — `Gate | transitionClass | title | drafted body (source) | options (optionId → label / recommended?) | freeTextAffordance | downstream action per optionId | ledger action verb`. Column meanings:
+
+- **Gate**: the gate identifier (G.1 … G.7 subtype).
+- **transitionClass**: string carried on `GateOpenParams.transitionClass` and on `GateAnswerEvent.transitionClass` — matches the pre-change dispatch vocabulary (`waiting-for:clarification`, `completed:validate`, `phase-complete`, etc.).
+- **title**: `GateOpenParams.gate.title` — the AskUserQuestion title verbatim from the corresponding G.n contract above.
+- **drafted body (source)**: the drafted presentation block reused verbatim as `GateOpenParams.gate.body` — sourced from the G.n subsection above.
+- **options (optionId → label)**: `GateOpenParams.gate.options[]` — `optionId` values are stable-across-the-wire keys the mapping table pins; `label` values are the operator-facing button text verbatim from the local G.n option strings.
+- **freeTextAffordance**: `GateOpenParams.gate.freeTextAffordance` — one of `{ kind: "none" }`, `{ kind: "optional", placeholder }`, `{ kind: "required-if", ifOptionId, placeholder }`.
+- **downstream action per optionId**: the SAME tool call(s) / subagent spawn(s) / state mutation(s) the local `AskUserQuestion` path performs (per the G.n subsection above), invoked by D.12 on the arriving answer.
+- **ledger action verb**: the `<action>` slot in the resolution ledger row (see § Ledger and § Ledger UI-mode extensions below) — always the pre-change vocabulary; the row's outcome slot carries `· source: ui-gate` (or `· source: ui-gate-fallback` on the fallback path).
+
+| Gate | transitionClass | title | drafted body (source) | options (optionId → label / recommended?) | freeTextAffordance | downstream action per optionId | ledger action verb |
+|------|-----------------|-------|-----------------------|-------------------------------------------|--------------------|--------------------------------|--------------------|
+| G.1 | `waiting-for:clarification` | `Approve clarification answers for <issue-ref>` | Five-element `### Q<n>` block per open question (title, context, question, options, recommendation, why, provenance) — from § D.1 step 3 / § G.1 above | `approve-all` → `Approve all & post (Recommended)`; `make-changes` → `Make changes`; `skip-batch` → `Skip this batch` | `{ kind: "optional", placeholder: "notes (optional)" }` — used to carry an edit directive alongside `make-changes` in a single submission | `approve-all`: post batch + `cockpit_advance(issue=<ref>, gate="clarification")`. `make-changes` (with freeText): apply edit directive per § G.1 edit-directive handling; increment `generation`; re-open with revised draft (see § D.12 revised-draft re-open path). `skip-batch`: post subset (skipped Q excluded) or post nothing if all-skipped. | `clarification-batch` |
+| G.2 | `waiting-for:<artifact>-review` (spec / clarification / plan / tasks / implementation) | `Review verdict for <issue-ref> — <artifact>` | Findings-summary table + `Suggested decision:` line (per § D.2 step 3 / § G.2 above) | `approve` → `approve`; `request-changes` → `request-changes`; `abort` → `abort` | `{ kind: "optional", placeholder: "reviewer comment (optional; used as body of request-changes review or approval note)" }` — matches the local drafter's comment-body affordance | `approve`: `cockpit_advance(issue=<ref>, gate="<artifact>-review")`. `request-changes` (with freeText as review body): run the D.2 four-step guardrail (pre-validate anchors → compose bundle → POST → two-leg verify → retry once → re-present on failure). `abort`: no downstream action. | `review-analysis+advance` / `review-analysis+request-changes` / `review-analysis+abort` |
+| G.3 | `waiting-for:manual-validation` | `Manual validation for <issue-ref>` | `**Scenarios to test:**` + `**Acceptance checks:**` bulleted lists (per § D.4 / § G.3 above) | `manually-validated` → `manually validated`; `not-yet` → `not yet` | `{ kind: "none" }` | `manually-validated`: `cockpit_advance(issue=<ref>, gate="manual-validation")`. `not-yet`: no downstream action (event re-fires when operator re-invokes). | `manual-validation-summary+advance` / `manual-validation-summary+wait` |
+| G.4a | `completed:validate` (with red checks) OR post-merge red | `Escalation: validate red for <issue-ref>` | Fixer summary + reason + failing checks (per § D.6 / § G.4(a) above) | `retry` → `Retry (re-run fixer)`; `skip` → `Skip (session-local mute)`; `stop` → `Stop (exit auto)` | `{ kind: "none" }` | `retry`: re-spawn fixer subagent → loop D.5. `skip`: add `<ref>` to session mute set. `stop`: exit run cleanly. | `fixer+escalation-gate` |
+| G.4b | `agent:error` OR `failed:<subtype>` | `Escalation: agent-error for <issue-ref>` | D.7 diagnosis subagent verdict block (root cause / evidence / current state / suggested decision + confidence; on repeat dispatches: adds `Failure class changed since prior` row — per § G.4(b) above) | `requeue` → `Requeue (cockpit resume)`; `skip` → `Skip (session-local mute)`; `stop` → `Stop (exit auto)` | `{ kind: "none" }` | `requeue`: `cockpit_resume(issue=<ref>)` (degrade to Skip with explicit ledger note if tool missing). `skip`: add `<ref>` to session mute set. `stop`: exit run cleanly. | `escalation-gate` |
+| G.4c | Unrecognized `waiting-for:*` / `blocked:*` (per D.10 catch-all) | `Escalation: unrecognized state for <issue-ref>` | Observed state (verbatim from `cockpit status --json`) + streamed event line (per § D.10 / § G.4(c) above) | `skip` → `Skip (session-local mute) (Recommended)`; `stop` → `Stop (exit auto)` — **NEVER `retry`** | `{ kind: "none" }` | `skip`: add `<ref>` to session mute set. `stop`: exit run cleanly. | `unrecognized-state` |
+| G.4d | `waiting-for:merge-conflicts` OR `blocked:stuck-merge-conflicts` | `Escalation: merge conflicts on <issue-ref>` | D.11 diagnosis subagent verdict block (auto-remedy status when applicable / root cause / evidence / conflicted paths / suggested decision + confidence — per § G.4(d) above) | `resolved` → `I've resolved it — advance the gate`; `skip` → `Skip (session-local mute)`; `stop` → `Stop (exit auto)` | `{ kind: "none" }` | `resolved`: `cockpit_advance(issue=<ref>, gate="merge-conflicts")` — on typed-error return, re-present the gate (revised generation) per § D.12 revised-draft re-open path. `skip`: add `<ref>` to session mute set (leave dispatched-issues entry in place). `stop`: exit run cleanly. | `escalation-gate` |
+| G.5 | `phase-complete` (epic mode only; issueRef in the wire record is `<epic-ref>` — sole per-issue exception) | `Phase queue: P<next> for <epic-ref>` | Next-phase issue list + (when non-empty) `Open ad-hoc issues in scope (added mid-run):` block (per § D.8 / § G.5 above) | Empty ad-hoc list: `queue` → `Queue P<next> (<N> issues) (Recommended)`; `cancel` → `Cancel`. Non-empty ad-hoc: `hold` → `Hold — <M> ad-hoc (Recommended)`; `queue` → `Queue P<next> (<N> issues)`; `cancel` → `Cancel`. | `{ kind: "none" }` | `queue`: `cockpit_queue(epic=<ref>, phase="P<next>")` (with ad-hoc count in ledger outcome). `hold`: no downstream action (phase-complete persists). `cancel`: no downstream action. | `phase-queue-gate` |
+| G.6 | `filing-gate` (synthetic — not a live label; fires on `--new "<title>"` startup or mid-run file-new intent) | `File issue: <drafted-title>` | Five-element block: title / labels / body / filing target / parent tracking ref (per § G.6 above) | `approve-and-file` → `Approve & file (Recommended)`; `make-changes` → `Make changes`; `skip-dont-file` → `Skip (don't file)` | `{ kind: "optional", placeholder: "edit directive (used by Make changes)" }` | `approve-and-file`: `gh issue create --body-file <tmp>` → capture ref → `cockpit_scope_add(scope=<tracking-ref>, add=<new-ref>)` → `cockpit_queue(...)` (mid-run intent) OR bind trackingRef (Form 3 startup). `make-changes` (with freeText): apply edit directive; increment `generation`; re-open with revised draft. `skip-dont-file`: no filing (Form 3 startup exits cleanly; mid-run intent continues loop). | `filing-gate+scope-add` / `filing-gate` (skip only) |
+| G.7 | `scope-drained` (synthetic — under `invocationForm: tracking-existing | tracking-new`) | `Scope drained for <tracking-ref>` | Full status table (per § L.4 policy) immediately before this block, then tracking ref / refs processed / per-ref disposition / session-mute count (per § G.7 above) | `keep-watching` → `Keep watching (Recommended)`; `add-more-work` → `Add more work`; `finish` → `Finish (close tracking + summary)` | `{ kind: "required-if", ifOptionId: "add-more-work", placeholder: "Reference an existing ref (e.g., 'also process <ref>') or ask me to file a new issue (e.g., 'file an issue for <topic>')." }` — Q4=A single-answer collapse: on `add-more-work`, D.12 routes `freeText` through the existing § Add-issue intent recognizer (add-existing vs file-new); under fallback (local `AskUserQuestion`) the two-turn flow reverts to today's behavior | `keep-watching`: return to main loop. `add-more-work` (with required freeText): route freeText through § Add-issue intent recognizer → write intent-specific downstream rows (`scope-add · queued` for add-existing; `filing-gate+scope-add · filed + queued (<new-ref>)` for file-new). `finish`: `gh issue close <tracking-ref>` → print run summary → exit zero (ledger line written BEFORE the close). | `scope-drained-gate` |
+
+**Fallback body identity**: every row's drafted body / options / free-text prompt is authored ONCE per gate. On UI-mode success the block is handed to `cockpit_gate_open`; on the § UI-mode fallback path (below) the SAME block is handed to local `AskUserQuestion`. The mapping-table rows carry no separate "fallback body" column because the body is identical.
+
+**G.4(e) exclusion note**: G.4(e) (consecutive `invalid-cursor` fault; § step 5 Branch B; per-epic in-memory cursor-mechanism fault) is NOT in the table above. The wire record cannot represent it — no `issueRef`, no `issueTitle`, no `issueUrl`, no `branch`; the fault is per-epic in-memory only, does not survive a session restart. Under `ResolvedGateMode === "ui"`, the G.4(e) gate fires locally via `AskUserQuestion` even when every other gate uses UI mode — the sole per-gate mode exception. Ledger row for G.4(e) is unchanged from today (no `· source: ui-gate` suffix, no `· source: ui-gate-fallback` suffix, no fallback ledger note).
+
+### UI-mode fallback on `cockpit_gate_open` call error
+
+Covers `cockpit_gate_open` **call-time** errors — the tool returns `{ ok: false, error: <string>, retryable: <bool> }`, times out, or throws a MCP transport error. Does NOT cover pre-flight absence of `cockpit_gate_open` from the tool binding (that path is the Q3=A hard-fail described in § step-1 `--gates` resolution above). Contract: `contracts/ui-mode-fallback.md`.
+
+**Rule (per gate)**: on any `cockpit_gate_open` failure at gate-initiation time:
+
+1. **Do NOT retry the call.** The plugin does not manage retry/backoff for gate-open; retry logic (if any) is owned by the cluster surface.
+2. **Fall through to local `AskUserQuestion` for that gate ONLY.** Use the same drafted body / options / free-text affordance that WOULD have been sent to `cockpit_gate_open` (row-identical per the fallback body identity rule above). The § AskUserQuestion invocation contract Rules 1–3 apply verbatim.
+3. **On the operator's answer**, run the SAME downstream handler as if it had come via D.12 — the mapping table's `downstream action per optionId` fires; the ledger resolution row is written.
+4. **Ledger provenance for the fallback resolution**: write the ledger row in the pre-change vocabulary (matching today's local flow) with the suffix `· source: ui-gate-fallback` in the outcome slot — distinct from the clean UI-mode `· source: ui-gate`. Example: `<ref> · waiting-for:clarification · clarification-batch · advanced · source: ui-gate-fallback`. Grep recipes distinguish clean UI resolutions (`grep 'source: ui-gate$' <ledger>`) from fallback resolutions (`grep 'source: ui-gate-fallback' <ledger>`).
+5. **First-failure ledger note** (spec § Scope: "repeated failures noted once, loop continues"). The FIRST `cockpit_gate_open` failure in a run also writes a one-time note BEFORE the fallback resolution row, verbatim shape:
+
+   ```
+   <first-failing-ref> · <transition-class> · gate-open · error: <error-string> — falling back to local AskUserQuestion for this gate (repeated failures suppressed) · source: ui-gate
+   ```
+
+   Subsequent failures within the same run are silent (no per-failure ledger row) — only the resolution rows carry the `· source: ui-gate-fallback` suffix. This balances observability with ledger cost.
+
+**Fallback state tracking**: in-memory flag `firstGateOpenFailureNoted: boolean` (default `false`) is added to § In-memory loop state (see below); flipped `false → true` on the first `cockpit_gate_open` failure; the first-failure ledger note fires only when the flag flips. The flag does NOT reset across the run — a run that recovers gate-open partway through (subsequent calls succeed) still shows only the one initial failure note; the failure pattern is what matters, not a running count.
+
+**Interaction with revised drafts (`make-changes`)**: revised drafts (G.1 / G.2 / G.6) MAY encounter a fresh `cockpit_gate_open` failure at re-open time. The same per-gate fallback rule applies. The revised generation still increments (`generation += 1`) so any late-arriving answer to the prior generation (from before the failure) is still recognized as `superseded` per V3.
+
+**G.7 Add-more-work under fallback**: local flow's two-turn pattern (select option → prose prompt → operator prose reply → intent recognizer) applies. UI mode's Q4=A one-turn collapse is a wire-schema feature (`Answer.freeText`); it does not survive fallback to `AskUserQuestion`. This is acceptable — the fallback path IS the pre-change local flow.
+
+**Distinct from Q3=A pre-flight absence**: absence at pre-flight is a static session property → hard-fail (no ledger dir, verbatim error, exit non-zero). Error at call time is transient → per-gate fallback (loop continues, first-failure noted once). Different semantics, different contract.
+
+**One pointer line on `cockpit_gate_open` success** (per FR-005 — UI affordance, not a ledger row): the loop prints the pointer line verbatim to the transcript, once per gate open:
+
+```
+gate open: <title> → answer in the generacy.ai inbox (<inboxUrl>)
+```
+
+No `[ledger] ` prefix. NOT appended to the persistent ledger file. This is the operator's affordance for finding the gate in the inbox; the dispatch-recording ledger row is written by D.12 at answer resolution (per § Ledger UI-mode extensions below).
+
+### In-memory loop state additions (UI mode)
+
+Additions to the § In-memory loop state block (alongside `monitorHandle`, `cursor`, `muteSet`, `activeGeneration`, and the C4 `heartbeatScheduledWakeupArmed` flag) — added only under `ResolvedGateMode === "ui"`; unused (undefined) under `local`:
+
+- `openGates: Map<GateId, GateRecord>` — added on each successful `cockpit_gate_open`; removed on `cockpit_gate_ack(applied | superseded | failed)`. Not persisted to disk; a session restart re-derives the set from the § step-3 UI-mode startup sweep (below), keyed by `gateId = hash(issueRef, dispatchClass, generation)` — the same input yields the same id, so a re-sweep matches an existing open record instead of creating a duplicate.
+- `firstGateOpenFailureNoted: boolean` (default `false`) — flipped `false → true` on the FIRST `cockpit_gate_open` call-time failure, drives the once-only fallback ledger note per § UI-mode fallback rule 5.
+
+Reference types: `packages/claude-plugin-cockpit/lib/gate-wire-types.ts` and `data-model.md § Types` — the playbook prose IS the source of truth; the library exists for machine-checkable fixtures.
+
 ## AskUserQuestion invocation contract
 
 Every gate contract G.1–G.5 above emits an `AskUserQuestion` call. This section states the three general rules that govern every such invocation, so each gate contract can reference them rather than restating them inline. Every future gate G.6+ MUST reference this section as well.
@@ -1297,6 +1488,14 @@ Stable strings per dispatch table row, so `grep` recipes on `<action>` / `<outco
 | D.8 `openAdHocIssues` helper (failure only) | `openAdHocIssues` | `error: cockpit_status failed for <ref>: <description>` |
 | mute-set hit | `(muted)` | `skip (session-local mute active)` |
 | Heartbeat fire (step 4 C4) | `heartbeat · schedule-wakeup` | `fired · drain empty`, `fired · drain complete (<M> events)` |
+| D.12 gate-answer (applied — clean UI-mode resolution) | (same as record's `<original-action>` — e.g., `clarification-batch`, `review-analysis+advance`, `phase-queue-gate`, `escalation-gate`, `filing-gate+scope-add`, `scope-drained-gate`) | pre-change `<outcome>` (e.g., `advanced`, `queued P<next> (<N> issues)`, `manually validated`, `filed + queued (<new-ref>)`, `keep-watching`) + `· source: ui-gate` |
+| D.12 gate-answer (superseded — no record) | (same as record's `<original-action>` OR `gate-open` if record was lost) | `superseded (no record) · source: ui-gate` |
+| D.12 gate-answer (superseded — stale generation) | (same as record's `<original-action>`) | `superseded (stale generation) · source: ui-gate` |
+| D.12 gate-answer (superseded — live state advanced) | (same as record's `<original-action>`) | `superseded (state advanced) · source: ui-gate` |
+| D.12 gate-answer (failed — downstream handler error) | (same as record's `<original-action>`) | `failed: <detail> · source: ui-gate` |
+| D.12 revised-draft re-open (G.1 / G.2 / G.6 `make-changes`) | (same as record's `<original-action>`) | `make-changes (re-opened g<n>) · source: ui-gate` |
+| UI-mode fallback first-failure note (one-time per run) | `gate-open` | `error: <error-string> — falling back to local AskUserQuestion for this gate (repeated failures suppressed) · source: ui-gate` |
+| UI-mode fallback resolution (local `AskUserQuestion` after `cockpit_gate_open` failure) | (same as pre-change `<action>`) | (pre-change `<outcome>`) · source: ui-gate-fallback |
 
 The `<issue-ref>` slot of the heartbeat row carries the **`<epic-ref>`** (or the tracking ref under `--tracking` / `--new`, matching the ledger header line's `Tracking ref:` field) — heartbeats are epic-scoped, not per-issue.
 
@@ -1312,6 +1511,52 @@ christrudelpw/epic#42 · phase-complete · phase-queue-gate · queued P2 (4 issu
 ```
 
 Post-mortem grep semantics: `grep 'source: enriched-line' <ledger>` isolates every enriched-line dispatch row; `grep -v 'source: enriched-line' <ledger>` isolates every re-query row (pre-#437 shape, retain-the-re-check classes, and merge-gate fallbacks).
+
+**UI-mode extensions (Q5=B — `· source: ui-gate` / `· source: ui-gate-fallback`)**. Applies under `ResolvedGateMode === "ui"`; contract: `contracts/ledger-ui-mode.md`. Reference FR-005 for the "exactly one pointer line" rule below.
+
+**Rule 1 — `cockpit_gate_open` (gate-open) is print-only** (per FR-005). On successful `cockpit_gate_open` the loop prints exactly one pointer line to the transcript, verbatim:
+
+```
+gate open: <title> → answer in the generacy.ai inbox (<inboxUrl>)
+```
+
+The pointer line has **NO `[ledger] ` prefix** and is **NOT appended to the persistent ledger file**. It is a UI affordance for the operator to find the gate in the inbox, not a dispatch record. Under Invariant #8's cost contract: local mode writes exactly one ledger line per gate dispatch AT RESOLUTION; UI mode does the same via D.12 at the answer. Symmetry preserved — gate-open is the operator affordance, D.12 is the mandatory-per-dispatch ledger row.
+
+**Rule 2 — D.12 writes exactly one ledger line per resolved gate**, in the pre-change four-column format with `· source: ui-gate` appended in the outcome slot:
+
+```
+<issue-ref> · <transition-class> · <original-action> · <outcome> · source: ui-gate
+```
+
+`<original-action>` matches the pre-change `<action>` vocabulary (`clarification-batch`, `review-analysis+advance`, `phase-queue-gate`, `escalation-gate`, `filing-gate+scope-add`, `scope-drained-gate`, etc.). `<outcome>` reuses pre-change vocabulary for the `applied` case (`advanced`, `queued P<next> (<N> issues)`, `manually validated`, `filed + queued (<new-ref>)`, `keep-watching`, etc.) OR the UI-specific outcomes for non-applied cases (`superseded (no record)`, `superseded (stale generation)`, `superseded (state advanced)`, `failed: <detail>`, `make-changes (re-opened g<n>)` on revised-draft re-open). G.5 rows carry `<epic-ref>` in the `<issue-ref>` slot (sole per-issue exception per § UI-mode gate mapping G.5). Grep recipes on stable `<action>` / `<outcome>` strings (e.g., `grep 'clarification-batch · advanced' <ledger>`) continue to work across the local ↔ UI transition — the recipe surface is preserved.
+
+**Rule 3 — UI-mode fallback resolution suffix is `· source: ui-gate-fallback`** (distinct from `· source: ui-gate`). When `cockpit_gate_open` fails at call time and the local `AskUserQuestion` fires for that gate (per § UI-mode fallback on `cockpit_gate_open` call error), the resolution row uses the pre-change vocabulary with the `-fallback` suffix. The FIRST failure per run also writes a one-time note per § UI-mode fallback rule 5 — that note itself carries `· source: ui-gate` (NOT `-fallback`); the `-fallback` suffix is reserved for resolution rows.
+
+**Rule 4 — Three-way provenance-suffix precedence** (mutually exclusive within a single row):
+
+- `· source: enriched-line` — pre-existing (E6). Applied when the dispatch was driven by an enriched doorbell line (E2 = true AND the class is in the E3 "enriched line" column, including D.5/D.6 with decisive `checks`).
+- `· source: ui-gate` — NEW (Q5=B). Applied to D.12 resolutions (both applied and superseded/failed cases) AND to the UI-mode fallback first-failure note.
+- `· source: ui-gate-fallback` — NEW (Q5=B). Applied to resolutions that fell back to local `AskUserQuestion` after `cockpit_gate_open` failed.
+
+A D.12 row could — via transport — arrive on the enriched doorbell line and thus qualify for `enriched-line`. The precedence rule pins `ui-gate` as the WIN: **D.12 rows use `· source: ui-gate` (or `ui-gate-fallback`) regardless of transport; `· source: enriched-line` applies only to non-D.12 rows driven by the enriched doorbell line.** Rationale: `ui-gate` carries more specific information (the resolution came through the remote inbox surface) than `enriched-line` (which merely says the transport was the enriched doorbell); the more-specific marker wins.
+
+**Extended grep recipes** (post-#449):
+
+- `grep 'source: ui-gate$' <ledger>` — all clean UI-mode resolutions (the `$` distinguishes from `ui-gate-fallback`).
+- `grep 'source: ui-gate-fallback' <ledger>` — all UI-mode fallback resolutions (local `AskUserQuestion` after `cockpit_gate_open` failure).
+- `grep 'source: enriched-line' <ledger>` — pre-existing enriched-line rows, unchanged.
+- `grep -Ev 'source: (ui-gate|ui-gate-fallback|enriched-line)' <ledger>` — pre-change / re-query rows (no provenance suffix).
+
+Example UI-mode rows (post-#449):
+
+```
+christrudelpw/epic#43 · waiting-for:clarification · clarification-batch · advanced · source: ui-gate
+christrudelpw/epic#44 · waiting-for:implementation-review · review-analysis+advance · approved · source: ui-gate
+christrudelpw/epic#42 · phase-complete · phase-queue-gate · queued P2 (4 issues) · source: ui-gate
+christrudelpw/epic#45 · waiting-for:clarification · clarification-batch · advanced · source: ui-gate-fallback  ← cockpit_gate_open failed, resolved via local AskUserQuestion
+christrudelpw/epic#43 · waiting-for:clarification · gate-open · error: <error-string> — falling back to local AskUserQuestion for this gate (repeated failures suppressed) · source: ui-gate  ← one-time first-failure note
+christrudelpw/epic#43 · waiting-for:clarification · clarification-batch · superseded (stale generation) · source: ui-gate
+```
 
 ### L.4 — Status table policy
 
