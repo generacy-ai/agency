@@ -2812,6 +2812,291 @@ describe("444 — /cockpit:auto Form 4 — token parsing, dispatch, and library 
   });
 });
 
+// ────────────────────────────────────────────────────────────────────────────
+// 449 UI-mode gates — Cockpit Remote Gates (skill-side rework)
+//
+// Pins the wire-contract-driven contract additions to auto.md:
+//   - `--gates=ui|local|auto` step-1 flag (V1 parse; auto resolution; ui hard-fail)
+//   - § UI-mode gate mapping section with a 10-row table (G.1, G.2, G.3, G.4a,
+//     G.4b, G.4c, G.4d, G.5, G.6, G.7 — G.4e explicitly excluded)
+//   - Dispatch class D.12 (`gate-answer`) row + subsection
+//   - § UI-mode fallback on `cockpit_gate_open` call error subsection
+//   - `· source: ui-gate` / `· source: ui-gate-fallback` ledger suffix rules
+//   - Q2=B extended startup-sweep trigger set
+//
+// These are drift audits — if a heading rename, row-count change, or contract-
+// rule edit breaks a pin, re-pin to the NEW contract in the same PR. Do NOT
+// weaken or delete an assertion to make the test pass (CLAUDE.md § Cockpit
+// playbook pins).
+// ────────────────────────────────────────────────────────────────────────────
+describe("449 UI-mode gates", () => {
+  it("449-1 usage string extended with --gates flag (literal, two-line block)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Verbatim extension per contracts/gates-flag-parse.md § Usage-string extension
+    // (research.md § R1). Two-line usage block; second line's `[` aligns with the
+    // `/` of `/cockpit:auto` (7 spaces of alignment). The whole block sits inside
+    // step 1's numbered-list body (3 extra spaces of list indent), so the second
+    // line carries 10 spaces total in the raw file.
+    expect(step1).toContain(
+      "Usage: /cockpit:auto <epic-ref> | --tracking <issue-ref> | --new \"<title>\" | <issue-list>\n          [--gates=ui|local|auto]  (default: auto)",
+    );
+  });
+
+  it("449-2 step 1 declares the `--gates` orthogonal flag with values ui|local|auto and default auto", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Flag parse presence + value set + default (V1)
+    expect(step1).toContain("--gates=<value>");
+    expect(step1).toContain("`ui` / `local` / `auto`");
+    expect(step1).toContain("Default when absent: `auto`");
+  });
+
+  it("449-3 step 1 ambiguity table has `gates-value-invalid` and `gates-duplicate` reasons", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Two new ambiguity-table rows (V1)
+    expect(step1).toContain("gates-value-invalid (<observed>)");
+    expect(step1).toContain("gates-duplicate");
+  });
+
+  it("449-4 step 1 verbatim `--gates=ui` pre-flight absence hard-fail error string (Q3=A)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Verbatim error per contracts/gates-flag-parse.md § Pre-flight absence.
+    // Exact spacing, exact wording — this is the load-bearing operator-facing
+    // string; drift here changes the operator-visible failure mode.
+    expect(step1).toContain(
+      "--gates=ui specified but cockpit_gate_open is not available in this session; re-invoke with --gates=local or --gates=auto",
+    );
+  });
+
+  it("449-5 step 1 declares the `--gates=auto` two-part resolution rule (tool binding + cluster cloud-activated)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Two-part check + decided-once semantics (research.md § R2)
+    expect(step1).toContain("cockpit_gate_open");
+    expect(step1).toContain("cluster cloud-activated");
+    expect(step1).toMatch(/decided ONCE at pre-flight|does not flip mid-run/i);
+    expect(step1).toContain("ResolvedGateMode");
+  });
+
+  it("449-6 step 1 `Auto run starting …` line format includes gates + source (both example resolutions)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Two illustrative examples per quickstart.md § Expected output
+    expect(step1).toContain("Auto run starting · gates: ui (source: --gates=ui)");
+    expect(step1).toContain(
+      "Auto run starting · gates: local (source: --gates=auto → cockpit_gate_open unbound)",
+    );
+  });
+
+  it("449-7 § UI-mode gate mapping section exists with the pinned heading", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Top-level section heading is pinned; row-count assertion in 449-8 depends
+    // on this section being present.
+    expect(autoMd).toMatch(/^## UI-mode gate mapping \(G\.1–G\.7\)$/m);
+  });
+
+  it("449-8 UI-mode gate mapping table has EXACTLY 10 body rows in the pinned order (G.4e absent)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Locate the UI-mode section body (from its heading to the next ## H2).
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.7)");
+    expect(sectionStart, "UI-mode gate mapping section must exist").toBeGreaterThan(-1);
+    const rest = autoMd.slice(sectionStart + 1);
+    const nextH2 = rest.indexOf("\n## ", 1);
+    const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+
+    // Extract the main mapping table — the one whose header row starts with
+    // "| Gate | transitionClass | title |" per contracts/ui-gate-mapping.md.
+    const headerRe = /^\| Gate \| transitionClass \| title \|.*$/m;
+    const headerMatch = headerRe.exec(section);
+    expect(headerMatch, "mapping table header row must be present").not.toBeNull();
+    const headerIdx = headerMatch!.index;
+    const afterHeader = section.slice(headerIdx);
+    const lines = afterHeader.split("\n");
+    // Line 0 is the header, line 1 is the alignment divider (|---|), lines 2+
+    // are body rows. Collect body rows until we hit the first non-table line
+    // (blank or non-pipe-leading).
+    const bodyRows: string[] = [];
+    for (let i = 2; i < lines.length; i++) {
+      const line = lines[i]!;
+      if (!line.startsWith("| ")) break;
+      bodyRows.push(line);
+    }
+    // Exact row count is 10 per Q1=C.
+    expect(bodyRows.length, "mapping table row count must be exactly 10 (G.1..G.7)").toBe(10);
+
+    // Rows begin with the pinned gate identifiers in order.
+    const expectedGates = ["G.1", "G.2", "G.3", "G.4a", "G.4b", "G.4c", "G.4d", "G.5", "G.6", "G.7"];
+    const actualGates = bodyRows.map((row) => {
+      const cellMatch = /^\| ([^|]+?) \|/.exec(row);
+      return cellMatch ? cellMatch[1]!.trim() : "";
+    });
+    expect(actualGates).toEqual(expectedGates);
+
+    // G.4e MUST NOT appear as the first column of any row (never a mapping-
+    // table row — per contracts/ui-gate-mapping.md § G.4(e) exclusion).
+    const g4eRow = bodyRows.find((row) => /^\| G\.4e /.test(row));
+    expect(g4eRow, "G.4e must NOT appear as a mapping-table row").toBeUndefined();
+  });
+
+  it("449-9 G.4(e) exclusion note is present in the UI-mode gate mapping section", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.7)");
+    const rest = autoMd.slice(sectionStart + 1);
+    const nextH2 = rest.indexOf("\n## ", 1);
+    const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+    expect(section).toContain("G.4(e) exclusion note");
+    expect(section).toMatch(/in-memory cursor-mechanism fault|per-epic in-memory cursor-fault/i);
+  });
+
+  it("449-10 G.7 row declares `required-if` free-text affordance for `add-more-work` (Q4=A)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.7)");
+    const rest = autoMd.slice(sectionStart + 1);
+    const nextH2 = rest.indexOf("\n## ", 1);
+    const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+    // Q4=A single-answer collapse: G.7 add-more-work carries required freeText
+    // in the same submission.
+    expect(section).toContain('"required-if"');
+    expect(section).toContain('ifOptionId: "add-more-work"');
+  });
+
+  it("449-11 G.2 row declares `optional` free-text affordance for reviewer comment", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.7)");
+    const rest = autoMd.slice(sectionStart + 1);
+    const nextH2 = rest.indexOf("\n## ", 1);
+    const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+    // Matches the local drafter's comment-body affordance for D.2/D.3 review.
+    expect(section).toContain("reviewer comment (optional");
+  });
+
+  it("449-12 § Dispatch table contains a D.12 row naming `gate-answer` as the event kind", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Locate the § Dispatch section's dispatch table (rows after "| # | Event |").
+    const dispatchStart = autoMd.indexOf("\n## Dispatch\n");
+    expect(dispatchStart, "§ Dispatch heading must exist").toBeGreaterThan(-1);
+    const rest = autoMd.slice(dispatchStart);
+    // Extract the table's body rows (up to the first "### " heading).
+    const nextH3 = rest.indexOf("\n### ");
+    const dispatchSection = nextH3 === -1 ? rest : rest.slice(0, nextH3);
+    // D.12 row must be present and name gate-answer as the event kind.
+    const d12Row = dispatchSection
+      .split("\n")
+      .find((line) => /^\| D\.12 \|/.test(line));
+    expect(d12Row, "dispatch table must contain a D.12 row").toBeDefined();
+    expect(d12Row!).toContain("gate-answer");
+    expect(d12Row!).toContain("cockpit_gate_ack");
+  });
+
+  it("449-13 `### D.12 — \\`gate-answer\\`` subsection exists and covers V3/V4 supersession + ack outcomes", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Subsection heading is `### D.12 — \`gate-answer\``; use the shared helper
+    // (extractSubheadingBlock) so the pin travels alongside D.1..D.11's pins.
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    // All three supersession outcomes are named verbatim.
+    expect(block).toContain("no matching open record");
+    expect(block).toContain("stale generation");
+    expect(block).toContain("live state moved past");
+    // Fires only under UI mode.
+    expect(block).toMatch(/ResolvedGateMode === "ui"/);
+    // The load-bearing "same downstream handling" invariant is stated: the
+    // D.12 handler performs the SAME tool call(s) / subagent spawn(s) / state
+    // mutation(s) the local `AskUserQuestion` path performs today. Phrase may
+    // vary; require at least one of the canonical wordings.
+    expect(block).toMatch(
+      /SAME (tool call|downstream handling|handling)|the same (tool call|downstream handling|handling)/,
+    );
+    // Ack outcomes appear literally.
+    expect(block).toContain('outcome: "applied"');
+    expect(block).toContain('outcome: "superseded"');
+    expect(block).toContain('outcome: "failed"');
+  });
+
+  it("449-14 D.12 subsection includes the revised-draft re-open path (make-changes → generation +1)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    expect(block).toContain("Revised-draft re-open path");
+    // Generation bump + re-open shape (data-model.md § Revised-draft re-open path).
+    expect(block).toMatch(/nextGeneration = record\.generation \+ 1|generation \+= 1|generation: nextGeneration/);
+    // Prior-generation late-arrival is superseded (V3 mismatch).
+    expect(block).toMatch(/superseded \(stale generation\)|superseded per V3/);
+  });
+
+  it("449-15 § UI-mode fallback subsection distinguishes call-time error from Q3=A pre-flight absence", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(
+      autoMd,
+      "UI-mode fallback on `cockpit_gate_open` call error",
+    );
+    // Explicit distinction from pre-flight absence hard-fail.
+    expect(block).toMatch(/Distinct from Q3=A pre-flight absence/i);
+    // ui-gate-fallback suffix is the fallback resolution provenance marker.
+    expect(block).toContain("· source: ui-gate-fallback");
+    // First-failure ledger note verbatim shape.
+    expect(block).toContain(
+      "falling back to local AskUserQuestion for this gate (repeated failures suppressed)",
+    );
+  });
+
+  it("449-16 § UI-mode fallback declares the verbatim one-pointer-line format (FR-005)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(
+      autoMd,
+      "UI-mode fallback on `cockpit_gate_open` call error",
+    );
+    // FR-005 pointer line — the only operator-visible affordance on gate-open.
+    expect(block).toContain(
+      "gate open: <title> → answer in the generacy.ai inbox (<inboxUrl>)",
+    );
+    expect(block).toMatch(/NOT appended to the persistent ledger file|not a ledger row/i);
+  });
+
+  it("449-17 § Ledger UI-mode extensions codify the three-way source suffix precedence (Q5=B)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Find the § Ledger section.
+    const ledgerStart = autoMd.indexOf("\n## Ledger\n");
+    expect(ledgerStart, "§ Ledger heading must exist").toBeGreaterThan(-1);
+    const rest = autoMd.slice(ledgerStart);
+    const nextH2 = rest.indexOf("\n## ", 1);
+    const ledger = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+
+    // Q5=B rules — three literal-match suffix strings, gate-open is print-only,
+    // D.12 writes exactly one row per resolved gate.
+    expect(ledger).toContain("· source: ui-gate");
+    expect(ledger).toContain("· source: ui-gate-fallback");
+    expect(ledger).toContain("· source: enriched-line");
+    expect(ledger).toMatch(/gate-open is print-only|print-only.*per FR-005/i);
+    expect(ledger).toMatch(/D\.12 writes exactly one ledger line per resolved gate/);
+
+    // Post-#449 grep recipes — the `$` distinguishes ui-gate from
+    // ui-gate-fallback.
+    expect(ledger).toContain("grep 'source: ui-gate$' <ledger>");
+    expect(ledger).toContain("grep 'source: ui-gate-fallback' <ledger>");
+  });
+
+  it("449-18 § step-3 startup sweep declares the Q2=B extended trigger set (5 non-waiting-for triggers)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // UI-mode callout heading (Q2=B extension).
+    expect(step3).toMatch(/UI-mode extended trigger set \(Q2=B\)/);
+    // All five persistent non-waiting-for triggers listed (spec § Startup sweep
+    // trigger states; research.md § R5).
+    expect(step3).toContain("agent:error");
+    expect(step3).toMatch(/failed:<subtype>|failed:\*/);
+    expect(step3).toContain("completed:validate` with red checks");
+    expect(step3).toContain("phase-complete");
+    expect(step3).toContain("blocked:stuck-merge-conflicts");
+    // G.4(e) exclusion is explicit.
+    expect(step3).toContain("G.4(e) exclusion");
+    // Idempotency and deferred-to-loop behavior are named.
+    expect(step3).toContain("gateId idempotency");
+    expect(step3).toContain("Deferred-to-loop behavior");
+  });
+});
+
 // Silence TS unused-import warning if only used for type narrowing.
 const _typeGuardAddExisting = (a: AddExistingIntent) => a.ref;
 const _typeGuardFileNew = (a: FileNewIntent) => a.topic;
