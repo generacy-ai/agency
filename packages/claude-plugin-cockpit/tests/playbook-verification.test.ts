@@ -3099,6 +3099,28 @@ describe("449 UI-mode gates", () => {
     expect(step3).toContain("gateId idempotency");
     expect(step3).toContain("Deferred-to-loop behavior");
   });
+
+  it("fresh-epic bootstrap: step-3 sweep queues P1 via G.5/cockpit_gate_open, never a local AskUserQuestion under ui", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // Step-3 declares the fresh-epic bootstrap clause and its synthetic event.
+    expect(step3).toContain("Fresh-epic bootstrap");
+    expect(step3).toContain("phase-bootstrap");
+    expect(step3).toContain("first incomplete phase");
+    // The synthetic event dispatches through the existing D.8 / G.5 machinery,
+    // so under UI mode it opens in the inbox — never a local prompt.
+    expect(step3).toContain("D.8 / § Gate contract G.5");
+    expect(step3).toContain("NEVER a local `AskUserQuestion` under UI mode");
+
+    // D.8 trigger and G.5 gate both acknowledge the phase-bootstrap synthetic.
+    expect(autoMd).toContain(
+      "Also fires on the synthetic **`phase-bootstrap`** event",
+    );
+    expect(autoMd).toContain("**Bootstrap variant**");
+    expect(autoMd).toContain(
+      "No phase in flight on <epic-ref> — bootstrapping the first phase.",
+    );
+  });
 });
 
 // Silence TS unused-import warning if only used for type narrowing.
