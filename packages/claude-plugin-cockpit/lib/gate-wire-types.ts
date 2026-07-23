@@ -11,14 +11,24 @@
  * playbook describes, and so a future author can grep the field names to
  * confirm playbook↔library alignment.
  *
- * The wire contract itself is owned by:
+ * The wire contract itself is owned by the FROZEN plan + spec:
  *   generacy-ai/tetrad-development/blob/develop/docs/cockpit-remote-gates-plan.md
- * (§ Wire contract — GateOpen / GateAnswer / GateAck). Deviations must be
- * proposed on the epic tracking issue, not patched here.
+ *     § "Wire contracts" (Shapes 1/2/3)
+ *   generacy-cloud/specs/843-part-cockpit-remote-gates/contracts/gates-wire.md
+ * The cloud is the authoritative RECEIVER and MUST NOT be changed; both the
+ * cluster (generacy `packages/cockpit/src/gates/schema.ts`) and this plugin
+ * conform to it. Deviations must be proposed on the epic tracking issue, not
+ * patched here.
  *
- * The types mirror `specs/449-part-cockpit-remote-gates/data-model.md § Types`
- * — reproduced for pin discoverability. If the plan-doc's wire contract
- * evolves, this file must be re-synced.
+ * KEY DESIGN DECISION (approved): the `cockpit_gate_open` MCP tool DERIVES
+ * `gateId` and `gateKey` in TypeScript from (issueRef, gateType, generation
+ * discriminator) and sets `type: 'gate-open'`. The plugin / LLM NEVER
+ * hand-builds a sha256 or the gateKey string — it passes only semantic +
+ * presentation fields. See `GateOpenParams` below.
+ *
+ *   gateKey = "<owner>/<repo>#<issue>:<gateType>:<generation>"
+ *           = `${issueRef}:${gateType}:${generation}`  (issueRef is owner/repo#N)
+ *   gateId  = sha256(gateKey) hex, first 24 chars.
  */
 
 /**
@@ -35,68 +45,131 @@ export type GateFlagValue = "ui" | "local" | "auto";
 export type ResolvedGateMode = "ui" | "local";
 
 /**
- * Opaque gate identifier — produced by `hash(issueRef, dispatchClass,
- * generation)` per plan-doc rules. Idempotent: same triple → same id, so a
- * startup re-sweep matches an existing open record instead of creating a
- * duplicate.
+ * Opaque gate identifier — a 24-char lowercase hex string, the first 24 chars
+ * of `sha256(gateKey)`. DERIVED by the `cockpit_gate_open` MCP tool from
+ * (issueRef, gateType, generation), never hand-built by the plugin/LLM.
+ * Idempotent: same durable inputs → same id, so a startup re-sweep, a session
+ * restart, or a serial cluster takeover re-derives the SAME id and matches an
+ * existing open record instead of creating a duplicate.
  */
 export type GateId = string;
 
 /**
- * 1-indexed generation counter. Incremented on the `make-changes` edit-
- * directive re-open path (G.1 / G.2 / G.6 revised drafts). Prior-generation
- * answers arriving after re-open are `superseded` per V3.
+ * The `gateKey` string that `gateId` hashes:
+ *   `<owner>/<repo>#<issue>:<gateType>:<generation>`.
+ * Also DERIVED by the MCP tool. Carried on the down-path `gate-answer` so the
+ * cluster can key/audit without re-hashing.
  */
-export type GateGeneration = number;
+export type GateKey = string;
 
 /**
- * Label-driven dispatch classes that map to gates opened via
- * `cockpit_gate_open` under UI mode. D.5 (green merge) and D.9/D.9a–D.9d
- * (ledger-only) are omitted — they never open gates. D.12 is the completion
- * class for gate answers.
+ * The 8-value gate-type enum — mirrors the cloud `cockpitGateTypeEnum` and the
+ * cluster `GateTypeSchema` EXACTLY (order preserved). This is the `:<gateType>:`
+ * slot of the gateKey and is REQUIRED cloud-side. Net-new to the plugin: every
+ * gate-open site must set it per the auto.md § UI-mode gate mapping table.
  *
- * Synthetic gates G.6 (filing) and G.7 (scope-drained) are NOT covered by
- * this union — they fire from the § Add-issue path and the scope-drain
- * check, not from a label transition, and have no D.x label class to
- * re-check in V4. On their `GateRecord`, `dispatchClass` is `undefined`;
- * their identifier lives in `transitionClass` (`"filing-gate"` /
- * `"scope-drained"`) per data-model.md § DispatchClass.
+ * Mapping from the local G.n dispatch classes (see mapping table for the full
+ * generation discriminator per class):
+ *   - G.1 clarification batch                 → "clarification"
+ *   - G.2 spec/clarification/plan/tasks review→ "artifact-review"
+ *   - G.2 implementation review               → "implementation-review"
+ *   - G.3 manual-validation confirm           → "manual-validation"
+ *   - G.4a–G.4d escalations (wire)            → "escalation"
+ *   - G.5 phase-queue confirmation            → "phase-queue"  (issueRef slot = epicRef)
+ *   - G.6 filing gate (synthetic)             → "filing"
+ *   - G.7 scope-drained (synthetic)           → "scope-drained"
+ *   - G.4e invalid-cursor escalation          → EXCLUDED from the wire (local
+ *                                               AskUserQuestion only; no gateType).
+ */
+export type GateType =
+  | "clarification"
+  | "artifact-review"
+  | "implementation-review"
+  | "manual-validation"
+  | "escalation"
+  | "phase-queue"
+  | "filing"
+  | "scope-drained";
+
+/**
+ * The gateType-specific generation DISCRIMINATOR the plugin passes to
+ * `cockpit_gate_open`. The MCP tool folds it into gateKey as the `:<generation>:`
+ * slot; the plugin NEVER assembles gateKey itself. Every discriminator is
+ * derivable from DURABLE state (GitHub / draft content), never a session-local
+ * counter, so the derived gateId is stable across restart/takeover:
+ *
+ *   - clarification        : batch id = content hash of the open question/answer set
+ *   - artifact-review      : `<artifactKind>@<reviewBranchHeadSHA>`
+ *   - implementation-review: PR head SHA
+ *   - manual-validation    : PR head SHA
+ *   - escalation           : `<subtype>:<triggeringLabelOrState>:<occurrence>`
+ *   - phase-queue          : `P<nextPhaseNumber>`
+ *   - filing               : draft hash over {title, body, labels}
+ *   - scope-drained        : `<drainCounter>` (Nth drain for the tracking ref)
+ *
+ * A number is accepted for the naturally-numeric cases (phase number) and
+ * String()-coerced by the MCP tool for a stable key.
+ */
+export type GateGeneration = string | number;
+
+/**
+ * Dispatch classes that map to gates opened via `cockpit_gate_open` under
+ * UI mode. D.5 (green merge) and D.9/D.9a–D.9d (ledger-only) are omitted —
+ * they never open gates. D.12 is the completion class for gate answers.
+ * (The synthetic G.6 filing / G.7 scope-drained opens carry no D.n label.)
  */
 export type DispatchClass =
-  | "D.1"    // waiting-for:clarification (G.1)
-  | "D.2"    // waiting-for:<artifact>-review (G.2)
-  | "D.3"    // waiting-for:implementation-review (G.2)
-  | "D.4"    // waiting-for:manual-validation (G.3)
-  | "D.6"    // completed:validate + red (G.4a)
-  | "D.7"    // agent:error / failed:* (G.4b)
-  | "D.8"    // phase-complete (G.5)
-  | "D.10"   // unrecognized (G.4c)
-  | "D.11"   // waiting-for:merge-conflicts / blocked:stuck-merge-conflicts (G.4d)
-  | "D.12";  // gate-answer (NEW — completion class for arriving answers)
+  | "D.1"    // waiting-for:clarification (G.1) → gateType "clarification"
+  | "D.2"    // waiting-for:<artifact>-review (G.2) → gateType "artifact-review"
+  | "D.3"    // waiting-for:implementation-review (G.2) → gateType "implementation-review"
+  | "D.4"    // waiting-for:manual-validation (G.3) → gateType "manual-validation"
+  | "D.6"    // completed:validate + red (G.4a) → gateType "escalation"
+  | "D.7"    // agent:error / failed:* (G.4b) → gateType "escalation"
+  | "D.8"    // phase-complete (G.5) → gateType "phase-queue"
+  | "D.10"   // unrecognized (G.4c) → gateType "escalation"
+  | "D.11"   // waiting-for:merge-conflicts / blocked:stuck-merge-conflicts (G.4d) → gateType "escalation"
+  | "D.12";  // gate-answer (completion class for arriving answers)
 
 /**
- * `cockpit_gate_open` request shape. Field set matches the wire contract in
- * cockpit-remote-gates-plan.md § Wire contract — GateOpen.
+ * SHAPE 1 — gate-open (cluster → cloud, up-path) INPUT to `cockpit_gate_open`.
+ *
+ * These are the SEMANTIC + PRESENTATION fields the plugin passes. The MCP tool
+ * assembles the frozen on-wire record from them by:
+ *   1. gateKey = `${issueRef}:${gateType}:${generation}`
+ *      (for G.5 phase-queue the caller passes the EPIC ref in `issueRef`; for
+ *       G.6/G.7 it passes the tracking/filing target)
+ *   2. gateId  = sha256(gateKey).slice(0,24)
+ *   3. type    = 'gate-open'
+ * and validates against the frozen GateOpenSchema before relaying.
+ *
+ * NO `kind`, NO `scope` wrapper, NO hand-built `gateId`/`gateKey`, NO nested
+ * `gate: GateDraft` — the presentation fields are FLAT (title/body/options/
+ * allowFreeText), matching the frozen record.
  */
 export interface GateOpenParams {
-  gateId: GateId;
-  generation: GateGeneration;
-  issueRef: string;              // owner/repo#N — the issue the gate resolves for
+  gateType: GateType;            // the `:<gateType>:` slot (net-new; per mapping table)
+  generation: GateGeneration;    // the `:<generation>:` discriminator (durable; see GateGeneration)
+  issueRef: string;              // owner/repo#N — the gate's subject (epicRef for G.5; tracking/filing target for G.6/G.7)
+  epicRef: string;               // owning epic ref (frozen record requires epicRef; == issueRef for standalone/tracking runs)
   issueTitle: string;            // fetched via cockpit_context
-  issueUrl: string;              // computed from issueRef
-  branch?: string;               // present when a branch is bound
-  transitionClass: string;       // e.g., "waiting-for:clarification", "phase-complete"
-  gate: GateDraft;
-  epicRef?: string;              // present in epic mode (invocationForm=epic)
-  trackingRef?: string;          // present in epic-less mode (invocationForm=tracking-*)
-  openedAt: string;              // ISO-8601 UTC
+  issueUrl: string;              // FULLY-QUALIFIED https URL (e.g. https://github.com/owner/repo/issues/N) — cloud pins .url()
+  branch?: string;              // present when a branch is bound
+  prNumber?: number;            // present for PR-scoped gates (implementation-review / manual-validation); positive int
+  title: string;                // AskUserQuestion title verbatim
+  body: string;                 // drafted presentation block
+  options: GateOption[];        // 0..20 buttons
+  allowFreeText: boolean;       // REQUIRED cloud-side; derived from GateDraft.freeTextAffordance.kind !== "none"
+  sessionId: string;            // REQUIRED cloud-side (min length 1); this run's session id
+  askedAt: string;              // ISO-8601 UTC (was openedAt)
 }
 
 /**
- * The drafted presentation body handed to `cockpit_gate_open`. Under the
- * fallback path (§ UI-mode fallback), the same drafted body/options/free-
- * text affordance are handed to local `AskUserQuestion` — authored once
- * per gate, no separate "fallback body".
+ * The drafted presentation body the plugin authors ONCE per gate. Handed both
+ * to `cockpit_gate_open` (flattened into GateOpenParams: title/body/options and
+ * allowFreeText = freeTextAffordance.kind !== "none") AND, on the fallback path
+ * (§ UI-mode fallback), to local `AskUserQuestion` — no separate "fallback body".
+ * The richer `freeTextAffordance` is retained for the LOCAL prompt; the wire
+ * record collapses it to the boolean `allowFreeText`.
  */
 export interface GateDraft {
   title: string;                 // AskUserQuestion title verbatim
@@ -106,26 +179,30 @@ export interface GateDraft {
 }
 
 /**
- * One option button on the gate. `optionId` is stable-across-the-wire and
- * pinned by the § UI-mode gate mapping table; `label` is the operator-
- * facing button text verbatim from the local G.n contract.
+ * One option button on the gate — mirrors the frozen `GateOptionSchema`
+ * ({ id, label, description?, recommended? }). `id` is stable-across-the-wire
+ * and pinned by the § UI-mode gate mapping table; the down-path answer's
+ * `optionId` is one of these `id` values. `label` is the operator-facing
+ * button text verbatim from the local G.n contract.
  */
 export interface GateOption {
-  optionId: string;
+  id: string;                    // frozen field name (was optionId)
   label: string;
-  recommended?: boolean;
   description?: string;
+  recommended?: boolean;
 }
 
 /**
- * How the inbox presents a free-text input alongside the options.
+ * How the LOCAL inbox / AskUserQuestion presents a free-text input alongside
+ * the options. Collapsed to the boolean `allowFreeText` on the wire
+ * (allowFreeText = kind !== "none").
  *
- * - "none": no free-text field shown (default for most gates).
- * - "optional": free-text field shown; submission valid without it.
- *   Used by G.1 (edit-directive alongside make-changes) and G.2 (reviewer
- *   comment alongside approve / request-changes / abort) and G.6 (edit
- *   directive alongside make-changes).
- * - "required-if": required only when a specific option is selected.
+ * - "none": no free-text field shown → allowFreeText:false.
+ * - "optional": free-text field shown; submission valid without it → allowFreeText:true.
+ *   Used by G.1 (edit-directive alongside make-changes), G.2 (reviewer comment
+ *   alongside approve / request-changes / abort), and G.6 (edit directive
+ *   alongside make-changes).
+ * - "required-if": required only when a specific option is selected → allowFreeText:true.
  *   Used by G.7 (add-more-work carries prose in the same submission — the
  *   Q4=A single-answer collapse).
  */
@@ -137,68 +214,103 @@ export type FreeTextAffordance =
 /**
  * `cockpit_gate_open` response shape. On success carries the `inboxUrl`
  * printed in the § UI-mode fallback / One pointer line rule's verbatim
- * pointer line. On failure triggers the per-gate US4 / FR-011 fallback —
- * local AskUserQuestion fires for that gate only; loop continues.
+ * pointer line, plus the DERIVED gateId/gateKey the MCP tool computed (the
+ * plugin records these in `GateRecord`). On failure triggers the per-gate
+ * US4 / FR-011 fallback — local AskUserQuestion fires for that gate only;
+ * loop continues.
  */
 export type GateOpenResult =
-  | { ok: true; gateId: GateId; inboxUrl: string }
+  | { ok: true; gateId: GateId; gateKey: GateKey; inboxUrl: string }
   | { ok: false; error: string; retryable: boolean };
 
 /**
- * Arriving `gate-answer` event — consumed on the enriched doorbell NDJSON
- * line (parsed object with `kind: "gate-answer"`) or as a batch item from
- * `cockpit_await_events`. D.12's dispatch class. Field names match
- * cockpit-remote-gates-plan.md § Wire contract — GateAnswer.
+ * SHAPE 3 — gate-answer (cloud → cluster, down-path). Arriving `gate-answer`
+ * event — consumed on the enriched doorbell NDJSON line or as a batch item
+ * from `cockpit_await_events`. D.12's dispatch class. FLAT frozen shape
+ * (matches generacy-cloud cockpit-gate-delivery.ts DeliveryBody and the
+ * cluster GateAnswerSchema):
+ *
+ *   - `type` is the discriminator (literal "gate-answer") — NOT `kind`.
+ *   - NO `generation` field: the down-path carries gateId + gateKey only.
+ *     D.12 supersession keys on gateId IDENTITY (a re-open mints a NEW gateId;
+ *     a stale answer arrives with the OLD gateId and is superseded), not on an
+ *     integer generation-match.
+ *   - `optionId` and `freeText` are BOTH nullable and independent: the cloud
+ *     SENDS `freeText: null` explicitly on option-only answers (present-and-null),
+ *     and `optionId: null` on a pure free-text answer.
+ *   - `actor.email` / `actor.displayName` may be null (anonymous / partial
+ *     profile); `actor.userId` is always present.
  */
 export interface GateAnswerEvent {
-  kind: "gate-answer";           // discriminator
-  gateId: GateId;
-  generation: GateGeneration;    // MUST match openGates[gateId].generation (V3)
-  issueRef: string;
-  transitionClass: string;
-  answer: {
-    optionId: string;            // one of the gate's GateOption.optionId values
-    freeText?: string;           // required when optionId === "add-more-work" for G.7 (Q4=A)
+  type: "gate-answer";           // discriminator (frozen; NOT "kind")
+  gateId: GateId;                // 24-char hex; matches an openGates key
+  gateKey: GateKey;              // `<owner>/<repo>#<issue>:<gateType>:<generation>`
+  optionId: string | null;       // one of the gate's GateOption.id values; null on pure free-text
+  freeText: string | null;       // present-and-null on option-only answers
+  actor: {
+    userId: string;              // always present
+    email: string | null;
+    displayName: string | null;
   };
-  answeredAt: string;
-  answeredBy?: string;           // operator identity (opaque handle from the inbox)
+  answeredAt: string;            // ISO-8601 (cloud emits gate.answer.answeredAt.toISOString())
+  deliveryId: string;            // UUID, unique per delivery attempt; the cluster dedups on this
 }
 
 /**
- * `cockpit_gate_ack` request shape. Called by D.12 after resolving the
- * answer per steps 1–5 (see auto.md § D.12 — gate-answer).
+ * SHAPE 2 — gate-outcome (cluster → cloud, up-path). THE ACK. Request shape for
+ * `cockpit_gate_ack`, called by D.12 after resolving the answer per steps 1–5
+ * (see auto.md § D.12 — gate-answer). Replaces the old `gate-ack`: the MCP tool
+ * sets `type: 'gate-outcome'`; there is NO `generation` field and the timestamp
+ * field is `at` (not `ackedAt`).
  *
  * - "applied": handler success; downstream action performed.
- * - "superseded": no matching record OR stale generation (V3) OR live-
- *   state moved past the transition class (V4).
+ * - "superseded": no matching record OR the gate was re-opened under a new
+ *   gateId (stale-gateId answer) OR live-state moved past the transition class (V4).
  * - "failed": downstream handler error; `detail` names the failure.
  */
 export interface GateAckParams {
   gateId: GateId;
   outcome: "applied" | "superseded" | "failed";
-  detail?: string;
+  detail?: string;               // names the failure on "failed"
+  at: string;                    // ISO-8601 UTC
 }
 
 /**
  * Plugin-side in-memory record of an open gate — added to the loop's
  * `openGates` map on successful `cockpit_gate_open`; removed on ack.
  * NOT persisted to disk; a session restart re-derives via the § step-3
- * UI-mode startup sweep (Q2=B), keyed by gateId idempotency.
+ * UI-mode startup sweep (Q2=B), keyed by gateId idempotency (which now holds
+ * across restart/takeover because the generation discriminator is durable).
+ *
+ * Supersession is by gateId IDENTITY: a make-changes / revised-draft re-open
+ * recomputes the generation discriminator → a NEW gateId → a NEW record; the
+ * prior record is marked superseded (or closed by the cloud) so a late answer
+ * carrying the OLD gateId is not re-applied.
  */
 export interface GateRecord {
   gateId: GateId;
-  generation: GateGeneration;
+  gateKey: GateKey;
+  gateType: GateType;
+  generation: GateGeneration;    // the durable discriminator used to derive this gateId
   issueRef: string;
   transitionClass: string;
-  dispatchClass?: DispatchClass; // used for the V4 live-state supersession check; `undefined` for synthetic G.6 / G.7 gates (no D.x label class to re-check — they're driven by the § Add-issue path and scope-drain check, respectively)
-  openedAt: string;
+  dispatchClass?: DispatchClass; // used for the V4 live-state supersession check (absent for synthetic G.6/G.7)
+  askedAt: string;
   inboxUrl: string;
   originalDraft: GateDraft;      // retained for revised-draft re-open comparisons
+  /**
+   * Purely LOCAL re-ask ordinal — 1-indexed, session-local, incremented on each
+   * make-changes / revised-draft re-open. Used ONLY for the ledger label
+   * `make-changes (re-opened g<n>)`. NEVER the wire `generation` (which is the
+   * durable discriminator above) and NEVER part of gateId derivation.
+   */
+  reAskOrdinal?: number;
+  superseded?: boolean;          // set when a re-open minted a newer gateId for the same subject
 }
 
 /**
  * The `openGates` map lives in the loop's in-memory state alongside
- * `monitorHandle`, `cursor`, `muteSet`, `activeGeneration`, and the C4
+ * `monitorHandle`, `cursor`, `muteSet`, and the C4
  * `heartbeatScheduledWakeupArmed` flag. See auto.md § In-memory loop state
  * additions (UI mode).
  */
