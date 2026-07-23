@@ -3015,14 +3015,18 @@ describe("449 UI-mode gates", () => {
     expect(block).toContain('outcome: "failed"');
   });
 
-  it("449-14 D.12 subsection includes the revised-draft re-open path (make-changes → generation +1)", () => {
+  it("449-14 D.12 subsection includes the revised-draft re-open path (make-changes → recompute discriminator, new gateId)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
     expect(block).toContain("Revised-draft re-open path");
-    // Generation bump + re-open shape (data-model.md § Revised-draft re-open path).
-    expect(block).toMatch(/nextGeneration = record\.generation \+ 1|generation \+= 1|generation: nextGeneration/);
-    // Prior-generation late-arrival is superseded (V3 mismatch).
-    expect(block).toMatch(/superseded \(stale generation\)|superseded per V3/);
+    // Frozen model: re-open RECOMPUTES a durable generation discriminator (new
+    // gateId) — NOT a session-local integer bump; the MCP tool derives the id.
+    expect(block).toMatch(/recompute the generation discriminator/i);
+    expect(block).not.toMatch(/nextGeneration = record\.generation \+ 1|generation \+= 1/);
+    // Prior gate superseded by gateId IDENTITY (down-path answer carries no generation).
+    expect(block).toContain("mark the ORIGINAL record `superseded`");
+    expect(block).toContain("superseded (stale generation)");
+    expect(block).toMatch(/gateId identity/);
   });
 
   it("449-15 § UI-mode fallback subsection distinguishes call-time error from Q3=A pre-flight absence", () => {
