@@ -10,19 +10,19 @@
 
 ## Phase 1: Prerequisites & Setup
 
-- [ ] T001 Verify upstream blocking dependency generacy-ai/generacy#1038 (read-only gate-status query MCP tools `cockpit_gate_status` and `cockpit_gate_list`) is merged and the cluster is deployed with it. If not, block the ticket — pre-flight will hard-fail per Q3=A precedent.
-- [ ] T002 [P] Verify prior work merged: #449 (`--gates=ui|local|auto` flag + D.12 gate-answer dispatch) and #450 (P4 dogfood report). Confirm current `packages/claude-plugin-cockpit/commands/auto.md` HEAD matches the line references cited in `spec.md § Root Cause` and `plan.md`. If line numbers have drifted (upstream edits landed), re-anchor each pin site before editing.
-- [ ] T003 [P] Read `contracts/pre-draft-check.md`, `contracts/answered-escape-hatch.md`, `contracts/sweep-generation-fix.md`, and `data-model.md` end-to-end. These are the source-of-truth prose fragments for every edit in Phase 2.
+- [X] T001 Verify upstream blocking dependency generacy-ai/generacy#1038 (read-only gate-status query MCP tools `cockpit_gate_status` and `cockpit_gate_list`) is merged and the cluster is deployed with it. If not, block the ticket — pre-flight will hard-fail per Q3=A precedent.
+- [X] T002 [P] Verify prior work merged: #449 (`--gates=ui|local|auto` flag + D.12 gate-answer dispatch) and #450 (P4 dogfood report). Confirm current `packages/claude-plugin-cockpit/commands/auto.md` HEAD matches the line references cited in `spec.md § Root Cause` and `plan.md`. If line numbers have drifted (upstream edits landed), re-anchor each pin site before editing.
+- [X] T003 [P] Read `contracts/pre-draft-check.md`, `contracts/answered-escape-hatch.md`, `contracts/sweep-generation-fix.md`, and `data-model.md` end-to-end. These are the source-of-truth prose fragments for every edit in Phase 2.
 
 ## Phase 2: Playbook prose edits — `packages/claude-plugin-cockpit/commands/auto.md`
 
 **All Phase 2 tasks touch the same file (`auto.md`) — they are SEQUENTIAL, not parallel.**
 
-- [ ] T010 [US1,US2] Rewrite § step 3 startup sweep `gateId idempotency` paragraph (currently `auto.md:198`) per `contracts/sweep-generation-fix.md § Verbatim removal`. Remove the literal `generation=1` substring; replace with the content-derived generation function description referencing § UI-mode gate mapping / § Generation discriminator (UI mode). Cross-reference § Dispatch step 0 in D.1/D.2/D.3/D.4/D.7/D.11. Prerequisite for T011-T016 — without this, the pre-draft check `gateId` cannot coalesce.
+- [X] T010 [US1,US2] Rewrite § step 3 startup sweep `gateId idempotency` paragraph (currently `auto.md:198`) per `contracts/sweep-generation-fix.md § Verbatim removal`. Remove the literal `generation=1` substring; replace with the content-derived generation function description referencing § UI-mode gate mapping / § Generation discriminator (UI mode). Cross-reference § Dispatch step 0 in D.1/D.2/D.3/D.4/D.7/D.11. Prerequisite for T011-T016 — without this, the pre-draft check `gateId` cannot coalesce.
 
-- [ ] T011 [US1,US2] Extend the § step 3 tool-presence check (`auto.md:176`) from seven to nine cockpit tools, adding `cockpit_gate_status` and `cockpit_gate_list` per `contracts/pre-draft-check.md § Tool-presence check`. Absence of either fires the existing `Print + exit` fail-loud path (matches Q3=A precedent).
+- [X] T011 [US1,US2] Extend the § step 3 tool-presence check (`auto.md:176`) from seven to nine cockpit tools, adding `cockpit_gate_status` and `cockpit_gate_list` per `contracts/pre-draft-check.md § Tool-presence check`. Absence of either fires the existing `Print + exit` fail-loud path (matches Q3=A precedent).
 
-- [ ] T012 [US1,US2] Add the answered-gate parked-forever escape-hatch block at the TOP of § step 3 startup sweep (BEFORE the synthetic-event dispatch) per `contracts/answered-escape-hatch.md § Verbatim escape-hatch block`. Include:
+- [X] T012 [US1,US2] Add the answered-gate parked-forever escape-hatch block at the TOP of § step 3 startup sweep (BEFORE the synthetic-event dispatch) per `contracts/answered-escape-hatch.md § Verbatim escape-hatch block`. Include:
   - Verbatim heading `**Answered-gate parked-forever escape hatch (UI mode only).**` (pinned literally).
   - Per-sweep tick loop for `openGates` entries with `status: 'answered'`.
   - N=3 threshold pinned literally in the phrase `count >= 3`.
@@ -30,25 +30,25 @@
   - Removal from `openGates` and counter deletion; re-derive on the same sweep.
   - Dead-prose statement under `ResolvedGateMode === "local"`.
 
-- [ ] T013 [US2] Extend § In-memory loop state additions (UI mode) at `auto.md:1420-1427` to declare `answeredGateSweepCounter: Map<GateId, number>` per `contracts/answered-escape-hatch.md § answeredGateSweepCounter state declaration`. Include the lifecycle description (initialized empty at run start; ticked at top of every sweep; reset by every D.12 handler; entries reaching `>= 3` trigger FR-009 supersede-and-re-derive path). Note the map is unused under `local`.
+- [X] T013 [US2] Extend § In-memory loop state additions (UI mode) at `auto.md:1420-1427` to declare `answeredGateSweepCounter: Map<GateId, number>` per `contracts/answered-escape-hatch.md § answeredGateSweepCounter state declaration`. Include the lifecycle description (initialized empty at run start; ticked at top of every sweep; reset by every D.12 handler; entries reaching `>= 3` trigger FR-009 supersede-and-re-derive path). Note the map is unused under `local`.
 
-- [ ] T014 [US1,US2] Insert `**Step 0 — pre-draft gate-status check (UI mode only).**` at the head of § Dispatch D.1 (before the current step 1 `Fetch context`, `auto.md:421`) per `contracts/pre-draft-check.md § Verbatim step-0 block`. Substitute `<gateType>` = `clarification`. Include the three-branch rule verbatim (`open` reuse, `answered` reuse-with-counter-tick, `absent` → list → drift-or-fresh). Include the generation-drift ack detail literal (`generation drift — content changed since original draft (was g<old>, now g<new>)`). Include the call-time-error pass-through rule per `contracts/pre-draft-check.md § Interaction with the § UI-mode fallback path`.
+- [X] T014 [US1,US2] Insert `**Step 0 — pre-draft gate-status check (UI mode only).**` at the head of § Dispatch D.1 (before the current step 1 `Fetch context`, `auto.md:421`) per `contracts/pre-draft-check.md § Verbatim step-0 block`. Substitute `<gateType>` = `clarification`. Include the three-branch rule verbatim (`open` reuse, `answered` reuse-with-counter-tick, `absent` → list → drift-or-fresh). Include the generation-drift ack detail literal (`generation drift — content changed since original draft (was g<old>, now g<new>)`). Include the call-time-error pass-through rule per `contracts/pre-draft-check.md § Interaction with the § UI-mode fallback path`.
 
-- [ ] T015 [US1,US2] Insert `**Step 0 — pre-draft gate-status check (UI mode only).**` at the head of § Dispatch D.2 (before current step 1 `Resolve target artifact`, `auto.md:475`). Substitute `<gateType>` = `<artifact>-review`. Same three-branch rule verbatim as T014.
+- [X] T015 [US1,US2] Insert `**Step 0 — pre-draft gate-status check (UI mode only).**` at the head of § Dispatch D.2 (before current step 1 `Resolve target artifact`, `auto.md:475`). Substitute `<gateType>` = `<artifact>-review`. Same three-branch rule verbatim as T014.
 
-- [ ] T016 [US1,US2] Insert `**Step 0 — pre-draft gate-status check (UI mode only).**` at the head of § Dispatch D.3 (before current step 1 `Resolve PR`, `auto.md:509`). Substitute `<gateType>` = `implementation-review`. Same three-branch rule verbatim as T014.
+- [X] T016 [US1,US2] Insert `**Step 0 — pre-draft gate-status check (UI mode only).**` at the head of § Dispatch D.3 (before current step 1 `Resolve PR`, `auto.md:509`). Substitute `<gateType>` = `implementation-review`. Same three-branch rule verbatim as T014.
 
-- [ ] T017 [US1,US2] Insert `**Step 0 — pre-draft gate-status check (UI mode only).**` at the head of § Dispatch D.4 (before current step 1 `Spawn manual-validation summarizer`, `auto.md:528`). Substitute `<gateType>` = `manual-validation`. Same three-branch rule verbatim as T014.
+- [X] T017 [US1,US2] Insert `**Step 0 — pre-draft gate-status check (UI mode only).**` at the head of § Dispatch D.4 (before current step 1 `Spawn manual-validation summarizer`, `auto.md:528`). Substitute `<gateType>` = `manual-validation`. Same three-branch rule verbatim as T014.
 
-- [ ] T018 [US1,US2] Insert `**Step 0 — pre-draft gate-status check (UI mode only).**` at the head of § Dispatch D.7 (before current step 1 `Fetch evidence`, `auto.md:608`). Substitute `<gateType>` = `escalation`. Same three-branch rule verbatim as T014. Add to BOTH first-dispatch and repeat-dispatch paths.
+- [X] T018 [US1,US2] Insert `**Step 0 — pre-draft gate-status check (UI mode only).**` at the head of § Dispatch D.7 (before current step 1 `Fetch evidence`, `auto.md:608`). Substitute `<gateType>` = `escalation`. Same three-branch rule verbatim as T014. Add to BOTH first-dispatch and repeat-dispatch paths.
 
-- [ ] T019 [US1,US2] Insert `**Step 0 — pre-draft gate-status check (UI mode only).**` at the head of § Dispatch D.11 as NEW step 0, ABOVE the existing step 1 (`Dedup check` — the in-memory `dispatched-issues` set at `auto.md:706`). Substitute `<gateType>` = `escalation`. Same three-branch rule verbatim as T014. **Retain the existing step 1 `dispatched-issues` in-memory dedup unchanged** — per FR-010 / Q5=A / `contracts/pre-draft-check.md § D.11 defense-in-depth`, the two checks are complementary (cross-session durable vs within-session in-memory / label-pair coalescing / Skip-as-mute semantics). Do NOT collapse them.
+- [X] T019 [US1,US2] Insert `**Step 0 — pre-draft gate-status check (UI mode only).**` at the head of § Dispatch D.11 as NEW step 0, ABOVE the existing step 1 (`Dedup check` — the in-memory `dispatched-issues` set at `auto.md:706`). Substitute `<gateType>` = `escalation`. Same three-branch rule verbatim as T014. **Retain the existing step 1 `dispatched-issues` in-memory dedup unchanged** — per FR-010 / Q5=A / `contracts/pre-draft-check.md § D.11 defense-in-depth`, the two checks are complementary (cross-session durable vs within-session in-memory / label-pair coalescing / Skip-as-mute semantics). Do NOT collapse them.
 
-- [ ] T020 [US1,US2] Add sweep-counter reset to § D.12 gate-answer step 6 per `contracts/answered-escape-hatch.md § D.12 counter reset`. Rename step 6 heading to `**Remove from openGates and reset sweep counter**` and add `answeredGateSweepCounter.delete(event.gateId)` alongside the existing `openGates.delete(event.gateId)`. Handle all three ack outcomes (`applied` / `superseded` / `failed`) and the revised-draft re-open case (delete the counter on the original `gateId` even if the record is retained flagged `superseded`).
+- [X] T020 [US1,US2] Add sweep-counter reset to § D.12 gate-answer step 6 per `contracts/answered-escape-hatch.md § D.12 counter reset`. Rename step 6 heading to `**Remove from openGates and reset sweep counter**` and add `answeredGateSweepCounter.delete(event.gateId)` alongside the existing `openGates.delete(event.gateId)`. Handle all three ack outcomes (`applied` / `superseded` / `failed`) and the revised-draft re-open case (delete the counter on the original `gateId` even if the record is retained flagged `superseded`).
 
 ## Phase 3: Reference implementation (optional, non-load-bearing)
 
-- [ ] T030 [P] [US1,US2] (Optional) Create `packages/claude-plugin-cockpit/lib/gate-status-check.ts` per `data-model.md § Reference implementation notes` with:
+- [X] T030 [P] [US1,US2] (Optional) Create `packages/claude-plugin-cockpit/lib/gate-status-check.ts` per `data-model.md § Reference implementation notes` with:
   - `classifyPreDraftCheck(statusResult, listResult, currentGeneration): PreDraftCheckOutcome`
   - `tickAnsweredSweepCounter(openGates, counter): void`
   - `selectEscapeHatchTargets(counter, threshold: 3): ReadonlyArray<GateId>`
@@ -56,7 +56,7 @@
 
 ## Phase 4: Playbook-verification test additions and re-pins — `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts`
 
-- [ ] T040 [US3] Add a new `describe("457 sweep-time gate reuse", () => { ... })` block at the end of the file (after the `449 UI-mode gates` block at `:2832`, before the type-guard footer at `:3126`). Include assertions 457-1 through 457-13 per `plan.md § Test edits (playbook-verification.test.ts)` and the coverage sketches in each contract file:
+- [X] T040 [US3] Add a new `describe("457 sweep-time gate reuse", () => { ... })` block at the end of the file (after the `449 UI-mode gates` block at `:2832`, before the type-guard footer at `:3126`). Include assertions 457-1 through 457-13 per `plan.md § Test edits (playbook-verification.test.ts)` and the coverage sketches in each contract file:
   - **457-1**: § step 3 startup sweep tool-presence check names all nine tools (adds `cockpit_gate_status`, `cockpit_gate_list` to the seven existing).
   - **457-2**: § step 3 startup sweep NO LONGER contains the literal substring `generation=1`; the new prose containing `hash(issueRef, gateType, generation)` is present.
   - **457-3**: § step 3 escape-hatch block heading `**Answered-gate parked-forever escape hatch (UI mode only).**` present verbatim + `count >= 3` literal + detail string `'answered-not-consumed — presumed stuck at cloud delivered/applied'` literal.
@@ -66,11 +66,11 @@
   - **457-12**: § D.12 step 6 heading is `**Remove from openGates and reset sweep counter**` and contains both `openGates.delete(event.gateId)` and `answeredGateSweepCounter.delete(event.gateId)`.
   - **457-13**: § UI-mode gate mapping generation-discriminator table (`auto.md:1354-1366`) is unchanged — drift audit ensures sweep and live paths continue to reference the SAME function.
 
-- [ ] T041 [US3] (SC-005 integration) Add an integration test that simulates a gate stuck at cloud `delivered`: seed `openGates` with a `status: 'answered'` entry; drive three sweep entries with no D.12 event; assert `cockpit_gate_ack` is called with `gateId`, `outcome: 'superseded'`, and the exact detail string `'answered-not-consumed — presumed stuck at cloud delivered/applied'`; assert the entry is removed from `openGates`; assert the counter is deleted. Use existing fixture patterns under `packages/claude-plugin-cockpit/tests/fixtures/` (naming convention `457-*`).
+- [X] T041 [US3] (SC-005 integration) Add an integration test that simulates a gate stuck at cloud `delivered`: seed `openGates` with a `status: 'answered'` entry; drive three sweep entries with no D.12 event; assert `cockpit_gate_ack` is called with `gateId`, `outcome: 'superseded'`, and the exact detail string `'answered-not-consumed — presumed stuck at cloud delivered/applied'`; assert the entry is removed from `openGates`; assert the counter is deleted. Use existing fixture patterns under `packages/claude-plugin-cockpit/tests/fixtures/` (naming convention `457-*`).
 
 ## Phase 5: Verification
 
-- [ ] T050 [US3] Re-pin `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts`
+- [X] T050 [US3] Re-pin `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts`
   for every heading and contract rule this edit changes.
   Files edited by this issue: `packages/claude-plugin-cockpit/commands/auto.md`
   Pin sites that read the edited file(s):
@@ -90,7 +90,7 @@
   Do NOT weaken or delete an assertion to make the test pass — the pin is a drift audit;
   weakening it deletes its value.
 
-- [ ] T051 Run `pnpm test --filter @generacy-ai/claude-plugin-cockpit` (or the repo's `pnpm test`) and verify:
+- [X] T051 Run `pnpm test --filter @generacy-ai/claude-plugin-cockpit` (or the repo's `pnpm test`) and verify:
   - All new `457 sweep-time gate reuse` assertions PASS.
   - The SC-005 integration test PASSES.
   - Every re-pinned assertion (per T050) PASSES with its NEW contract wording.

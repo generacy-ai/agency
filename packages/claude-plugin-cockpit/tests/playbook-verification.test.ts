@@ -25,6 +25,18 @@ import {
   type FileNewIntent,
 } from "../lib/intent-recognition.js";
 import {
+  classifyPreDraftCheck,
+  tickAnsweredSweepCounter,
+  selectEscapeHatchTargets,
+  ANSWERED_SWEEP_THRESHOLD,
+  ESCAPE_HATCH_ACK_DETAIL,
+  formatGenerationDriftDetail,
+  type GateStatusResult,
+  type GateListResult,
+  type AnsweredGateSweepCounter,
+} from "../lib/gate-status-check.js";
+import type { GateId, GateRecord } from "../lib/gate-wire-types.js";
+import {
   parseTokens,
   dispatchForm,
   parseWorkspaceRepo,
@@ -3120,6 +3132,395 @@ describe("449 UI-mode gates", () => {
     expect(autoMd).toContain(
       "No phase in flight on <epic-ref> — bootstrapping the first phase.",
     );
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 457 sweep-time gate reuse — pre-draft gate-status check + FR-009 escape hatch
+//
+// Pins the load-bearing prose additions to auto.md described by
+// specs/457-part-cockpit-remote-gates/{plan.md,contracts/*.md}:
+//   - § step 3 startup sweep: nine-tool presence check, sweep gateId now uses
+//     content-derived generation (no more literal `generation=1`), answered-gate
+//     parked-forever escape-hatch block with N=3 threshold.
+//   - § Dispatch D.1/D.2/D.3/D.4/D.7/D.11: new `Step 0 — pre-draft gate-status
+//     check` heading with the three-branch rule (same-gateId reuse /
+//     generation-drift supersede-and-redraft / absent-no-op).
+//   - § Dispatch D.11: defense-in-depth ordering (step 0 pre-draft check ABOVE
+//     step 1 in-memory dispatched-issues dedup — both retained).
+//   - § In-memory loop state additions: `answeredGateSweepCounter` map declared.
+//   - § D.12 gate-answer step 6: renamed to `Remove from openGates and reset
+//     sweep counter`; both `openGates.delete` and `answeredGateSweepCounter
+//     .delete` present.
+//   - § UI-mode gate mapping generation-discriminator table unchanged (drift
+//     audit — sweep and live paths MUST reference the same function).
+//
+// These are drift audits — if a heading rename, contract-rule edit, or literal
+// substitution breaks a pin, re-pin to the NEW contract in the same PR. Do NOT
+// weaken or delete an assertion to make the test pass (CLAUDE.md § Cockpit
+// playbook pins).
+// ────────────────────────────────────────────────────────────────────────────
+describe("457 sweep-time gate reuse", () => {
+  it("457-1 § step 3 tool-presence check names all NINE cockpit_* tools (adds cockpit_gate_status + cockpit_gate_list)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // The two new tools are named literally alongside the pre-#457 seven.
+    const NINE_TOOLS = [
+      "cockpit_status",
+      "cockpit_context",
+      "cockpit_queue",
+      "cockpit_advance",
+      "cockpit_resume",
+      "cockpit_merge",
+      "cockpit_await_events",
+      "cockpit_gate_status",
+      "cockpit_gate_list",
+    ];
+    for (const tool of NINE_TOOLS) {
+      expect(step3, `step 3 tool-presence check must name ${tool}`).toContain(tool);
+    }
+    // The prose calls out the count as "nine" — a future edit that drops one
+    // of the two new tools would also need to walk the count back to seven.
+    expect(step3).toMatch(/nine\s+`cockpit_\*`\s+MCP tools/);
+  });
+
+  it("457-2 § step 3 sweep NO LONGER contains the literal `generation=1`; new prose names `hash(issueRef, gateType, generation)`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // Negative: the pre-#457 hard-coded default is gone.
+    expect(step3).not.toContain("generation=1");
+    // Positive: the replacement prose names the content-derived hash + the pre-
+    // draft check reference (per contracts/sweep-generation-fix.md § Verbatim
+    // removal).
+    expect(step3).toContain("hash(issueRef, gateType, generation)");
+    expect(step3).toContain("§ Dispatch step 0");
+    expect(step3).toMatch(/Generation discriminator \(UI mode\)/);
+  });
+
+  it("457-3 § step 3 escape-hatch block: verbatim heading + N=3 literal + exact ack detail string", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // Verbatim heading (pinned literally per contracts/answered-escape-hatch.md).
+    expect(step3).toContain(
+      "**Answered-gate parked-forever escape hatch (UI mode only).**",
+    );
+    // N=3 threshold pinned literally in the phrase `count >= 3`.
+    expect(step3).toContain("count >= 3");
+    // Ack detail string pinned literally (post-mortem grep target).
+    expect(step3).toContain(
+      "'answered-not-consumed — presumed stuck at cloud delivered/applied'",
+    );
+    // Escape hatch reads `openGates` for `status: 'answered'` entries and
+    // increments the sweep counter.
+    expect(step3).toContain("answeredGateSweepCounter.set");
+    expect(step3).toContain("openGates.delete(gateId)");
+    expect(step3).toContain("answeredGateSweepCounter.delete(gateId)");
+    // Under `local` the block is dead prose.
+    expect(step3).toMatch(/ResolvedGateMode === "local"[^]*dead prose/);
+  });
+
+  // 457-4 through 457-9: each drafting D.n row contains the pre-draft Step 0.
+  const DRAFTING_D_HEADERS: ReadonlyArray<[string, string]> = [
+    ["457-4 D.1", "D.1 — `waiting-for:clarification`"],
+    ["457-5 D.2", "D.2 — `waiting-for:<artifact>-review`"],
+    ["457-6 D.3", "D.3 — `waiting-for:implementation-review`"],
+    ["457-7 D.4", "D.4 — `waiting-for:manual-validation`"],
+    ["457-8 D.7", "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)"],
+    [
+      "457-9 D.11",
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+    ],
+  ];
+  for (const [pinLabel, header] of DRAFTING_D_HEADERS) {
+    it(`${pinLabel}: § Dispatch ${header.split(" —")[0]} contains the verbatim Step 0 heading + three-branch rule + counter-tick clause + drift-ack detail literal`, () => {
+      const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+      const block = extractSubheadingBlock(autoMd, header);
+      // Verbatim Step 0 heading (pinned literally per contracts/pre-draft-check.md).
+      expect(block).toContain(
+        "**Step 0 — pre-draft gate-status check (UI mode only).**",
+      );
+      // Three-branch rule — status: 'open', 'answered', 'absent'.
+      expect(block).toContain("`{ status: 'open' }`");
+      expect(block).toContain("`{ status: 'answered' }`");
+      expect(block).toContain("`{ status: 'absent' }`");
+      // Generation-drift branch names both the ack call and the drift detail
+      // literal (V3).
+      expect(block).toContain(
+        "cockpit_gate_ack(staleGateId, outcome: 'superseded', detail: 'generation drift — content changed since original draft (was g<old>, now g<new>)')",
+      );
+      // On 'answered', increment the sweep counter (couples the pre-draft
+      // check to the FR-009 escape hatch).
+      expect(block).toContain("increment `answeredGateSweepCounter[gateId]`");
+      // The check uses the SAME per-gateType generation function the live path
+      // uses (V1 in data-model.md).
+      expect(block).toMatch(/SAME per-gateType generation function the live path uses/);
+      // Skips entirely under local mode.
+      expect(block).toMatch(/Skip Step 0 entirely under `ResolvedGateMode === "local"`/);
+    });
+  }
+
+  it("457-10 § Dispatch D.11 contains BOTH step 0 (pre-draft check) AND step 1 (dispatched-issues dedup) in that order — defense-in-depth pin", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(
+      autoMd,
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+    );
+    // Step 0 heading present.
+    const step0Idx = block.indexOf(
+      "**Step 0 — pre-draft gate-status check (UI mode only).**",
+    );
+    expect(step0Idx, "D.11 must contain the Step 0 heading").toBeGreaterThan(-1);
+    // Step 1 `Dedup check.` heading present.
+    const step1Idx = block.indexOf("**Dedup check.**");
+    expect(step1Idx, "D.11 must retain the existing step 1 `Dedup check.`").toBeGreaterThan(-1);
+    // Order: Step 0 above Step 1.
+    expect(step0Idx).toBeLessThan(step1Idx);
+    // Existing step 1's in-memory `dispatched-issues set` reference survives.
+    expect(block).toContain("dispatched-issues set");
+    // Defense-in-depth is stated as a positive obligation (per FR-010 / Q5=A).
+    expect(block).toMatch(/Defense-in-depth|defense in depth|complementary, not redundant/i);
+  });
+
+  it("457-11 § In-memory loop state additions (UI mode) declares `answeredGateSweepCounter: Map<GateId, number>` verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Locate the block by its subheading via the shared helper (skips the H3
+    // itself; returns the body up to the next H3).
+    const section = extractSubheadingBlock(
+      autoMd,
+      "In-memory loop state additions (UI mode)",
+    );
+    // Verbatim declaration.
+    expect(section).toContain("`answeredGateSweepCounter: Map<GateId, number>`");
+    // Lifecycle description names the tick / reset / threshold-trigger.
+    expect(section).toMatch(/Ticked at the top of every sweep/);
+    expect(section).toMatch(/reset by every D\.12 handler/);
+    expect(section).toContain("count >= 3");
+    // Escape-hatch detail literal appears in the description.
+    expect(section).toContain(
+      "answered-not-consumed — presumed stuck at cloud delivered/applied",
+    );
+    // Unused under local.
+    expect(section).toMatch(/Under `local` the map is unused/);
+  });
+
+  it("457-12 § D.12 step 6 heading is `Remove from openGates and reset sweep counter` and contains BOTH delete calls", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    // New heading (renamed per contracts/answered-escape-hatch.md § D.12 counter reset).
+    expect(block).toContain(
+      "**Remove from openGates and reset sweep counter**",
+    );
+    // Both delete calls fire on `applied` / `superseded` / `failed`.
+    expect(block).toContain("`openGates.delete(event.gateId)`");
+    expect(block).toContain("`answeredGateSweepCounter.delete(event.gateId)`");
+    // Revised-draft re-open case: counter deleted on the original gateId even
+    // when the record is retained flagged `superseded`.
+    expect(block).toMatch(/counter for the original `gateId` is deleted/);
+  });
+
+  it("457-13 § UI-mode gate mapping generation-discriminator table is UNCHANGED (drift audit — sweep + live paths reference the same function)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Locate the discriminator subsection. Search for the H4 heading and
+    // return everything up to the next H3 or H2 (H4 is a child of the H2
+    // `## UI-mode gate mapping (G.1–G.7)`; the next H3 sibling terminates it).
+    const marker = "\n#### Generation discriminator (UI mode)\n";
+    const sectionStart = autoMd.indexOf(marker);
+    expect(sectionStart, "generation-discriminator subsection must exist").toBeGreaterThan(-1);
+    const rest = autoMd.slice(sectionStart + marker.length);
+    // The next H2 or H3 marks the end of this H4 subsection.
+    const nextH3 = rest.search(/^### /m);
+    const nextH2 = rest.search(/^## /m);
+    const nextBoundaries = [nextH3, nextH2].filter((n) => n !== -1);
+    const nextBoundary = nextBoundaries.length > 0 ? Math.min(...nextBoundaries) : -1;
+    const section = nextBoundary === -1 ? rest : rest.slice(0, nextBoundary);
+
+    // The eight-row gateType table body is unchanged — pin the exact discriminators.
+    const EXPECTED_ROWS: ReadonlyArray<[string, string]> = [
+      [
+        "`clarification`",
+        "content hash of the open question / answer set at open time",
+      ],
+      ["`artifact-review`", "artifact kind + review-branch head SHA"],
+      ["`implementation-review`", "PR head SHA"],
+      ["`manual-validation`", "PR head SHA"],
+      [
+        "`escalation`",
+        "subtype + triggering label/state + occurrence counter",
+      ],
+      ["`phase-queue`", "phase number (`P<next>`)"],
+      ["`filing`", "draft hash over `{title, body, labels}`"],
+      ["`scope-drained`", "tracking ref + drain counter"],
+    ];
+    for (const [gateType, discriminator] of EXPECTED_ROWS) {
+      expect(
+        section,
+        `generation-discriminator row for ${gateType} must be present verbatim`,
+      ).toContain(gateType);
+      expect(
+        section,
+        `generation-discriminator row for ${gateType} must name '${discriminator}'`,
+      ).toContain(discriminator);
+    }
+    // The frozen gateKey / gateId derivation prose is present (V1 in data-model.md).
+    expect(section).toContain(
+      "gateId = sha256(gateKey)[:24]",
+    );
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // 457-lib — reference-module contracts backing the escape-hatch prose.
+  // Machine-checks that the three-branch classifier, the sweep-counter tick,
+  // and the N=3 escape-hatch selector match the prose contract exactly.
+  // ────────────────────────────────────────────────────────────────────────
+
+  const FAKE_GATE_ID: GateId = "abc123def4567890abc12345";
+  const OTHER_GATE_ID: GateId = "9999111122223333aaaabbbb";
+
+  it("457-lib-1 classifyPreDraftCheck: `open` → reuse-open with the returned gateId", () => {
+    const status: GateStatusResult = { gateId: FAKE_GATE_ID, status: "open" };
+    const outcome = classifyPreDraftCheck(status, [], "gen-A");
+    expect(outcome).toEqual({ kind: "reuse-open", gateId: FAKE_GATE_ID });
+  });
+
+  it("457-lib-2 classifyPreDraftCheck: `answered` → reuse-answered (triggers sweep-counter tick upstream)", () => {
+    const status: GateStatusResult = { gateId: FAKE_GATE_ID, status: "answered" };
+    const outcome = classifyPreDraftCheck(status, [], "gen-A");
+    expect(outcome).toEqual({ kind: "reuse-answered", gateId: FAKE_GATE_ID });
+  });
+
+  it("457-lib-3 classifyPreDraftCheck: `absent` + list has drift → supersede-and-redraft with stale/fresh generations", () => {
+    const status: GateStatusResult = { gateId: null, status: "absent" };
+    const list: GateListResult = [
+      { gateId: OTHER_GATE_ID, generation: "gen-OLD", status: "open", askedAt: "2026-07-01T00:00:00Z" },
+    ];
+    const outcome = classifyPreDraftCheck(status, list, "gen-NEW");
+    expect(outcome).toEqual({
+      kind: "supersede-and-redraft",
+      staleGateId: OTHER_GATE_ID,
+      staleGeneration: "gen-OLD",
+      freshGeneration: "gen-NEW",
+    });
+  });
+
+  it("457-lib-4 classifyPreDraftCheck: `absent` + empty list → draft-fresh", () => {
+    const status: GateStatusResult = { gateId: null, status: "absent" };
+    const outcome = classifyPreDraftCheck(status, [], "gen-A");
+    expect(outcome).toEqual({ kind: "draft-fresh" });
+  });
+
+  it("457-lib-5 tickAnsweredSweepCounter: only `answered` entries increment; `open` entries do not", () => {
+    const openGates = new Map<GateId, GateRecord & { status?: "open" | "answered" }>();
+    const answeredGate = { status: "answered" } as GateRecord & { status: "answered" };
+    const openGate = { status: "open" } as GateRecord & { status: "open" };
+    openGates.set(FAKE_GATE_ID, answeredGate);
+    openGates.set(OTHER_GATE_ID, openGate);
+    const counter: AnsweredGateSweepCounter = new Map();
+    tickAnsweredSweepCounter(openGates, counter);
+    tickAnsweredSweepCounter(openGates, counter);
+    expect(counter.get(FAKE_GATE_ID)).toBe(2);
+    expect(counter.has(OTHER_GATE_ID)).toBe(false);
+  });
+
+  it("457-lib-6 selectEscapeHatchTargets: fires at threshold N=3 exactly (V6 load-bearing literal)", () => {
+    const counter: AnsweredGateSweepCounter = new Map();
+    counter.set(FAKE_GATE_ID, 1);
+    expect(selectEscapeHatchTargets(counter)).toEqual([]);
+    counter.set(FAKE_GATE_ID, 2);
+    expect(selectEscapeHatchTargets(counter)).toEqual([]);
+    counter.set(FAKE_GATE_ID, 3);
+    expect(selectEscapeHatchTargets(counter)).toEqual([FAKE_GATE_ID]);
+    // N=3 is the pinned threshold constant.
+    expect(ANSWERED_SWEEP_THRESHOLD).toBe(3);
+  });
+
+  it("457-lib-7 formatGenerationDriftDetail: matches the canonical ack detail template (V3)", () => {
+    expect(formatGenerationDriftDetail("1", "2")).toBe(
+      "generation drift — content changed since original draft (was g1, now g2)",
+    );
+  });
+
+  it("457-lib-8 ESCAPE_HATCH_ACK_DETAIL matches the exact detail-string literal pinned by 457-3", () => {
+    expect(ESCAPE_HATCH_ACK_DETAIL).toBe(
+      "answered-not-consumed — presumed stuck at cloud delivered/applied",
+    );
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // 457-integration (SC-005) — simulate a gate stuck at cloud `delivered`.
+  // Seed openGates with a `status: 'answered'` entry, drive three sweep
+  // ticks with no D.12 event, assert the escape hatch fires with the correct
+  // ack params and clears both maps.
+  // ────────────────────────────────────────────────────────────────────────
+
+  it("457-int-1 (SC-005): three sweeps with no D.12 event → ack `superseded` with exact detail + both maps cleared", () => {
+    const openGates = new Map<GateId, GateRecord & { status?: "open" | "answered" }>();
+    openGates.set(FAKE_GATE_ID, {
+      status: "answered",
+    } as GateRecord & { status: "answered" });
+    const counter: AnsweredGateSweepCounter = new Map();
+
+    // Sweep tick 1.
+    tickAnsweredSweepCounter(openGates, counter);
+    expect(selectEscapeHatchTargets(counter)).toEqual([]);
+    // Sweep tick 2.
+    tickAnsweredSweepCounter(openGates, counter);
+    expect(selectEscapeHatchTargets(counter)).toEqual([]);
+    // Sweep tick 3 — escape hatch fires.
+    tickAnsweredSweepCounter(openGates, counter);
+    const targets = selectEscapeHatchTargets(counter);
+    expect(targets).toEqual([FAKE_GATE_ID]);
+
+    // Simulate the ack + cleanup the escape-hatch prose describes.
+    const ackCalls: Array<{
+      gateId: GateId;
+      outcome: string;
+      detail: string;
+    }> = [];
+    for (const gateId of targets) {
+      ackCalls.push({
+        gateId,
+        outcome: "superseded",
+        detail: ESCAPE_HATCH_ACK_DETAIL,
+      });
+      openGates.delete(gateId);
+      counter.delete(gateId);
+    }
+    expect(ackCalls).toEqual([
+      {
+        gateId: FAKE_GATE_ID,
+        outcome: "superseded",
+        detail:
+          "answered-not-consumed — presumed stuck at cloud delivered/applied",
+      },
+    ]);
+    // Both maps are cleared.
+    expect(openGates.has(FAKE_GATE_ID)).toBe(false);
+    expect(counter.has(FAKE_GATE_ID)).toBe(false);
+    // On the same sweep, the underlying label re-derives a fresh event → the
+    // just-acked gate is terminal, so a subsequent pre-draft check sees `absent`
+    // and drafting proceeds. Simulated:
+    const followupStatus: GateStatusResult = { gateId: null, status: "absent" };
+    const followupOutcome = classifyPreDraftCheck(followupStatus, [], "gen-A");
+    expect(followupOutcome).toEqual({ kind: "draft-fresh" });
+  });
+
+  it("457-int-2: D.12 delivery within N=3 sweeps resets the counter — escape hatch does NOT fire", () => {
+    const openGates = new Map<GateId, GateRecord & { status?: "open" | "answered" }>();
+    openGates.set(FAKE_GATE_ID, {
+      status: "answered",
+    } as GateRecord & { status: "answered" });
+    const counter: AnsweredGateSweepCounter = new Map();
+
+    tickAnsweredSweepCounter(openGates, counter);
+    tickAnsweredSweepCounter(openGates, counter);
+    expect(counter.get(FAKE_GATE_ID)).toBe(2);
+
+    // D.12 handler fires — deletes both.
+    openGates.delete(FAKE_GATE_ID);
+    counter.delete(FAKE_GATE_ID);
+
+    // Even if the map were mistakenly re-populated later, the counter is fresh.
+    expect(selectEscapeHatchTargets(counter)).toEqual([]);
   });
 });
 
