@@ -3256,8 +3256,75 @@ describe("457 sweep-time gate reuse", () => {
       expect(block).toMatch(/SAME per-gateType generation function the live path uses/);
       // Skips entirely under local mode.
       expect(block).toMatch(/Skip Step 0 entirely under `ResolvedGateMode === "local"`/);
+      // gate-status is called with the frozen {issueRef, gateType, generation}
+      // schema (per #458 review comment 1 — the tool's .strict() input schema
+      // rejects a hand-built {gateId} payload).
+      expect(block).toContain(
+        "cockpit_gate_status({ issueRef, gateType, generation })",
+      );
+      // gate-list return shape is the {gates, truncated?} object (per #458
+      // review comment 7 — NOT a bare array).
+      expect(block).toMatch(/cockpit_gate_list\(\{ issueRef, gateType \}\)/);
+      expect(block).toMatch(/result\.gates|iterate `result\.gates`/);
+      // query-unreachable MUST NOT collapse to `absent` (per #458 review
+      // comment 4 / generacy #1038 FR-014).
+      expect(block).toContain("query-unreachable");
+      expect(block).toMatch(/MUST NOT.+collapse.+query-unreachable/i);
     });
   }
+
+  it("457-14 D.2 Step 0 names gateType = 'artifact-review' verbatim (per #458 review comment 6 — spec-review/clarification-review/plan-review/tasks-review are NOT in the frozen enum)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(
+      autoMd,
+      "D.2 — `waiting-for:<artifact>-review`",
+    );
+    expect(block).toContain("`gateType = artifact-review`");
+    // The invalid literals MUST NOT appear as gateType values in the Step 0
+    // block — the artifact kind is folded into `generation`, not `gateType`.
+    expect(block).not.toMatch(/gateType\s*=\s*['`]?spec-review/);
+    expect(block).not.toMatch(/gateType\s*=\s*['`]?clarification-review/);
+    expect(block).not.toMatch(/gateType\s*=\s*['`]?plan-review/);
+    expect(block).not.toMatch(/gateType\s*=\s*['`]?tasks-review/);
+  });
+
+  it("457-15 D.11 Step 0 pins the dedup-before-drift-ack ordering exception (per #458 review comment 3)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(
+      autoMd,
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+    );
+    // The exception heading is present verbatim.
+    expect(block).toContain("**D.11 ordering exception (Q5=A / FR-010).**");
+    // The rationale names the sibling-label / different-gateId hazard.
+    expect(block).toMatch(/sibling|label-pair/);
+    // The absent-branch first-check clause is present.
+    expect(block).toMatch(/First check the D\.11 ordering exception/);
+  });
+
+  it("457-16 § step 4 main loop declares the per-wake escape-hatch tick (per #458 review comment 2 — reachability requires per-wake site, not just startup)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step4 = extractInstructionsSteps(autoMd).get(4)!;
+    // Sub-step 0 declares the tick.
+    expect(step4).toContain(
+      "**Answered-gate parked-forever escape hatch tick (UI mode only).**",
+    );
+    // Names the load-bearing reachability rationale for the per-wake site.
+    expect(step4).toMatch(/per-wake tick|load-bearing per-wake tick/);
+    expect(step4).toMatch(/reachable|reachability/);
+  });
+
+  it("457-17 § In-memory loop state additions declares the openGates key using `hash(issueRef, gateType, generation)` (per #458 review comment 8 — dispatchClass is NOT part of the key)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const section = extractSubheadingBlock(
+      autoMd,
+      "In-memory loop state additions (UI mode)",
+    );
+    // Correct derivation input names — gateType, NOT dispatchClass.
+    expect(section).toMatch(/hash\(issueRef,\s*gateType,\s*generation\)/);
+    // Legacy `dispatchClass, generation` form does NOT survive in this bullet.
+    expect(section).not.toMatch(/hash\(issueRef,\s*dispatchClass,\s*generation\)/);
+  });
 
   it("457-10 § Dispatch D.11 contains BOTH step 0 (pre-draft check) AND step 1 (dispatched-issues dedup) in that order — defense-in-depth pin", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
@@ -3376,23 +3443,27 @@ describe("457 sweep-time gate reuse", () => {
   const FAKE_GATE_ID: GateId = "abc123def4567890abc12345";
   const OTHER_GATE_ID: GateId = "9999111122223333aaaabbbb";
 
+  const EMPTY_LIST: GateListResult = { gates: [] };
+
   it("457-lib-1 classifyPreDraftCheck: `open` → reuse-open with the returned gateId", () => {
     const status: GateStatusResult = { gateId: FAKE_GATE_ID, status: "open" };
-    const outcome = classifyPreDraftCheck(status, [], "gen-A");
+    const outcome = classifyPreDraftCheck(status, EMPTY_LIST, "gen-A");
     expect(outcome).toEqual({ kind: "reuse-open", gateId: FAKE_GATE_ID });
   });
 
   it("457-lib-2 classifyPreDraftCheck: `answered` → reuse-answered (triggers sweep-counter tick upstream)", () => {
     const status: GateStatusResult = { gateId: FAKE_GATE_ID, status: "answered" };
-    const outcome = classifyPreDraftCheck(status, [], "gen-A");
+    const outcome = classifyPreDraftCheck(status, EMPTY_LIST, "gen-A");
     expect(outcome).toEqual({ kind: "reuse-answered", gateId: FAKE_GATE_ID });
   });
 
   it("457-lib-3 classifyPreDraftCheck: `absent` + list has drift → supersede-and-redraft with stale/fresh generations", () => {
     const status: GateStatusResult = { gateId: null, status: "absent" };
-    const list: GateListResult = [
-      { gateId: OTHER_GATE_ID, generation: "gen-OLD", status: "open", askedAt: "2026-07-01T00:00:00Z" },
-    ];
+    const list: GateListResult = {
+      gates: [
+        { gateId: OTHER_GATE_ID, gateType: "clarification", generation: "gen-OLD", status: "open" },
+      ],
+    };
     const outcome = classifyPreDraftCheck(status, list, "gen-NEW");
     expect(outcome).toEqual({
       kind: "supersede-and-redraft",
@@ -3404,8 +3475,35 @@ describe("457 sweep-time gate reuse", () => {
 
   it("457-lib-4 classifyPreDraftCheck: `absent` + empty list → draft-fresh", () => {
     const status: GateStatusResult = { gateId: null, status: "absent" };
-    const outcome = classifyPreDraftCheck(status, [], "gen-A");
+    const outcome = classifyPreDraftCheck(status, EMPTY_LIST, "gen-A");
     expect(outcome).toEqual({ kind: "draft-fresh" });
+  });
+
+  it("457-lib-4b classifyPreDraftCheck: `absent` + truncated list with no drift entry → abort-query-unreachable (do NOT collapse to draft-fresh)", () => {
+    const status: GateStatusResult = { gateId: null, status: "absent" };
+    const list: GateListResult = { gates: [], truncated: true };
+    const outcome = classifyPreDraftCheck(status, list, "gen-A");
+    expect(outcome.kind).toBe("abort-query-unreachable");
+    if (outcome.kind === "abort-query-unreachable") {
+      expect(outcome.error.class).toBe("query-unreachable");
+    }
+  });
+
+  it("457-lib-4c classifyPreDraftCheck: `absent` + truncated list WITH drift entry → supersede-and-redraft (drift wins over truncation)", () => {
+    const status: GateStatusResult = { gateId: null, status: "absent" };
+    const list: GateListResult = {
+      gates: [
+        { gateId: OTHER_GATE_ID, gateType: "clarification", generation: "gen-OLD", status: "open" },
+      ],
+      truncated: true,
+    };
+    const outcome = classifyPreDraftCheck(status, list, "gen-NEW");
+    expect(outcome).toEqual({
+      kind: "supersede-and-redraft",
+      staleGateId: OTHER_GATE_ID,
+      staleGeneration: "gen-OLD",
+      freshGeneration: "gen-NEW",
+    });
   });
 
   it("457-lib-5 tickAnsweredSweepCounter: only `answered` entries increment; `open` entries do not", () => {
@@ -3500,7 +3598,7 @@ describe("457 sweep-time gate reuse", () => {
     // just-acked gate is terminal, so a subsequent pre-draft check sees `absent`
     // and drafting proceeds. Simulated:
     const followupStatus: GateStatusResult = { gateId: null, status: "absent" };
-    const followupOutcome = classifyPreDraftCheck(followupStatus, [], "gen-A");
+    const followupOutcome = classifyPreDraftCheck(followupStatus, { gates: [] }, "gen-A");
     expect(followupOutcome).toEqual({ kind: "draft-fresh" });
   });
 

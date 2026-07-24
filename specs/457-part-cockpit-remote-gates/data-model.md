@@ -6,23 +6,27 @@ Reference types for the pre-draft check, the answered-gate sweep counter, and th
 
 Three surfaces (in addition to the existing #449 wire surfaces):
 
-1. **Pre-draft gate-status query** — the plugin invokes `cockpit_gate_status(gateId)` (read-only, retry-wrapped in the MCP layer) at the top of each drafting D.n dispatch. Returns one of two shapes: `{ gateId, status: 'open' | 'answered' }` or `{ gateId: null, status: 'absent' }`.
-2. **Pre-draft gate-list query (drift check)** — on `absent`, the plugin invokes `cockpit_gate_list({ issueRef, gateType })` to detect generation-drift (a stale gate at a different `generation`). Returns an array of non-terminal gates for the `(issue, kind)` pair.
-3. **Answered-gate sweep counter** — plugin-side in-memory `Map<GateId, number>` that tracks consecutive sweeps with no D.12 event for each `answered` entry in `openGates`. The N=3 escape hatch reads this counter at the top of every sweep.
+1. **Pre-draft gate-status query** — the plugin invokes `cockpit_gate_status({ issueRef, gateType, generation })` (read-only, retry-wrapped in the MCP layer) at the top of each drafting D.n dispatch. The tool's `.strict()` input schema requires all three semantic inputs — the tool server derives `gateKey` and `gateId` internally; the plugin never hand-builds them. Returns one of two shapes: `{ gateId, status: 'open' | 'answered' }` or `{ gateId: null, status: 'absent' }`.
+2. **Pre-draft gate-list query (drift check)** — on `absent`, the plugin invokes `cockpit_gate_list({ issueRef, gateType })` to detect generation-drift (a stale gate at a different `generation`). Returns `{ gates: [{gateId, gateType, generation, status}, ...], truncated?: boolean }`. The plugin iterates `result.gates` — NOT the raw return object.
+3. **Answered-gate sweep counter** — plugin-side in-memory `Map<GateId, number>` that tracks consecutive sweeps with no D.12 event for each `answered` entry in `openGates`. The N=3 escape hatch reads this counter at the top of EVERY sweep — both the once-per-session startup sweep AND every per-wake iteration of the main loop (per auto.md § step 4 sub-step 0).
 
 ## Types
 
 ### `GateStatusQuery` — input to `cockpit_gate_status`
 
+Per generacy `mcp/gates/query-schemas.ts § CockpitGateStatusInputSchema` — a `.strict()` object requiring all three semantic inputs (the tool server derives `gateKey`/`gateId` internally; a hand-built `{gateId}` payload would be rejected with `invalid-args`):
+
 ```typescript
 interface GateStatusQuery {
-  gateId: GateId;                 // DERIVED by the plugin using the same generation function the live path uses (per § UI-mode gate mapping generation-discriminator table at auto.md:1354-1366)
+  issueRef: string;               // owner/repo#N
+  gateType: GateType;             // one of: 'clarification' | 'artifact-review' | 'implementation-review' | 'manual-validation' | 'escalation' | 'phase-queue' | 'filing' | 'scope-drained'
+  generation: string;             // durable content-derived discriminator (per § UI-mode gate mapping generation-discriminator table at auto.md:1354-1366)
 }
 ```
 
 ### `GateStatusResult` — return from `cockpit_gate_status`
 
-Per generacy `specs/1038-issue-1038/contracts/gate-query.md` and MCP query-schemas.ts:33-46:
+Per generacy `mcp/gates/query-schemas.ts § CockpitGateStatusDataSchema`:
 
 ```typescript
 type GateStatusResult =
@@ -30,63 +34,88 @@ type GateStatusResult =
   | { gateId: null; status: 'absent' };
 ```
 
-**Key contract point (per Q3=C rationale)**: the `answered` status COLLAPSES cloud `answered`, `delivered`, AND `applied`. The return payload does NOT include the answer itself — consumption goes through the existing D.12 redelivery path.
+**Key contract point (per Q3=C rationale)**: the `answered` status COLLAPSES cloud `answered`, `delivered`, AND `applied`. The return payload does NOT include the answer itself — consumption goes through the existing D.12 redelivery path. **Does NOT include `openedAt`, `inboxUrl`, `title`, or any presentation fields** — the reuse-path plugin record is partial by contract (see auto.md § step 3 sweep `gateId idempotency` DATA GAP note); the "one pointer line" per FR-005 is NOT printed on the reuse path (it requires `inboxUrl`, which the query does not return).
 
 ### `GateListQuery` — input to `cockpit_gate_list`
+
+Per generacy `mcp/gates/query-schemas.ts § CockpitGateListInputSchema`:
 
 ```typescript
 interface GateListQuery {
   issueRef: string;               // owner/repo#N
-  gateType: string;               // one of: 'clarification' | 'artifact-review' | 'implementation-review' | 'manual-validation' | 'escalation' | 'phase-queue' | 'filing' | 'scope-drained'
+  gateType: GateType;             // one of the 8 frozen enum values (see GateStatusQuery)
 }
 ```
 
 ### `GateListResult` — return from `cockpit_gate_list`
 
-Per generacy `query-schemas.ts:58-72`:
+Per generacy `mcp/gates/query-schemas.ts § CockpitGateListDataSchema`. **Object, NOT a bare array** — the plugin iterates `result.gates`; calling `.find()` directly on the raw return would throw ("not a function"):
 
 ```typescript
-type GateListResult = ReadonlyArray<{
-  gateId: GateId;
-  generation: string;             // the durable generation discriminator (per per-gateType table)
-  status: 'open' | 'answered';    // non-terminal only; terminal gates are filtered out server-side
-  askedAt: string;                // ISO-8601 UTC (for the operator-facing "how long has this been pending" signal, unused by this feature but present in the shape)
-}>;
+interface GateListResult {
+  gates: ReadonlyArray<{
+    gateId: GateId;
+    gateType: GateType;
+    generation: string;           // the durable generation discriminator (per per-gateType table)
+    status: 'open' | 'answered';  // non-terminal only; terminal gates are filtered out server-side
+  }>;
+  truncated?: boolean;            // present-and-`true` when the returned page hides additional non-terminal gates
+}
 ```
 
-**Ordering**: The list is returned in `askedAt` descending order (most recent first). The plugin uses this to identify the most-recent non-terminal gate as the "stale" one to supersede in the drift branch — older entries were already superseded by the more-recent one.
+**No wire ordering guarantee**: the `gates` array carries no `askedAt` field and no ordering contract in the #1038 spec. Drift detection picks the first entry whose `generation !== <current event's fresh generation>`; when multiple drift entries are present, the plugin acks whichever it observes first and re-runs the check on subsequent sweeps to catch the rest.
+
+**Truncated pages**: `truncated: true` combined with no drift entry in the returned page MUST be treated as `query-unreachable` (a drift entry may exist on a subsequent page the plugin cannot see). Falling through to draft-fresh in that case re-introduces the duplicate-drafting hazard this feature exists to prevent.
+
+### `GateQueryError` — typed error surface
+
+Per generacy #1038 `mcp/errors.ts`. The `query-unreachable` class fires ONLY after the tool's internal retry budget is exhausted (~3 attempts / ~5s) — it signifies a sustained cloud/relay outage, NOT a transient race. The plugin MUST NOT collapse it to `status: 'absent'` (per generacy #1038 FR-014: sweep aborts on `query-unreachable`; operator sees a visible error).
+
+```typescript
+interface GateQueryError {
+  class: 'query-unreachable' | 'transient';
+  message: string;
+}
+```
 
 ### `PreDraftCheckOutcome` — plugin-side branching after step 0
 
-Not a wire type; a plugin-side type describing the three branches the pre-draft check takes:
+Not a wire type; a plugin-side type describing the five branches the pre-draft check takes:
 
 ```typescript
 type PreDraftCheckOutcome =
-  | { kind: 'reuse-open';           record: GateRecord }            // Q1=B / status: 'open'
-  | { kind: 'reuse-answered';       record: GateRecord }            // Q3=C / status: 'answered' → tick sweep counter
+  | { kind: 'reuse-open';            gateId: GateId }               // Q1=B / status: 'open'
+  | { kind: 'reuse-answered';        gateId: GateId }               // Q3=C / status: 'answered' → tick sweep counter
   | { kind: 'supersede-and-redraft'; staleGateId: GateId; staleGeneration: string; freshGeneration: string }  // Q1=C
-  | { kind: 'draft-fresh' };                                        // absent + no drift → current flow
+  | { kind: 'draft-fresh' }                                         // absent + no drift → current flow
+  | { kind: 'abort-query-unreachable'; error: GateQueryError };     // sustained cloud/relay outage — MUST NOT collapse to draft-fresh
 ```
 
 The plugin does not persist this type; it is a control-flow tag consumed immediately in the dispatch step and then discarded.
 
+**On `reuse-open` / `reuse-answered`**: the plugin records a PARTIAL `openGates` entry — `{gateId, gateType, generation, issueRef, status, transitionClass}`. The `inboxUrl`, `title`, `askedAt`, and `originalDraft` fields on `GateRecord` are NOT populated (the query returns none of them). This is sufficient for the FR-009 escape hatch's `status === 'answered'` filter and for D.12's `gateId`-identity supersession check; a full record can only be reconstructed by an idempotent `cockpit_gate_open` call, which the reuse path deliberately skips. Extending the query surface to return these fields is tracked as an upstream generacy #1038 follow-up.
+
 ### `GateRecord` — extended (existing type from #449)
 
-The `openGates: Map<GateId, GateRecord>` established by #449 gains a `status` field so the sweep counter's N=3 check can distinguish `open` from `answered` entries without an additional MCP call. Additive change; no field removed.
+The `openGates: Map<GateId, GateRecord>` established by #449 gains a `status` field so the sweep counter's N=3 check can distinguish `open` from `answered` entries without an additional MCP call. Additive change; no field removed. The canonical shape lives in `packages/claude-plugin-cockpit/lib/gate-wire-types.ts § GateRecord` (which uses `askedAt`, NOT `openedAt`, and does NOT include `openedAt`). The shape below reflects the canonical field names:
 
 ```typescript
 interface GateRecord {
   gateId: GateId;
+  gateKey: GateKey;
+  gateType: GateType;                       // frozen enum value (drives the `hash(issueRef, gateType, generation)` derivation)
   generation: string;                       // durable content-derived discriminator
   issueRef: string;
   transitionClass: string;
-  dispatchClass: 'D.1' | 'D.2' | 'D.3' | 'D.4' | 'D.6' | 'D.7' | 'D.8' | 'D.10' | 'D.11';
-  openedAt: string;                         // ISO-8601 UTC; may be earlier than the run's start on a takeover/restart (populated from `cockpit_gate_status` return in the reuse branches, or from the fresh `cockpit_gate_open` return in the draft-fresh branch)
+  dispatchClass?: 'D.1' | 'D.2' | 'D.3' | 'D.4' | 'D.6' | 'D.7' | 'D.8' | 'D.10' | 'D.11';  // plugin-local; used for D.12 live-state supersession; NOT part of gateId
+  askedAt: string;                          // ISO-8601 UTC (canonical field name is `askedAt`, not `openedAt` — see gate-wire-types.ts)
   inboxUrl: string;
   originalDraft: GateDraft;                 // retained for revised-draft comparisons
   status: 'open' | 'answered';              // NEW: added by this feature; drives the sweep counter's N=3 check
 }
 ```
+
+**Reuse-path records are PARTIAL** — the `cockpit_gate_status` query returns only `{gateId, status}`, so `askedAt`, `inboxUrl`, and `originalDraft` cannot be populated on the reuse branches. The plugin stores what it has (`gateId`, `gateType`, `generation`, `issueRef`, `transitionClass`, `status`) and marks the missing fields nullable/absent in the reuse-path shape. This partial-record limitation is a DATA GAP tracked as a follow-up on generacy #1038.
 
 Rationale for storing `status` on the record rather than in a separate map: it lives with the rest of the gate's identity, so the sweep counter's per-entry test is a single map lookup, and the D.12 handler that resets the counter also removes the entry from `openGates`, so lifecycle is coupled.
 
@@ -138,18 +167,20 @@ The escape hatch's threshold N MUST be the literal `3` in the playbook prose. No
                     compute (gateType, generation)   [V1: same function as live path]
                             │
                             ▼
-                    cockpit_gate_status(gateId)
+                    cockpit_gate_status({issueRef, gateType, generation})
                             │
-                    ┌───────┼───────────────┐
-                    │       │               │
-                    ▼       ▼               ▼
-              status=      status=       status=
-              'open'    'answered'      'absent'
-                    │       │               │
-                    │       │               ▼
-                    │       │       cockpit_gate_list({issueRef, gateType})
-                    │       │               │
-                    │       │       ┌───────┴────────┐
+                    ┌───────┼───────────────┬────────────────┐
+                    │       │               │                │
+                    ▼       ▼               ▼                ▼
+              status=      status=       status=       query-unreachable
+              'open'    'answered'      'absent'    (typed error, retries
+                    │       │               │        exhausted per FR-014)
+                    │       │               │                │
+                    │       │               ▼                ▼
+                    │       │       cockpit_gate_list      abort this event
+                    │       │       ({issueRef, gateType}) write ledger error;
+                    │       │               │              continue with next
+                    │       │       ┌───────┴────────┐     event in batch
                     │       │       │                │
                     │       │       ▼                ▼
                     │       │  drift (different  no gate → draft-fresh
@@ -163,7 +194,7 @@ The escape hatch's threshold N MUST be the literal `3` in the playbook prose. No
                     │       │  proceed to draft-fresh with new generation
                     │       │
                     ▼       ▼
-              record in openGates (status={'open' | 'answered'})
+              record PARTIAL entry in openGates (status={'open' | 'answered'})
                     │       │
                     │       ▼
                     │  answeredGateSweepCounter.set(gateId, (get ?? 0) + 1)
@@ -178,7 +209,8 @@ The escape hatch's threshold N MUST be the literal `3` in the playbook prose. No
               handler runs; answeredGateSweepCounter.delete(gateId) [V4]
               + openGates.delete(gateId)
 
-                    (parallel: top-of-sweep, before synthetic-event dispatch)
+                    (parallel: EVERY sweep entry — startup sweep AND every
+                     per-wake iteration of the main loop, per FR-009 reachability)
                             │
                             ▼
                     for each (gateId, count) in answeredGateSweepCounter:
@@ -187,17 +219,21 @@ The escape hatch's threshold N MUST be the literal `3` in the playbook prose. No
                                 detail: 'answered-not-consumed — presumed stuck at cloud delivered/applied')
                             openGates.delete(gateId)
                             answeredGateSweepCounter.delete(gateId)
-                            (event will re-derive from labels on this same sweep)
+                            (event will re-derive from labels on the next drain)
 ```
 
-**D.11 defense-in-depth ordering** (per R6):
+**D.11 defense-in-depth ordering** (per R6, updated per #458 review comment 3):
 
 ```
 step 0: pre-draft cockpit_gate_status check    [NEW]
         │
-        ├─ same-gateId reuse → record + continue
-        ├─ generation drift  → ack stale + fall through to draft-fresh
-        └─ absent + no drift → fall through to draft-fresh
+        ├─ same-gateId reuse → record + continue (does NOT touch step 1)
+        ├─ absent + no drift → fall through to draft-fresh
+        └─ absent + generation drift:
+              ├─ IF <issue-ref> in dispatched-issues (sibling label
+              │  already dispatched this incident) → skip drift-ack,
+              │  ledger 'already-dispatched', return
+              └─ ELSE → ack stale superseded + fall through to draft-fresh
                 │
                 ▼
 step 1: dispatched-issues in-memory set check  [UNCHANGED]
@@ -218,23 +254,23 @@ step 2: present G.4d gate                      [UNCHANGED]
 step 3: apply verdict                          [UNCHANGED]
 ```
 
-The pre-draft check (step 0) is ABOVE the in-memory check (step 1) because the cross-session case (durable gate survived a restart) must be caught before the in-memory case would even have a chance to fire (a restarted session's in-memory set is empty).
+The pre-draft check (step 0) is ABOVE the in-memory check (step 1) so cross-session reuse (durable gate survived a restart) fires before the in-memory check would even have a chance (a restarted session's in-memory set is empty). **BUT** the step-0 drift-ack sub-branch checks the in-memory `dispatched-issues` set FIRST — without this coupling, the sibling label's drift-ack would destroy the operator's live gate and step 1's dedup would then block the replacement (the exact hazard called out in #458 review comment 3). The two checks are complementary; the ordering exception in the drift-ack sub-branch is load-bearing.
 
 ## Reference implementation notes
 
-The reference module `packages/claude-plugin-cockpit/lib/gate-status-check.ts` (optional; not load-bearing) may expose:
+The reference module `packages/claude-plugin-cockpit/lib/gate-status-check.ts` (optional; not load-bearing) exposes:
 
 ```typescript
 export function classifyPreDraftCheck(
   statusResult: GateStatusResult,
-  listResult: GateListResult,
+  listResult: GateListResult,           // {gates, truncated?} — object, not array
   currentGeneration: string,
-): PreDraftCheckOutcome;
+): PreDraftCheckOutcome;                 // adds `abort-query-unreachable` branch when list is truncated with no drift entry visible
 
 export function tickAnsweredSweepCounter(
   openGates: Map<GateId, GateRecord>,
   counter: AnsweredGateSweepCounter,
-): void;
+): void;                                 // called at BOTH tick sites (startup sweep + every per-wake iteration) per FR-009 reachability
 
 export function selectEscapeHatchTargets(
   counter: AnsweredGateSweepCounter,

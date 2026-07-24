@@ -4,7 +4,7 @@ Load-bearing prose for the removal of the `generation=1` hard-coded default at `
 
 ## Why this is load-bearing
 
-The whole feature is a no-op without this change. Today the sweep calls `cockpit_gate_open(gateId=hash(issueRef, dispatchClass, generation=1))` (`auto.md:198`) while the live path calls `cockpit_gate_open` with a content-derived `generation` (per the § UI-mode gate mapping generation-discriminator table at `auto.md:1354-1366`). The two `gateId`s never coalesce, so the pre-draft `cockpit_gate_status(gateId)` call would look up a `gateId` that doesn't exist — the check would always return `absent`, the drafting subagent would always spawn, and the feature would deliver zero value.
+The whole feature is a no-op without this change. Today the sweep calls `cockpit_gate_open(gateId=hash(issueRef, dispatchClass, generation=1))` (`auto.md:198`) while the live path calls `cockpit_gate_open` with a content-derived `generation` (per the § UI-mode gate mapping generation-discriminator table at `auto.md:1354-1366`). The two `gateId`s never coalesce, so the pre-draft `cockpit_gate_status({issueRef, gateType, generation})` call would look up a `gateId` that doesn't exist — the check would always return `absent`, the drafting subagent would always spawn, and the feature would deliver zero value.
 
 FR-006 makes this precondition explicit: FR-002 requires the pre-draft check to use the same `gateId` as the live path, and FR-006 is the change that makes that possible.
 
@@ -16,9 +16,9 @@ The current prose at `auto.md:198` reads:
 
 Replace with:
 
-> **gateId idempotency**: every sweep-time `cockpit_gate_open` call uses `gateId = hash(issueRef, gateType, generation)` where `generation` is derived from the SAME per-gateType function the live path uses (§ UI-mode gate mapping / § Generation discriminator (UI mode)). The plugin never hand-builds the hash — the `cockpit_gate_open` MCP tool derives `gateKey` and `gateId` from the semantic inputs the plugin passes. The pre-draft `cockpit_gate_status(gateId)` check (per § Dispatch step 0 in D.1 / D.2 / D.3 / D.4 / D.7 / D.11) uses this same derivation, so sweep-derived and live-derived `gateId`s coalesce when the underlying content has not changed. When content HAS changed (a new PR head SHA, a revised clarification answer-set, a new phase number, an incremented escalation occurrence counter), the generation differs by design and the pre-draft check's generation-drift branch fires (ack stale `superseded` + draft fresh — per Q1=C).
+> **gateId idempotency**: every sweep-time `cockpit_gate_open` call uses `gateId = hash(issueRef, gateType, generation)` where `generation` is derived from the SAME per-gateType function the live path uses. The plugin never hand-builds the hash — the `cockpit_gate_open` MCP tool derives `gateKey` and `gateId` from the semantic inputs the plugin passes. The pre-draft `cockpit_gate_status({issueRef, gateType, generation})` check names the same three semantic inputs, so sweep-derived and live-derived `gateId`s coalesce when the underlying content has not changed.
 >
-> Plugin-side, on a `cockpit_gate_status` reuse-return the sweep records the returned gate in `openGates` in-memory (the record's `openedAt` may be earlier than the run's start — expected on a takeover / restart).
+> Plugin-side, on a `cockpit_gate_status` reuse-return the sweep records a partial `openGates` entry (see auto.md § step 3 sweep `gateId idempotency` DATA GAP note); `inboxUrl`/`askedAt`/`title` are not carried by the query return.
 
 **Test assertion 457-2**: § step 3 startup sweep NO LONGER contains the literal substring `generation=1`. The prose containing `hash(issueRef, dispatchClass, generation=1)` is removed; the replacement prose containing `hash(issueRef, gateType, generation)` and referencing the pre-draft check is present.
 

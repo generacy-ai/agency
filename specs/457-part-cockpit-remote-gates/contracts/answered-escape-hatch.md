@@ -14,7 +14,7 @@ The escape hatch is the safety net that eventually surfaces the stuck issue back
 
 ## Verbatim escape-hatch block (canonical form)
 
-Added at the TOP of § step 3 startup sweep, BEFORE the synthetic-event dispatch. Also runs at the top of every subsequent sweep (in the wake-driven loop, a "sweep" = the pass through pending events on wake; the counter tick happens once per sweep entry).
+Added at the TOP of § step 3 startup sweep (before the synthetic-event dispatch) AND as sub-step 0 of § step 4's per-wake iteration (before the drain). Both tick sites apply the same block; a "sweep" is defined as either the once-per-session startup sweep OR any single per-wake main-loop iteration. The per-wake tick site is load-bearing for FR-009 reachability: `openGates` entries FIRST added mid-run by a D.n Step 0 `reuse-answered` branch cannot reach `count >= 3` if only the startup sweep ticks (the startup sweep runs before any such entry can be added — the exact reachability hazard called out in #458 review comment 2).
 
 ```markdown
 **Answered-gate parked-forever escape hatch (UI mode only).** Before dispatching any synthetic event, iterate `openGates` and tick the sweep counter for every entry in `status: 'answered'`:

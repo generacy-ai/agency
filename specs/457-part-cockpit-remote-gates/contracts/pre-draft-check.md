@@ -12,22 +12,23 @@ Applies to EXACTLY six rows: D.1, D.2, D.3, D.4, D.7, D.11 (the drafting-subagen
 
 ## Verbatim step-0 block (canonical form)
 
-The block below is added at the head of each of the six drafting D.n dispatches. Substitutions per row: `<gateType>` is the frozen gateType enum value (`clarification` for D.1; `<artifact>-review` where `<artifact> ∈ {spec, clarification, plan, tasks}` for D.2; `implementation-review` for D.3; `manual-validation` for D.4; `escalation` for D.7 and D.11).
+The block below is added at the head of each of the six drafting D.n dispatches. Substitutions per row: `<gateType>` is the frozen 8-value gateType enum value (`clarification` for D.1; `artifact-review` for D.2 — the artifact kind is folded into `generation`, NOT `gateType`, per the frozen enum; `implementation-review` for D.3; `manual-validation` for D.4; `escalation` for D.7 and D.11).
 
 ```markdown
 **Step 0 — pre-draft gate-status check (UI mode only).** Before spawning any drafting subagent or fetching any context, check whether an existing operator-inbox gate already covers this event. Skip Step 0 entirely under `ResolvedGateMode === "local"`; under `ui`:
 
-1. Derive `(gateType, generation)` for this event using the SAME per-gateType generation function the live path uses (§ UI-mode gate mapping generation-discriminator table). The `cockpit_gate_open` MCP tool derives the `gateId` from these inputs — the plugin never hand-builds a hash. Compute `gateId = derive(issueRef, gateType, generation)` for the query key by naming the same inputs.
-2. Call `cockpit_gate_status(gateId)`. Branch on the return:
-   - **`{ status: 'open' }`** — an operator-inbox gate is already pending at exactly this `gateId`. Do NOT spawn the drafting subagent. Record the returned gate in `openGates` (with `status: 'open'`, `openedAt` from the query return; may be earlier than this run's start on a restart/takeover), print the "one pointer line" per FR-005, and continue to the next event.
-   - **`{ status: 'answered' }`** — an operator has answered the gate but a D.12 event has not yet resolved it in this session (either the answer was applied by a prior session that crashed, or the redelivery has not landed). Do NOT spawn the drafting subagent. Record the returned gate in `openGates` (with `status: 'answered'`, `openedAt` from the query return), increment `answeredGateSweepCounter[gateId]`, and continue to the next event. Downstream D.12 delivery will consume the answer via the existing redelivery + `deliveryId` dedup path.
-   - **`{ status: 'absent' }`** — no gate exists at this exact `gateId`. Call `cockpit_gate_list({ issueRef, gateType })` and branch again:
-     - **Non-terminal gate at a DIFFERENT `generation`** — generation drift (Q1=C). The pending gate was drafted from older content; the two `gateId`s do not coalesce. Call `cockpit_gate_ack(staleGateId, outcome: 'superseded', detail: 'generation drift — content changed since original draft (was g<old>, now g<new>)')`, then fall through to the current draft-then-open flow (below) with the fresh generation. Re-attaching would apply an operator verdict computed against an old head SHA to current content — the correctness hazard D.12's supersession checks exist to prevent.
-     - **Empty list** — no gate anywhere for this `(issue, kind)`. Fall through to the current draft-then-open flow (below) unchanged.
-3. On `cockpit_gate_status` OR `cockpit_gate_list` call-time error (typed error object, network failure, timeout): apply the same first-failure-note-then-continue rule the § UI-mode fallback path uses for `cockpit_gate_open` errors (`auto.md:1396-1402`). Do NOT block the dispatch; treat the return as "no existing gate" and fall through to the draft-then-open flow. Cloud-side coalescing on identical `gateId` is authoritative per Q4=B; one duplicated drafter spawn in the rare error-race window is acceptable.
+1. Derive `(gateType, generation)` for this event using the SAME per-gateType generation function the live path uses (§ UI-mode gate mapping generation-discriminator table). The `cockpit_gate_open` MCP tool derives the `gateId` from these inputs — the plugin never hand-builds a hash.
+2. Call `cockpit_gate_status({ issueRef, gateType, generation })` — the tool's frozen `.strict()` input schema (per generacy `mcp/gates/query-schemas.ts § CockpitGateStatusInputSchema`). The plugin passes the three semantic inputs and the tool server internally derives `gateKey`/`gateId` and returns `{ gateId, status: 'open' | 'answered' } | { gateId: null, status: 'absent' }`. Branch on the return:
+   - **`{ status: 'open' }`** — an operator-inbox gate is already pending at exactly this `gateId`. Do NOT spawn the drafting subagent. Record a partial `openGates` entry (`{gateId, gateType, generation, issueRef, status: 'open', transitionClass}` — the reuse-path record has no `inboxUrl`/`title`/`askedAt`, which the query does not return), and continue to the next event. The "one pointer line" is NOT printed (per FR-005 it is scoped verbatim to `cockpit_gate_open` success and requires an `inboxUrl` value the reuse-path query does not carry).
+   - **`{ status: 'answered' }`** — an operator has answered the gate but a D.12 event has not yet resolved it in this session. Do NOT spawn the drafting subagent. Record a partial `openGates` entry (same shape as `open` above with `status: 'answered'`), increment `answeredGateSweepCounter[gateId]`, and continue to the next event. Downstream D.12 delivery will consume the answer via the existing redelivery + `deliveryId` dedup path.
+   - **`{ status: 'absent' }`** — no gate exists at this exact `gateId`. Call `cockpit_gate_list({ issueRef, gateType })` — the tool returns `{ gates: [{gateId, gateType, generation, status}, ...], truncated?: boolean }` (per generacy `mcp/gates/query-schemas.ts § CockpitGateListDataSchema`). Iterate `result.gates` and branch again:
+     - **`result.truncated === true` AND no drift entry present in the returned page** — treat as query-unreachable per sub-step 3 (abort with visible error) — do NOT fall through to draft-fresh.
+     - **Non-terminal gate at a DIFFERENT `generation`** — generation drift (Q1=C). Call `cockpit_gate_ack(staleGateId, outcome: 'superseded', detail: 'generation drift — content changed since original draft (was g<old>, now g<new>)')`, then fall through to the current draft-then-open flow (below) with the fresh generation.
+     - **Empty `gates` list** — no gate anywhere for this `(issueRef, gateType)` pair. Fall through to the current draft-then-open flow (below) unchanged.
+3. **Error handling — distinguish `absent` from `query-unreachable`**. Both `cockpit_gate_status` and `cockpit_gate_list` may return a typed `query-unreachable` error class (per generacy #1038 `mcp/errors.ts` and quickstart.md § FR-014: the tool retries internally within its budget — ~3 attempts / ~5s — before surfacing `query-unreachable`; the error signifies a sustained cloud/relay outage, NOT a transient race). **MUST NOT** collapse `query-unreachable` to `status: 'absent'` — doing so re-introduces the exact duplicate-drafting hazard this feature fixes. On `query-unreachable`: abort this event's dispatch, write the ledger line `<issue-ref> · <transition-class> · pre-draft-check · error: query-unreachable — aborting sweep for this event · source: ui-gate`, and continue with the NEXT event in the batch. On a non-`query-unreachable` transient error: apply the first-failure-note-then-continue rule the § UI-mode fallback path uses for `cockpit_gate_open` errors — treat as "no existing gate" and fall through to the draft-then-open flow.
 ```
 
-The verbatim heading `**Step 0 — pre-draft gate-status check (UI mode only).**` is pinned literally (assertion 457-4 through 457-9). The three-branch names — `reuse-open`, `reuse-answered`, `supersede-and-redraft`, `draft-fresh` — are NOT pinned as literal strings in the prose (they exist in `data-model.md § PreDraftCheckOutcome`); the prose describes each branch by its return-shape condition.
+The verbatim heading `**Step 0 — pre-draft gate-status check (UI mode only).**` is pinned literally (assertion 457-4 through 457-9). The five-branch names — `reuse-open`, `reuse-answered`, `supersede-and-redraft`, `draft-fresh`, `abort-query-unreachable` — are NOT pinned as literal strings in the prose (they exist in `data-model.md § PreDraftCheckOutcome`); the prose describes each branch by its return-shape condition.
 
 ## Tool-presence check (add to § step 3)
 
@@ -60,7 +61,7 @@ Where `<old>` is the stale gate's `generation` (as returned by `cockpit_gate_lis
 
 D.11's dispatch has both the new step 0 (durable, cross-session) AND the existing step 1 (`Dedup check` — the in-memory `dispatched-issues` set at `auto.md:706`). Ordering:
 
-1. **Step 0** — pre-draft `cockpit_gate_status` check (NEW).
+1. **Step 0** — pre-draft `cockpit_gate_status` check (NEW), with the **D.11 ordering exception** (per #458 review comment 3) that consults the in-memory `dispatched-issues` set BEFORE the drift-ack sub-branch fires.
 2. **Step 1** — `dispatched-issues` in-memory dedup (UNCHANGED).
 3. Step 1a through step 3 — UNCHANGED.
 
@@ -69,7 +70,11 @@ The two checks cover orthogonal properties per Q5=A / R6:
 - **Step 0 covers**: cross-session reuse (a gate opened by a prior session that survived the restart / cluster takeover).
 - **Step 1 covers**: (a) label-pair coalescing — `waiting-for:merge-conflicts` + `blocked:stuck-merge-conflicts` fire together but hash to two different `gateId`s under the escalation generation discriminator (`auto.md:1360`), so the durable check does NOT coalesce them; (b) session-mute-on-Skip semantics — the set is retained on skip (`auto.md:718`) per Invariant 3 (`auto.md:1636`), which no durable gate query can express since Skip never touches labels.
 
+**D.11 ordering exception (load-bearing)**: without it, event 2 (sibling label) would find event 1's live gate at a different `generation`, ack it `superseded`, then hit step 1's dedup and return `already-dispatched` — destroying the operator's live gate with no replacement (the exact hazard called out in #458 review comment 3). The step-0 drift branch MUST check the in-memory `dispatched-issues` set FIRST and skip the drift-ack when the sibling has already dispatched this incident. The `open` / `answered` reuse branches (matching gateId) are not affected by the exception — they were already dispatch-idempotent.
+
 **Test assertion 457-10**: § Dispatch D.11 contains BOTH step 0 (the pre-draft check heading) AND step 1 (the `Dedup check.` heading), in that order, with no removal of step 1's prose.
+
+**Test assertion 457-15**: § Dispatch D.11's Step 0 block contains the verbatim heading `**D.11 ordering exception (Q5=A / FR-010).**` naming the dedup-before-drift-ack coupling.
 
 ## Interaction with the § UI-mode fallback path
 
