@@ -55,7 +55,11 @@ The `openGates` record required by C is load-bearing rather than cosmetic: D.12 
 
 ## R5 — Parked-answered escape hatch (Q3 required follow-on) — why N=3
 
-**Decision**: After **N=3** consecutive sweeps in which a recorded `answered` gate produces no D.12 event, ack it `superseded` (detail: `answered-not-consumed — presumed stuck at cloud delivered/applied`), remove from `openGates`, and re-derive from labels on the same sweep.
+**Decision**: After **N=3** consecutive sweeps in which a recorded `answered` gate produces no D.12 event, ack it `superseded` (detail: `answered-not-consumed — presumed stuck at cloud delivered/applied`), remove from `openGates`, and **actively** re-derive from labels in the same pass — re-read live state via `cockpit_status(issue=<issueRef>, json=true)` and dispatch a synthesized event through the normal D.n path.
+
+**Re-derivation must be active, not drain-dependent (per #458 round-3 F2)**: the ack changes no label and `cockpit_await_events(cursor)` returns only NEW transitions, so a hatch that deleted the record and waited for the next drain would destroy the operator's only surface and park the issue forever. The hatch therefore performs the re-read itself. (At the startup-sweep tick site the synthetic-event pass that immediately follows already does exactly this for every in-scope issue, so the hatch does not synthesize a second time there.)
+
+**Counter semantics the N is measured in (per #458 round-3 F5)**: the counter counts SWEEPS during which the entry has been recorded `answered` and unresolved, counting the recording sweep as sweep 1 — the D.n Step 0 `reuse-answered` branch's record-time increment IS that sweep's count, and the tick sites supply every subsequent sweep. Both tick sites run before any dispatch, so no sweep is double-counted. An entry recorded during sweep S reaches 3 at S+2, which is exactly the "two full sweeps of margin" the N=3 rationale below depends on.
 
 **Why the hatch is required at all** (per Q3 required follow-on): The MCP `answered` state conflates cloud `answered`, `delivered`, AND `applied`, and `packages/generacy/.../cockpit-gate-delivery.ts:147-176` re-delivers only docs whose `status == 'answered' AND clusterId matches`. A gate stuck at cloud `delivered` (or already `applied` in a prior cluster) NEVER produces a D.12 event under the new cluster, and option Q3=C on its own would leave that issue parked forever with no operator-visible signal.
 
@@ -77,6 +81,8 @@ N is pinned literally in the playbook prose (`N=3`) so a future edit that "simpl
 **Why the in-memory set is not redundant** (per Q5=A rationale):
 
 1. **Label-pair coalescing.** `auto.md:701` states the classifier applies `waiting-for:merge-conflicts` and `blocked:stuck-merge-conflicts` together for a single stuck-merge incident. Those are two different triggering labels, so under the escalation generation discriminator (`subtype + triggering label/state + occurrence counter`, per `auto.md:1360`) they hash to two DIFFERENT `gateId`s. The durable check would NOT coalesce them, and one incident would open two gates — the exact duplicate-gate class this issue exists to eliminate. The in-memory set coalesces on `<issue-ref>`, which is the correct key for a single incident.
+
+   **Follow-on (per #458 round-3 F1)**: the same collision has a second, larger consequence. `gateType: 'escalation'` is shared by FOUR dispatch rows (D.6 / D.7 / D.10 / D.11) and `cockpit_gate_list` filters no finer than `{issueRef, gateType}`, so no listed entry can be attributed to the row that opened it. The generation-drift branch — which acks a listed gate `superseded` — is therefore DISABLED for `escalation` entirely, in all four rows. Scoping the protection to D.11 alone (round 2) merely moved the hazard: a D.7 `agent:error` event would ack D.11's live gate. See `contracts/pre-draft-check.md § Generation-drift branch guard`; the residual (undetectable escalation-subtype drift) is tracked upstream as [generacy-ai/generacy#1046](https://github.com/generacy-ai/generacy/issues/1046).
 
 2. **Session-mute lifecycle semantics no gate query can express.** The in-memory set is removed on successful advance (`auto.md:717`) and deliberately LEFT IN PLACE on skip (`auto.md:718`), because Invariant 3 (`auto.md:1636`) makes Skip a session-local mute that never touches labels. Drop the set and every skipped merge-conflict issue re-gates on every wake, since its durable gate has already been acked terminal.
 
@@ -106,12 +112,14 @@ The `spec.md § Success Criteria` SC-002 explicitly measures "drafting subagent 
 
 ## R8 — Presence check for the new tools
 
-**Decision**: `cockpit_gate_status` and `cockpit_gate_list` join the existing tool-presence check at `auto.md:176`. The check grows from seven tools to nine (`cockpit_status`, `cockpit_context`, `cockpit_queue`, `cockpit_advance`, `cockpit_resume`, `cockpit_merge`, `cockpit_await_events` — plus the two new ones). If either is absent from the session's MCP tool binding, the sweep's `Print + exit` fail-loud path fires exactly as it does today for any missing cockpit tool.
+**Decision (revised per #458 round-3 F3 — the requirement is CONDITIONAL, not unconditional)**: `cockpit_gate_status` and `cockpit_gate_list` join the § step 3 tool-presence check **only when `ResolvedGateMode === "ui"`**. The seven baseline tools (`cockpit_status`, `cockpit_context`, `cockpit_queue`, `cockpit_advance`, `cockpit_resume`, `cockpit_merge`, `cockpit_await_events`) remain required in every mode. So the check names seven tools under `local` and nine under `ui`. Absence of anything in the resolved mode's required set fires the sweep's `Print + exit` fail-loud path exactly as it does today for any missing cockpit tool.
 
-**Why**: The Q3=A precedent from #449 established that explicit `--gates=ui` on a cluster without a required capability hard-fails at pre-flight rather than prompting or silently degrading. The new tools are strictly required for the pre-draft check to execute, and the check itself is unconditional under `ResolvedGateMode === "ui"` — absence therefore MUST hard-fail. Silent whole-run downgrade would reintroduce exactly the duplicate-drafter symptom the whole ticket exists to fix.
+**Why conditional**: the two gate-query tools are called from exactly one site — § Dispatch step 0 — which is skipped entirely under `local`. An unconditional nine-tool requirement would hard-abort every `--gates=local` run on any cluster predating generacy#1038, and since `--gates=auto` (the default) resolves to `local` whenever `cockpit_gate_open` is unbound or the cluster is not cloud-activated, that is the common case. It would also break the § step-1 guarantee that `--gates=local` "preserves today's byte-path exactly". A `local` run MUST NOT fail on a tool it never calls.
+
+**Why still a hard-fail under `ui`**: The Q3=A precedent from #449 established that explicit `--gates=ui` on a cluster without a required capability hard-fails at pre-flight rather than prompting or silently degrading. Under `ui` the pre-draft check is unconditional, so absence MUST hard-fail — a silent whole-run downgrade there would reintroduce exactly the duplicate-drafter symptom the whole ticket exists to fix. The conditional mirrors the same asymmetry the `--gates` resolution itself already has for `cockpit_gate_open`: hard-fail under explicit `ui`, resolve-down under `auto`.
 
 **Alternatives rejected**:
-- **Skip the pre-draft check when the tools are absent, log a warning** — rejected. Silent degradation on a static capability check contradicts the seven-cockpit-tools precedent AND causes SC-001 to fail (duplicate inbox entries would return in exactly the scenario the ticket was filed against).
+- **Skip the pre-draft check when the tools are absent, log a warning** — rejected. Silent degradation on a static capability check contradicts the seven-baseline-tools precedent AND causes SC-001 to fail (duplicate inbox entries would return in exactly the scenario the ticket was filed against).
 - **Add a per-check `try/catch` around `cockpit_gate_status`, fall back to today's behavior on error** — rejected. Static presence and call-time error are different semantics; the #449 pattern already distinguishes them (pre-flight absence = hard-fail; call-time error = per-gate fallback). The pre-draft check is a NEW call site, but the same distinction applies: absence should hard-fail; a call-time error should apply the same first-failure-note-then-continue rule as `cockpit_gate_open` per `auto.md:1396-1402`.
 
 **Contract**: `contracts/pre-draft-check.md § Tool-presence check`.
@@ -135,7 +143,7 @@ Rationale for B over C: C is disproportionate. No per-`gateId` lease primitive e
 **Why**: Per repo CLAUDE.md § "Cockpit playbook pins" — heading renames, loop-shape edits, and new/removed steps break the pins on purpose (drift audit, not smoke test). Re-pinning to the new contract preserves the drift-audit value while allowing the intentional contract change.
 
 **Coverage sketch** (final task list is generated by `/speckit:tasks`):
-- 457-1: § step 3 nine-tool presence check
+- 457-1: § step 3 CONDITIONAL tool-presence check (seven baseline always; the two gate-query tools under `ui` only)
 - 457-2: § step 3 removal of `generation=1`
 - 457-3: § step 3 `answeredGateSweepCounter` + N=3 escape hatch verbatim
 - 457-4 through 457-9: pre-draft check heading + three-branch rule on each of D.1/D.2/D.3/D.4/D.7/D.11

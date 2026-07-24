@@ -20,7 +20,7 @@
 
 - [X] T010 [US1,US2] Rewrite § step 3 startup sweep `gateId idempotency` paragraph (currently `auto.md:198`) per `contracts/sweep-generation-fix.md § Verbatim removal`. Remove the literal `generation=1` substring; replace with the content-derived generation function description referencing § UI-mode gate mapping / § Generation discriminator (UI mode). Cross-reference § Dispatch step 0 in D.1/D.2/D.3/D.4/D.7/D.11. Prerequisite for T011-T016 — without this, the pre-draft check `gateId` cannot coalesce.
 
-- [X] T011 [US1,US2] Extend the § step 3 tool-presence check (`auto.md:176`) from seven to nine cockpit tools, adding `cockpit_gate_status` and `cockpit_gate_list` per `contracts/pre-draft-check.md § Tool-presence check`. Absence of either fires the existing `Print + exit` fail-loud path (matches Q3=A precedent).
+- [X] T011 [US1,US2] Extend the § step 3 tool-presence check (`auto.md:176`) CONDITIONALLY: the seven baseline cockpit tools stay required in every mode; `cockpit_gate_status` and `cockpit_gate_list` are added only under `ResolvedGateMode === "ui"`, per `contracts/pre-draft-check.md § Tool-presence check`. Absence of a tool in the resolved mode's required set fires the existing `Print + exit` fail-loud path (matches Q3=A precedent). (Revised per #458 round-3 F3 — an unconditional nine-tool check hard-aborted `--gates=local` on pre-#1038 clusters.)
 
 - [X] T012 [US1,US2] Add the answered-gate parked-forever escape-hatch block at the TOP of § step 3 startup sweep (BEFORE the synthetic-event dispatch) per `contracts/answered-escape-hatch.md § Verbatim escape-hatch block`. Include:
   - Verbatim heading `**Answered-gate parked-forever escape hatch (UI mode only).**` (pinned literally).
@@ -57,7 +57,7 @@
 ## Phase 4: Playbook-verification test additions and re-pins — `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts`
 
 - [X] T040 [US3] Add a new `describe("457 sweep-time gate reuse", () => { ... })` block at the end of the file (after the `449 UI-mode gates` block at `:2832`, before the type-guard footer at `:3126`). Include assertions 457-1 through 457-13 per `plan.md § Test edits (playbook-verification.test.ts)` and the coverage sketches in each contract file:
-  - **457-1**: § step 3 startup sweep tool-presence check names all nine tools (adds `cockpit_gate_status`, `cockpit_gate_list` to the seven existing).
+  - **457-1**: § step 3 startup sweep tool-presence check states the CONDITIONAL rule (seven baseline tools always; `cockpit_gate_status` / `cockpit_gate_list` under `ui` only) and names all nine tools.
   - **457-2**: § step 3 startup sweep NO LONGER contains the literal substring `generation=1`; the new prose containing `hash(issueRef, gateType, generation)` is present.
   - **457-3**: § step 3 escape-hatch block heading `**Answered-gate parked-forever escape hatch (UI mode only).**` present verbatim + `count >= 3` literal + detail string `'answered-not-consumed — presumed stuck at cloud delivered/applied'` literal.
   - **457-4 through 457-9**: each of § Dispatch D.1, D.2, D.3, D.4, D.7, D.11 contains the `**Step 0 — pre-draft gate-status check (UI mode only).**` heading + the three-branch rule (same-gateId reuse / generation-drift supersede-and-redraft / absent-no-op) + the `on 'answered', record + tick sweep counter` clause + the drift-ack detail literal `generation drift — content changed since original draft (was g<old>, now g<new>)`.
@@ -84,7 +84,7 @@
     - :2756, :2785, :2793, :2835, :2848, :2857, :2865, :2876, :2886: step 1 pins (`extractInstructionsSteps`) — NO intersection (edits are in step 3 and § Dispatch subsections, not step 1).
     - :2998, :3020: `449-13 / 449-14` D.12 subheading pins (`extractSubheadingBlock`) — INTERSECTS T020 (D.12 step 6 rename + counter-reset addition). Re-pin the D.12 step 6 assertions to the NEW heading `**Remove from openGates and reset sweep counter**` and the NEW rule that both `openGates.delete` and `answeredGateSweepCounter.delete` fire.
     - :3034, :3050: `449-15 / 449-16` UI-mode fallback subheading pins (`extractSubheadingBlock`) — verify pre-draft-check error-handling prose does not accidentally overlap fallback prose (per `contracts/pre-draft-check.md § Interaction with § UI-mode fallback path`, they are DISTINCT paths and the pre-draft check must not introduce a new `firstGateStatusFailureNoted` flag).
-    - :3086, :3105: `449-18` and fresh-epic bootstrap pins (`extractInstructionsSteps` on step 3) — INTERSECTS T010 (sweep rewrite), T011 (nine-tool presence check), T012 (escape-hatch block at top of sweep). Re-pin the Q2=B extended trigger set assertion, gateId-idempotency phrase, tool count (now nine), and confirm the escape-hatch block does not shadow the fresh-epic bootstrap clause.
+    - :3086, :3105: `449-18` and fresh-epic bootstrap pins (`extractInstructionsSteps` on step 3) — INTERSECTS T010 (sweep rewrite), T011 (nine-tool presence check), T012 (escape-hatch block at top of sweep). Re-pin the Q2=B extended trigger set assertion, gateId-idempotency phrase, tool count (now conditional: seven baseline, nine under `ui`), and confirm the escape-hatch block does not shadow the fresh-epic bootstrap clause.
 
   Re-pinning means updating the assertion to the NEW contract.
   Do NOT weaken or delete an assertion to make the test pass — the pin is a drift audit;

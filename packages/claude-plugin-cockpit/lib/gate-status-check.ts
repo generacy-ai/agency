@@ -86,18 +86,35 @@ export interface GateListResult {
 }
 
 /**
- * Typed error surface for `cockpit_gate_status` / `cockpit_gate_list` (per
- * generacy #1038 `mcp/errors.ts`). The `query-unreachable` class fires ONLY
- * after the tool's internal retry budget is exhausted (~3 attempts / ~5s) —
- * it signifies a sustained cloud/relay outage, NOT a transient race. The
- * plugin MUST NOT collapse `query-unreachable` to `status: 'absent'` (that
- * would re-introduce the duplicate-drafting hazard this feature fixes; per
- * generacy #1038 FR-014 the sweep aborts on `query-unreachable` and the
- * operator sees a visible error).
+ * Typed error surface for `cockpit_gate_status` / `cockpit_gate_list`.
+ *
+ * These are the FOUR classes actually reachable at these two call sites, read
+ * off the shipped implementation — NOT a two-way "unreachable vs transient"
+ * split:
+ *
+ * - `query-unreachable` — `QueryTransportError` surfaced only AFTER
+ *   `withRetry(QUERY_RETRY_SCHEDULE)` is exhausted (~3 attempts / ~5s); a
+ *   sustained cloud/relay outage, not a race
+ *   (generacy `mcp/tools/cockpit_gate_status.ts`, `cockpit_gate_list.ts`).
+ * - `invalid-args` — the tool's `.strict()` `safeParse` REJECTED the input, or
+ *   the client raised `QueryInvalidArgsError`. A deterministic CALLER bug.
+ * - `internal` — `QueryInternalError`, or any throw wrapped by
+ *   `wrapToolBoundary`. A deterministic SERVER/TOOL bug.
+ * - `transport` — `mapCockpitExitToToolError` on `CockpitExit` code 1: the
+ *   call never reached the query surface (generacy `mcp/errors.ts`).
+ *
+ * NONE of them may be collapsed to `status: 'absent'`. `query-unreachable`
+ * collapsed to absent re-introduces the duplicate-drafting hazard this feature
+ * fixes (per generacy #1038 FR-014 the sweep aborts and the operator sees a
+ * visible error). `invalid-args` / `internal` collapsed to absent is worse:
+ * that bucket is populated exclusively by deterministic bugs, never by a race,
+ * so one payload mismatch would silently degrade the whole check to a no-op.
  */
 export type GateQueryErrorClass =
   | "query-unreachable"
-  | "transient";
+  | "invalid-args"
+  | "internal"
+  | "transport";
 
 export interface GateQueryError {
   class: GateQueryErrorClass;
@@ -119,14 +136,93 @@ export type PreDraftCheckOutcome =
       freshGeneration: string;
     }
   | { kind: "draft-fresh" }
-  | { kind: "abort-query-unreachable"; error: GateQueryError };
+  /** Cloud/relay could not be read — retry-later. Abort this event, visible error. */
+  | { kind: "abort-query-unreachable"; error: GateQueryError }
+  /** Deterministic caller/server bug — abort this event, LOUD visible error. */
+  | { kind: "abort-gate-query-bug"; error: GateQueryError };
 
 /**
  * Sweep-time counter for consecutive sweeps in which a recorded `answered`
  * gate has produced no D.12 event. Per data-model.md § AnsweredGateSweepCounter
  * and auto.md § In-memory loop state additions (UI mode).
+ *
+ * Counter semantics (single definition, per auto.md § step 3 **Counter
+ * semantics**): the value is the number of SWEEPS during which the entry has
+ * been recorded `answered` and unresolved, counting the sweep in which it was
+ * recorded as sweep 1. The D.n Step 0 `reuse-answered` branch seeds the entry
+ * at 1; `tickAnsweredSweepCounter` supplies every SUBSEQUENT sweep's increment.
+ * Both tick sites run before any dispatch, so a given sweep is never counted
+ * twice for the same entry.
  */
 export type AnsweredGateSweepCounter = Map<GateId, number>;
+
+/**
+ * gateTypes whose **dispatch row is NOT recoverable** from a `cockpit_gate_list`
+ * entry, and for which the generation-drift branch is therefore DISABLED (per
+ * auto.md § Pre-draft check — shared rules → generation-drift branch guard).
+ *
+ * `escalation` is the only member: four dispatch rows — D.6 (G.4a), D.7 (G.4b),
+ * D.10 (G.4c), D.11 (G.4d) — all open gates under the single frozen enum value
+ * `escalation` (generacy `mcp/gates/schemas.ts § GateTypeSchema`), while
+ * `cockpit_gate_list` filters no finer than `{issueRef, gateType}` and its
+ * entries carry only `{gateId, gateType, generation, status}`
+ * (`mcp/gates/query-schemas.ts`). Nothing on the wire says WHICH row opened a
+ * listed gate, so a drift-ack from one row would silently destroy another row's
+ * live operator gate — with no replacement, because the ack touches no label.
+ *
+ * The `generation` string MUST NOT be parsed to recover the subtype: it is an
+ * opaque `z.string().min(1)` on the wire with no format contract.
+ *
+ * Residual limitation, tracked upstream as generacy-ai/generacy#1046.
+ */
+export const DRIFT_GUARD_UNRESOLVABLE_GATE_TYPES: ReadonlySet<GateType> = new Set<GateType>([
+  "escalation",
+]);
+
+/** The four dispatch rows that share `gateType: 'escalation'`. */
+export const ESCALATION_DISPATCH_ROWS = ["D.6", "D.7", "D.10", "D.11"] as const;
+
+/**
+ * The generation-drift branch's dispatch-identity precondition. `false` means
+ * the caller MUST skip the drift branch entirely (do not even issue the
+ * `cockpit_gate_list` query) and proceed as "no existing gate".
+ */
+export function driftBranchMaySupersede(gateType: GateType): boolean {
+  return !DRIFT_GUARD_UNRESOLVABLE_GATE_TYPES.has(gateType);
+}
+
+/**
+ * Route a typed gate-query error onto its abort branch. Every class aborts —
+ * NO class maps to `draft-fresh`. Only a literal `{status: 'absent'}` ok-return
+ * means "no existing gate"; an error is never evidence that a gate is absent.
+ *
+ * An unrecognized class (from a newer tool build) routes to the loud
+ * `abort-gate-query-bug` branch rather than being guessed at.
+ */
+export function classifyGateQueryError(error: GateQueryError): PreDraftCheckOutcome {
+  switch (error.class) {
+    case "query-unreachable":
+    case "transport":
+      return { kind: "abort-query-unreachable", error };
+    case "invalid-args":
+    case "internal":
+      return { kind: "abort-gate-query-bug", error };
+    default:
+      return { kind: "abort-gate-query-bug", error };
+  }
+}
+
+/**
+ * The visible operator-facing line the pre-draft check prints on ANY gate-query
+ * error (pinned literally by auto.md § Pre-draft check — shared rules →
+ * Gate-query error taxonomy). Printed in addition to the ledger row.
+ */
+export function formatPreDraftCheckErrorLine(
+  issueRef: string,
+  error: GateQueryError,
+): string {
+  return `pre-draft gate check failed for ${issueRef} (${error.class}): ${error.message} — not drafting; see the run ledger`;
+}
 
 /**
  * The load-bearing N=3 escape-hatch threshold (V6 in data-model.md).
@@ -136,9 +232,16 @@ export const ANSWERED_SWEEP_THRESHOLD = 3 as const;
 
 /**
  * Classify a pre-draft check outcome given the `cockpit_gate_status` and
- * `cockpit_gate_list` returns and the freshly-computed generation for the
- * current event. Implements the three-branch rule in
- * `contracts/pre-draft-check.md § Verbatim step-0 block` step 2.
+ * `cockpit_gate_list` returns, the freshly-computed generation for the current
+ * event, and the dispatch's `gateType`. Implements the three-branch rule in
+ * `contracts/pre-draft-check.md § Verbatim step-0 block` step 2 plus the
+ * generation-drift branch guard (auto.md § Pre-draft check — shared rules).
+ *
+ * `gateType` is load-bearing, not decoration: when `driftBranchMaySupersede`
+ * is false for it (i.e. `escalation`), the drift branch is DISABLED and an
+ * `absent` status resolves straight to `draft-fresh` — no supersession, no
+ * list consultation. The caller passes `listResult: null` in that case because
+ * it never issued the query.
  *
  * `listResult.truncated === true` combined with no drift entry in the returned
  * page returns `abort-query-unreachable` — the plugin cannot safely fall
@@ -146,8 +249,9 @@ export const ANSWERED_SWEEP_THRESHOLD = 3 as const;
  */
 export function classifyPreDraftCheck(
   statusResult: GateStatusResult,
-  listResult: GateListResult,
+  listResult: GateListResult | null,
   currentGeneration: string,
+  gateType: GateType,
 ): PreDraftCheckOutcome {
   if (statusResult.status === "open") {
     return { kind: "reuse-open", gateId: statusResult.gateId };
@@ -155,9 +259,24 @@ export function classifyPreDraftCheck(
   if (statusResult.status === "answered") {
     return { kind: "reuse-answered", gateId: statusResult.gateId };
   }
-  // status === "absent" — check for generation drift via the list.
-  // No ordering is specified by the #1038 contract; the plugin picks the first
-  // non-terminal entry whose generation differs from the current event's.
+  // status === "absent".
+  //
+  // GUARD (auto.md § generation-drift branch guard): the drift branch acks
+  // another gate `superseded`, so it may only fire when the listed entry's
+  // dispatch row is recoverable and matches this dispatch. For `escalation`
+  // it is not (four rows share the enum value) — skip the branch entirely and
+  // proceed as "no existing gate". Superseding blind would destroy a live gate
+  // this row did not open, with no replacement.
+  if (!driftBranchMaySupersede(gateType)) {
+    return { kind: "draft-fresh" };
+  }
+  // The caller skipped the list query (or it returned nothing to consult).
+  if (listResult === null) {
+    return { kind: "draft-fresh" };
+  }
+  // Check for generation drift via the list. No ordering is specified by the
+  // #1038 contract; the plugin picks the first non-terminal entry whose
+  // generation differs from the current event's.
   const drift = listResult.gates.find(
     (entry) => entry.generation !== currentGeneration,
   );
@@ -193,9 +312,15 @@ export function classifyPreDraftCheck(
  * (per auto.md § step 4 sub-step 0) — both tick sites apply this same
  * function, and the load-bearing reachability property (FR-009) requires
  * both to fire.
+ *
+ * `status` is a REQUIRED field on `GateRecord` (lib/gate-wire-types.ts), so
+ * this signature takes the plain `OpenGatesMap` element type — no ad-hoc
+ * intersection patching an optional `status` onto the record. A record that
+ * omitted the field would be invisible to this filter and its issue would park
+ * forever, which is exactly why the field is not optional.
  */
 export function tickAnsweredSweepCounter(
-  openGates: Map<GateId, GateRecord & { status?: "open" | "answered" }>,
+  openGates: Map<GateId, GateRecord>,
   counter: AnsweredGateSweepCounter,
 ): void {
   for (const [gateId, record] of openGates) {

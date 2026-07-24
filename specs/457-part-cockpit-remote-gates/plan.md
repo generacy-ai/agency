@@ -49,7 +49,7 @@ Playbook-verification tests are re-pinned to the new contract — the pre-draft 
 - **Playbook-first, code-second.** Any TypeScript added under `lib/` is a reference implementation of the prose, not the source of truth.
 - **UI mode only.** The change targets `ResolvedGateMode === "ui"`. `--gates=cli` and `--gates=none` are out of scope per spec § Out of scope.
 
-**Presence-check for the new tools**: `cockpit_gate_status` and `cockpit_gate_list` join the existing tool-presence check at `auto.md:176` (currently seven tools) → the check grows to name nine `cockpit_*` tools. When either new tool is absent from the session's MCP binding, the sweep's fail-loud path (§ step 3 `Print + exit`) fires exactly as it does today for any missing cockpit tool — no operator prompt, no ledger dir created, per the Q3=A precedent from #449.
+**Presence-check for the new tools (CONDITIONAL — revised per #458 round-3 F3)**: `cockpit_gate_status` and `cockpit_gate_list` join the § step 3 tool-presence check **only when `ResolvedGateMode === "ui"`**; the seven baseline tools stay required in every mode. The check therefore names seven tools under `local` and nine under `ui`. When a tool in the resolved mode's required set is absent from the session's MCP binding, the sweep's fail-loud path (§ step 3 `Print + exit`) fires exactly as it does today — no operator prompt, no ledger dir created, per the Q3=A precedent from #449. Requiring the two gate-query tools under `local` would hard-abort every `--gates=local` run (and every `--gates=auto → local` run, the default) on a cluster predating generacy#1038, on tools that mode never calls.
 
 **Session-state model**: Extends the `openGates: Map<gateId, GateRecord>` block already in `auto.md § In-memory loop state additions` (added by #449). Two additions:
 
@@ -110,7 +110,7 @@ The prose edits are surgical:
 4. **§ Dispatch D.4** — same shape; before current step 1 (`Spawn manual-validation summarizer`).
 5. **§ Dispatch D.7** — same shape; before current step 1 (`Fetch evidence`). Both first-dispatch AND repeat-dispatch paths gain the pre-draft check.
 6. **§ Dispatch D.11** — pre-draft check inserted as new step 0 BEFORE the current step 1 (`Dedup check` — the in-memory `dispatched-issues` check). Step 1 through step 3 unchanged.
-7. **§ step 3 startup sweep** — the paragraph at `auto.md:198` that hard-codes `generation=1` is rewritten to state that sweep-time `cockpit_gate_open` uses the same content-derived generation the live path derives. The `answeredGateSweepCounter` tick + N=3 escape hatch is added as a new paragraph at the top of the sweep (BEFORE the synthetic-event dispatch), together with an explicit statement that the N=3 threshold is a load-bearing value pinned by the test suite. Tool-presence check grows from seven to nine tools (adding `cockpit_gate_status`, `cockpit_gate_list`).
+7. **§ step 3 startup sweep** — the paragraph at `auto.md:198` that hard-codes `generation=1` is rewritten to state that sweep-time `cockpit_gate_open` uses the same content-derived generation the live path derives. The `answeredGateSweepCounter` tick + N=3 escape hatch is added as a new paragraph at the top of the sweep (BEFORE the synthetic-event dispatch), together with an explicit statement that the N=3 threshold is a load-bearing value pinned by the test suite. Tool-presence check becomes conditional: seven baseline tools always, plus `cockpit_gate_status` / `cockpit_gate_list` only under `ResolvedGateMode === "ui"`.
 8. **§ In-memory loop state additions (UI mode)** — add `answeredGateSweepCounter: Map<GateId, number>` alongside the existing `openGates` and `firstGateOpenFailureNoted`.
 9. **§ D.12 gate-answer** — add a single-line clarifying step in the answer handler that resets the sweep counter (`answeredGateSweepCounter.delete(event.gateId)`) when a D.12 event resolves an entry.
 
@@ -122,7 +122,7 @@ The prose edits are surgical:
 
 Add a new `describe("457 sweep-time gate reuse", () => { ... })` block at the end of the file (after the `449 UI-mode gates` block at line 2832). New assertions:
 
-- **457-1**: § step 3 startup sweep declares the nine-tool presence check (adds `cockpit_gate_status`, `cockpit_gate_list` alongside the existing seven).
+- **457-1**: § step 3 startup sweep declares the CONDITIONAL presence check — seven baseline tools always, `cockpit_gate_status` / `cockpit_gate_list` under `ui` only.
 - **457-2**: § step 3 startup sweep no longer contains the string `generation=1` (the hard-coded default is removed).
 - **457-3**: § step 3 startup sweep declares the `answeredGateSweepCounter` + `N=3` escape hatch verbatim (N pinned literally).
 - **457-4 through 457-9**: each of § Dispatch D.1, D.2, D.3, D.4, D.7, D.11 contains the `**Step 0 — pre-draft gate-status check**` heading AND the three-branch rule (same-gateId reuse / generation-drift supersede-and-redraft / absent-no-op) AND the "on `answered`, record + tick sweep counter" clause.
@@ -190,7 +190,7 @@ packages/claude-plugin-cockpit/
 | Concurrent-sweep race | Cloud-side transactional coalescing on `cockpitGates/{gateId}` is authoritative; wasted drafter spawn on the losing side is out of scope | No per-`gateId` lease exists; the only lease (`cockpit_claim`) is scope-level and absent from `auto.md`; C would wire a new concurrency mechanism to save one drafter spawn in a rare window | Q4=B |
 | D.11 in-memory `dispatched-issues` | KEEP both — durable covers cross-session; in-memory coalesces the label-pair AND preserves session-mute-on-Skip semantics | Removing the in-memory set would reintroduce duplicate gates (the label-pair hashes to two different `gateId`s under escalation generation) AND re-gate every skipped merge-conflict issue on every wake | Q5=A |
 | Sweep `generation=1` default | REMOVED; sweep uses the live-path content-derived generation function | The whole feature is a no-op without this fix — `gateId`s never coalesce across sweep/live paths | FR-006 (prerequisite for FR-002) |
-| Presence-check tool-set | Grows from 7 to 9 (`cockpit_gate_status`, `cockpit_gate_list` added) | Fail-loud on absence matches the seven-cockpit-tools precedent at `auto.md:176`; explicit `--gates=ui` on a cluster without #1038 hard-fails per the Q3=A precedent from #449 | (implicit in Assumption 1) |
+| Presence-check tool-set | Conditional: 7 baseline always; +2 (`cockpit_gate_status`, `cockpit_gate_list`) only under `ResolvedGateMode === 'ui'` | Fail-loud on absence matches the seven-baseline-tools precedent at `auto.md:176`; explicit `--gates=ui` on a cluster without #1038 hard-fails per the Q3=A precedent from #449, while `local` never fails on tools it does not call | (implicit in Assumption 1) |
 
 ## Complexity Tracking
 

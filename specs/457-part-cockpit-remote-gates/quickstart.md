@@ -4,7 +4,7 @@ Operator-visible behavior of the pre-draft gate-status check, the generation-dri
 
 ## Prerequisites
 
-1. **Blocking dependency**: [generacy-ai/generacy#1038](https://github.com/generacy-ai/generacy/issues/1038) — read-only gate-status query (MCP tools `cockpit_gate_status`, `cockpit_gate_list`) — must be merged and deployed to the cluster before this feature can be exercised. On a cluster without #1038, `/cockpit:auto --gates=ui` hard-fails at pre-flight with the existing `cockpit MCP tools not available — upgrade the cluster` message (per the seven-cockpit-tools precedent at `auto.md:176`, now extended to nine tools).
+1. **Blocking dependency**: [generacy-ai/generacy#1038](https://github.com/generacy-ai/generacy/issues/1038) — read-only gate-status query (MCP tools `cockpit_gate_status`, `cockpit_gate_list`) — must be merged and deployed to the cluster before this feature can be exercised. On a cluster without #1038, `/cockpit:auto --gates=ui` hard-fails at pre-flight with the existing `cockpit MCP tools not available — upgrade the cluster` message (per the seven-baseline-tools precedent at `auto.md:176`, extended to nine **only under `ResolvedGateMode === "ui"`**). `--gates=local` (and `--gates=auto` resolved to `local`) is unaffected on such a cluster: it never calls the two gate-query tools, so it does not require them.
 2. **Prior work merged**: this feature builds on #449 (`--gates=ui|local|auto` flag + D.12 gate-answer dispatch) and #450 (P4 dogfood run report). If either is missing, verify against the current `auto.md` HEAD before proceeding.
 3. **Operator inbox access**: an active tab on `https://generacy.ai/dashboard/inbox` for the driving cluster's org, with browser-notification permission granted.
 

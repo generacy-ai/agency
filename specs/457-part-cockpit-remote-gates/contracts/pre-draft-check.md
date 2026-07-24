@@ -22,26 +22,52 @@ The block below is added at the head of each of the six drafting D.n dispatches.
    - **`{ status: 'open' }`** — an operator-inbox gate is already pending at exactly this `gateId`. Do NOT spawn the drafting subagent. Record a partial `openGates` entry (`{gateId, gateType, generation, issueRef, status: 'open', transitionClass}` — the reuse-path record has no `inboxUrl`/`title`/`askedAt`, which the query does not return), and continue to the next event. The "one pointer line" is NOT printed (per FR-005 it is scoped verbatim to `cockpit_gate_open` success and requires an `inboxUrl` value the reuse-path query does not carry).
    - **`{ status: 'answered' }`** — an operator has answered the gate but a D.12 event has not yet resolved it in this session. Do NOT spawn the drafting subagent. Record a partial `openGates` entry (same shape as `open` above with `status: 'answered'`), increment `answeredGateSweepCounter[gateId]`, and continue to the next event. Downstream D.12 delivery will consume the answer via the existing redelivery + `deliveryId` dedup path.
    - **`{ status: 'absent' }`** — no gate exists at this exact `gateId`. Call `cockpit_gate_list({ issueRef, gateType })` — the tool returns `{ gates: [{gateId, gateType, generation, status}, ...], truncated?: boolean }` (per generacy `mcp/gates/query-schemas.ts § CockpitGateListDataSchema`). Iterate `result.gates` and branch again:
+     (The `cockpit_gate_list` call and every branch below fire ONLY when the drift-branch dispatch-identity guard is satisfied — see § Generation-drift branch guard. For `gateType: 'escalation'` (D.6/D.7/D.10/D.11) the guard fails: skip the list call and the drift branch entirely and fall straight through to the draft-then-open flow.)
      - **`result.truncated === true` AND no drift entry present in the returned page** — treat as query-unreachable per sub-step 3 (abort with visible error) — do NOT fall through to draft-fresh.
      - **Non-terminal gate at a DIFFERENT `generation`** — generation drift (Q1=C). Call `cockpit_gate_ack(staleGateId, outcome: 'superseded', detail: 'generation drift — content changed since original draft (was g<old>, now g<new>)')`, then fall through to the current draft-then-open flow (below) with the fresh generation.
      - **Empty `gates` list** — no gate anywhere for this `(issueRef, gateType)` pair. Fall through to the current draft-then-open flow (below) unchanged.
-3. **Error handling — distinguish `absent` from `query-unreachable`**. Both `cockpit_gate_status` and `cockpit_gate_list` may return a typed `query-unreachable` error class (per generacy #1038 `mcp/errors.ts` and quickstart.md § FR-014: the tool retries internally within its budget — ~3 attempts / ~5s — before surfacing `query-unreachable`; the error signifies a sustained cloud/relay outage, NOT a transient race). **MUST NOT** collapse `query-unreachable` to `status: 'absent'` — doing so re-introduces the exact duplicate-drafting hazard this feature fixes. On `query-unreachable`: abort this event's dispatch, write the ledger line `<issue-ref> · <transition-class> · pre-draft-check · error: query-unreachable — aborting sweep for this event · source: ui-gate`, and continue with the NEXT event in the batch. On a non-`query-unreachable` transient error: apply the first-failure-note-then-continue rule the § UI-mode fallback path uses for `cockpit_gate_open` errors — treat as "no existing gate" and fall through to the draft-then-open flow.
+3. **Error handling — classify the typed error; only a literal `absent` means "no existing gate".** Both `cockpit_gate_status` and `cockpit_gate_list` return `ToolResult<T>`. FOUR error classes are reachable here (per generacy `mcp/errors.ts § ErrorClass` and the two tools' `catch` blocks): `query-unreachable` (surfaced only after `withRetry(QUERY_RETRY_SCHEDULE)` is exhausted — sustained cloud/relay outage, NOT a race), `invalid-args` (`.strict()` parse rejection — deterministic CALLER bug), `internal` (wrapped throw / malformed upstream payload — deterministic SERVER bug), `transport` (the call never reached the query surface). **MUST NOT** collapse ANY class to `status: 'absent'`, and MUST NOT fall through to the draft-then-open flow on any of them. Every class: abort this event's dispatch, write `<issue-ref> · <transition-class> · pre-draft-check · error: <class> — <detail> · source: ui-gate`, print the visible operator-facing line `pre-draft gate check failed for <issue-ref> (<class>): <detail> — not drafting; see the run ledger`, and continue with the NEXT event in the batch. Collapsing `query-unreachable` re-introduces the duplicate-drafting hazard this feature fixes; collapsing `invalid-args` / `internal` is worse, since that bucket is populated exclusively by deterministic bugs rather than races, so one payload mismatch would silently degrade the whole check to a no-op.
 ```
 
-The verbatim heading `**Step 0 — pre-draft gate-status check (UI mode only).**` is pinned literally (assertion 457-4 through 457-9). The five-branch names — `reuse-open`, `reuse-answered`, `supersede-and-redraft`, `draft-fresh`, `abort-query-unreachable` — are NOT pinned as literal strings in the prose (they exist in `data-model.md § PreDraftCheckOutcome`); the prose describes each branch by its return-shape condition.
+The verbatim heading `**Step 0 — pre-draft gate-status check (UI mode only).**` is pinned literally (assertion 457-4 through 457-9). The six-branch names — `reuse-open`, `reuse-answered`, `supersede-and-redraft`, `draft-fresh`, `abort-query-unreachable`, `abort-gate-query-bug` — are NOT pinned as literal strings in the prose (they exist in `data-model.md § PreDraftCheckOutcome`); the prose describes each branch by its return-shape condition.
 
 ## Tool-presence check (add to § step 3)
 
-The existing tool-presence check at `auto.md:176` names seven tools. This contract grows it to nine by adding `cockpit_gate_status` and `cockpit_gate_list`. Verbatim addition:
+The existing tool-presence check at `auto.md:176` names seven tools. This contract adds `cockpit_gate_status` and `cockpit_gate_list` **conditionally**, so the required set is:
 
-```
-- `cockpit_gate_status`
-- `cockpit_gate_list`
-```
+- **Always (all modes)** — the seven baseline tools: `cockpit_status`, `cockpit_context`, `cockpit_queue`, `cockpit_advance`, `cockpit_resume`, `cockpit_merge`, `cockpit_await_events`.
+- **Only when `ResolvedGateMode === "ui"`** — `cockpit_gate_status`, `cockpit_gate_list`.
 
-Absence of either fires the existing `Print + exit` fail-loud path (append `startup · cockpit-mcp-tools-missing · abort · see cluster-base#75` to the ledger, print the guidance line, exit non-zero). No operator prompt, no ledger dir created. Matches the Q3=A precedent from #449.
+Under `ResolvedGateMode === "local"` the two gate-query tools are NOT required and their absence is NOT an error: they are called from exactly one site (§ Dispatch step 0), which `local` skips entirely. An unconditional requirement would hard-abort every `--gates=local` run — including every `--gates=auto` run that resolved to `local`, which is the default — on any cluster predating generacy#1038, breaking the § step-1 guarantee that `--gates=local` "preserves today's byte-path exactly". A `local` run MUST NOT fail on a tool it never calls. This mirrors the § step-1 `--gates=ui` pre-flight absence check, where `cockpit_gate_open` absence hard-fails under explicit `ui` but resolves the mode down under `auto`.
 
-**Test assertion 457-1**: § step 3 startup sweep names all nine tools in the presence check.
+Absence of any tool in the resolved mode's required set fires the existing `Print + exit` fail-loud path (append `startup · cockpit-mcp-tools-missing · abort · see cluster-base#75` to the ledger, print the guidance line, exit non-zero). No operator prompt, no ledger dir created. Matches the Q3=A precedent from #449.
+
+**Test assertion 457-1**: § step 3's presence check states the rule CONDITIONALLY — seven tools under `local`, nine under `ui` — and names all nine tools.
+
+## Generation-drift branch guard (dispatch-identity precondition)
+
+The drift branch acks another gate `superseded` — it destroys a gate. It may therefore fire ONLY when the listed entry is one the CURRENT dispatch itself would have opened. Precondition, both parts required:
+
+1. `entry.gateType` equals this dispatch's `gateType` (guaranteed when the list call passes the `gateType` filter — `CockpitGateListInputSchema.gateType` is OPTIONAL, so an unfiltered call returns every type for the issue), AND
+2. the entry's **dispatch-identifying discriminator** — which D.n row opened it — is recoverable from `{gateId, gateType, generation, status}` and equals this dispatch's row.
+
+**When part 2 is not recoverable, the drift branch MUST NOT supersede**: skip it entirely (do not even issue the list query) and proceed as "no existing gate".
+
+| gateType | Step-0 row(s) | recoverable? |
+|---|---|---|
+| `clarification` | D.1 | yes — gateType ⇒ row |
+| `artifact-review` | D.2 | yes |
+| `implementation-review` | D.3 | yes |
+| `manual-validation` | D.4 | yes |
+| `escalation` | **D.6, D.7, D.10, D.11** | **no — four rows share one gateType** |
+
+So the drift branch is **DISABLED for `gateType: 'escalation'`**. Without this, a D.7 `agent:error` event would list the issue's escalation gates, find the operator's live D.11 merge-conflict gate at a different `generation`, ack it `superseded`, and destroy it with no replacement — the ack touches no label, so D.11's dedup returns `already-dispatched` on re-fire and never re-opens. The mirror case destroys a D.7 gate. Round 2's "in D.11 ONLY" scoping did not fix this; it moved the hazard to D.7.
+
+The `generation` string MUST NOT be parsed to recover the subtype: it is an opaque `z.string().min(1)` on the wire with no format contract, and a mis-parse destroys a live operator gate.
+
+**Residual limitation (out of scope for this feature)**: escalation-subtype generation drift is therefore undetectable — a genuinely stale escalation gate is left non-terminal alongside the fresh one. The conservative behavior is to not supersede. A fix requires a subtype discriminator (or a finer `gateType`) on the query surface; tracked upstream as [generacy-ai/generacy#1046](https://github.com/generacy-ai/generacy/issues/1046).
+
+**Test assertions 457-8 / 457-9**: D.7's and D.11's Step 0 blocks state the disabled drift branch and contain NO `cockpit_gate_ack(staleGateId …)` call. **457-9a**: the shared-rules section names all four escalation rows and #1046. **457-9b**: D.6 and D.10 (escalation rows without a Step 0) carry the guard note.
 
 ## Generation-drift ack detail-string convention
 
@@ -61,7 +87,7 @@ Where `<old>` is the stale gate's `generation` (as returned by `cockpit_gate_lis
 
 D.11's dispatch has both the new step 0 (durable, cross-session) AND the existing step 1 (`Dedup check` — the in-memory `dispatched-issues` set at `auto.md:706`). Ordering:
 
-1. **Step 0** — pre-draft `cockpit_gate_status` check (NEW), with the **D.11 ordering exception** (per #458 review comment 3) that consults the in-memory `dispatched-issues` set BEFORE the drift-ack sub-branch fires.
+1. **Step 0** — pre-draft `cockpit_gate_status` check (NEW), with the **D.11 ordering exception** that consults the in-memory `dispatched-issues` set on the `absent` return. (The drift branch itself is disabled for this row by the § Generation-drift branch guard.)
 2. **Step 1** — `dispatched-issues` in-memory dedup (UNCHANGED).
 3. Step 1a through step 3 — UNCHANGED.
 
@@ -70,7 +96,7 @@ The two checks cover orthogonal properties per Q5=A / R6:
 - **Step 0 covers**: cross-session reuse (a gate opened by a prior session that survived the restart / cluster takeover).
 - **Step 1 covers**: (a) label-pair coalescing — `waiting-for:merge-conflicts` + `blocked:stuck-merge-conflicts` fire together but hash to two different `gateId`s under the escalation generation discriminator (`auto.md:1360`), so the durable check does NOT coalesce them; (b) session-mute-on-Skip semantics — the set is retained on skip (`auto.md:718`) per Invariant 3 (`auto.md:1636`), which no durable gate query can express since Skip never touches labels.
 
-**D.11 ordering exception (load-bearing)**: without it, event 2 (sibling label) would find event 1's live gate at a different `generation`, ack it `superseded`, then hit step 1's dedup and return `already-dispatched` — destroying the operator's live gate with no replacement (the exact hazard called out in #458 review comment 3). The step-0 drift branch MUST check the in-memory `dispatched-issues` set FIRST and skip the drift-ack when the sibling has already dispatched this incident. The `open` / `answered` reuse branches (matching gateId) are not affected by the exception — they were already dispatch-idempotent.
+**D.11 ordering exception (retained, now belt-and-braces)**: the gate-destroying hazard it was introduced for is closed at the § Generation-drift branch guard, which disables the drift branch for every `gateType: 'escalation'` row under any ordering. The exception still earns its place: because the sibling labels hash to two different `gateId`s, event 2 would otherwise see `absent` at its own gateId and open a SECOND gate for one incident. So step 0's `absent` branch consults the in-memory `dispatched-issues` set and returns `already-dispatched` when the sibling has already dispatched this incident — which also saves a pointless list query. The `open` / `answered` reuse branches (matching gateId) are not affected by the exception — they were already dispatch-idempotent.
 
 **Test assertion 457-10**: § Dispatch D.11 contains BOTH step 0 (the pre-draft check heading) AND step 1 (the `Dedup check.` heading), in that order, with no removal of step 1's prose.
 
