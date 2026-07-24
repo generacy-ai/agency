@@ -295,6 +295,18 @@ export interface GateRecord {
   issueRef: string;
   transitionClass: string;
   dispatchClass?: DispatchClass; // used for the V4 live-state supersession check (absent for synthetic G.6/G.7)
+  /**
+   * Non-terminal lifecycle state of the record (#457). `open` = awaiting an
+   * operator answer; `answered` = the cloud reports an answer that this
+   * session has not yet consumed via a D.12 `gate-answer` event.
+   *
+   * REQUIRED — the FR-009 answered-gate escape hatch filters `openGates` on
+   * `status === "answered"` at every sweep tick, so a record that omits the
+   * field is invisible to the hatch and its issue parks forever. Records
+   * created by a successful `cockpit_gate_open` set `"open"`; records created
+   * by a § Dispatch step 0 reuse branch copy the `cockpit_gate_status` return.
+   */
+  status: "open" | "answered";
   askedAt: string;
   inboxUrl: string;
   originalDraft: GateDraft;      // retained for revised-draft re-open comparisons
