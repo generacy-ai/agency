@@ -4422,7 +4422,7 @@ describe("459 pre-flight functional probe", () => {
     );
   });
 
-  it("459-14 § TENTATIVE window gate-presentation rule (added by PR #460 review round 2) pins the Form-3 remote-gate-consumed hard-fail path, the new `probe-failed-after-remote-gate-consumed` resolution reason, and the `gate-mode-resolution · aborted` ledger row shape", () => {
+  it("459-14 § TENTATIVE window gate-presentation rule (added by PR #460 review round 2, re-pinned by round 3) pins the Form-3 remote-gate-consumed hard-fail path, the new `probe-failed-after-remote-gate-consumed` resolution reason, and the augmented probe Fail row's outcome slot (fold-in shape — no separate `gate-mode-resolution` row)", () => {
     // Drift audit — the review flagged that the F1 fix (weakening the
     // invariant from "does not flip mid-run" to "does not flip mid-loop"
     // combined with the deferred probe) made this scenario reachable under
@@ -4431,11 +4431,18 @@ describe("459 pre-flight functional probe", () => {
     // TENTATIVE UI window opens; G.6 opens remotely per § UI-mode gate
     // mapping row 9; if the probe subsequently fails, downgrading to `local`
     // produces the ambiguous partial-UI / partial-local ledger the same
-    // paragraph claims to prevent. The fix (option c) makes that path a
-    // hard-fail. Any future edit that (a) weakens the hard-fail back to a
-    // downgrade, (b) drops the new resolution reason, or (c) reshapes the
-    // aborted ledger row breaks this pin — re-pin to the NEW contract; do
-    // NOT weaken.
+    // paragraph claims to prevent. Round-3 re-pin: the R2 aborted-row shape
+    // (`gate-mode-resolution · aborted · reason: …`) was flagged as
+    // unregistered vocabulary that violates § Ledger's four-column grammar
+    // AND its "at most one probe row per run" invariant. Option (b) from the
+    // reviewer folds the aborted-reason marker into the existing probe Fail
+    // row's outcome slot in-place, keeping the registered `gate-query-probe`
+    // action + `ui-gate-probe` source vocabulary AND the single-row
+    // invariant. Any future edit that (a) weakens the hard-fail back to a
+    // downgrade, (b) drops the new resolution reason, (c) reintroduces a
+    // second row for the aborted resolution, or (d) uses unregistered
+    // vocabulary breaks this pin — re-pin to the NEW contract; do NOT
+    // weaken.
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const step1 = extractInstructionsSteps(autoMd).get(1)!;
     // The subsection heading is present in step 1 (the rule lives in the
@@ -4453,12 +4460,33 @@ describe("459 pre-flight functional probe", () => {
     expect(step1Normalized).toMatch(
       /do \*?\*?NOT\*?\*? downgrade|does NOT downgrade/,
     );
-    // The `gate-mode-resolution · aborted` ledger row shape is pinned
-    // verbatim — this is the observable audit record of the aborted
-    // partial-UI run and the sole surface the resolution reason string
-    // appears on (since `Auto run starting` is NOT emitted on this path).
+    // The augmented probe Fail row shape is pinned verbatim — this is the
+    // sole observable audit record of the aborted partial-UI run (since
+    // `Auto run starting` is NOT emitted on this path) and the sole surface
+    // the resolution reason string appears on. Fold-in preserves the "at
+    // most one probe row per run" invariant AND reuses the registered
+    // `gate-query-probe` action + `ui-gate-probe` source vocabulary.
     expect(autoMd).toContain(
-      "<identity-ref> · preflight · gate-mode-resolution · aborted · reason: probe-failed-after-remote-gate-consumed · source: ui-gate-probe",
+      "<identity-ref> · preflight · gate-query-probe · error: <class> — <detail> (aborted: probe-failed-after-remote-gate-consumed) · source: ui-gate-probe",
+    );
+    // Belt-and-suspenders: the RETIRED R2 row shape (with the unregistered
+    // `gate-mode-resolution` action + a `reason:` field the four-column
+    // grammar does not carry) MUST NOT reappear as a ledger row shape.
+    // A future edit that reintroduces the aborted row — either verbatim or
+    // as a differently spelled second row for the same resolution — would
+    // restore the § Ledger conformance failure this fix removed. (The
+    // prose may still MENTION `gate-mode-resolution` explanatorily — the
+    // check is on the row shape, not the token.)
+    expect(autoMd).not.toContain("gate-mode-resolution · aborted");
+    expect(autoMd).not.toMatch(
+      /· preflight · gate-mode-resolution ·/,
+    );
+    // The "at most one probe row per run" invariant MUST be preserved
+    // (a second row for the aborted resolution would break it). The
+    // § Ledger `Pre-flight probe row shapes` block now explicitly
+    // acknowledges the fold-in as preserving this invariant.
+    expect(autoMd).toContain(
+      "At most one probe row is written per run",
     );
     // The `Auto run starting …` line documentation MUST enumerate the new
     // hard-fail alongside the two existing hard-fail exceptions (absence,
@@ -4473,6 +4501,38 @@ describe("459 pre-flight functional probe", () => {
     // plain `probe-failed` never widening to include this reason).
     expect(step1Normalized).toMatch(
       /Form-3 hard-fail reason `probe-failed-after-remote-gate-consumed` .* does NOT appear in this line/,
+    );
+  });
+
+  it("459-15 line 28 `--gates=ui` AND `--gates=auto` summary clauses BOTH name all three UI-mode tools, matching the normative blocks at items 1 (three-tool `--gates=auto` check) and the widened `--gates=ui` pre-flight absence hard-fail (PR #460 review round 3)", () => {
+    // Drift audit — the review flagged that the R2 fix widened both the
+    // `--gates=auto` item 1 (three-tool bind check) and the `--gates=ui`
+    // pre-flight absence hard-fail to require all three UI-mode tools
+    // (`cockpit_gate_open`, `cockpit_gate_status`, `cockpit_gate_list`),
+    // but the R2 fix only rewrote the `--gates=auto` clause of the line-28
+    // summary — the `--gates=ui` clause on the same line still named just
+    // `cockpit_gate_open`. The summary drifted from its own normative
+    // block. Round-3 re-pin: both clauses on that line MUST now name all
+    // three tools so an executor reading the summary first cannot miss
+    // the widened check and skip the hard-fail on a partial-deployment
+    // cluster mid-upgrade to generacy#1038.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    // The `--gates=ui` summary clause MUST name all three UI-mode tools
+    // (not just `cockpit_gate_open`). The exact wording is
+    // whitespace-tolerant to survive markdown reflow, but the three tool
+    // names MUST appear together in the `--gates=ui forces UI mode`
+    // summary sentence's `hard-fails at pre-flight if …` clause.
+    expect(step1Normalized).toMatch(
+      /`--gates=ui` forces UI mode.*hard-fails at pre-flight if any of `cockpit_gate_open` \/ `cockpit_gate_status` \/ `cockpit_gate_list` is absent/,
+    );
+    // The `--gates=auto` summary clause MUST also name all three UI-mode
+    // tools (the R2 fix only widened this one to say `cockpit_gate_open`
+    // bound; the R3 fix widens it to ALL three bound so it matches item 1
+    // of the three-part check verbatim).
+    expect(step1Normalized).toMatch(
+      /`--gates=auto` resolves per the three-part check below \(`cockpit_gate_open` AND `cockpit_gate_status` AND `cockpit_gate_list` ALL bound AND cluster cloud-activated AND pre-flight functional probe pass/,
     );
   });
 });
