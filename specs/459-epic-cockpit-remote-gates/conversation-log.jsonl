@@ -6,3 +6,5 @@
 {"timestamp":"2026-07-25T18:25:16.532Z","phase":"clarify","session_id":"","event_type":"answers_integrated","batch":1,"answered":5,"pending":0}
 {"timestamp":"2026-07-25T18:25:16.532Z","phase":"clarify","session_id":"","event_type":"phase_complete"}
 {"timestamp":"2026-07-25T18:29:38.057Z","phase":"clarify","session_id":"","event_type":"phase_complete"}
+{"timestamp":"2026-07-25T18:29:52.048Z","phase":"plan","session_id":"","event_type":"phase_start"}
+{"timestamp":"2026-07-25T18:45:24.106Z","phase":"plan","session_id":"","event_type":"phase_complete"}
