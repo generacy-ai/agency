@@ -2879,14 +2879,17 @@ describe("449 UI-mode gates", () => {
     expect(step1).toContain("gates-duplicate");
   });
 
-  it("449-4 step 1 verbatim `--gates=ui` pre-flight absence hard-fail error string (Q3=A)", () => {
+  it("449-4 step 1 verbatim `--gates=ui` pre-flight absence hard-fail error string (Q3=A; extended by #459 to cover the two gate-query tools)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const step1 = extractInstructionsSteps(autoMd).get(1)!;
-    // Verbatim error per contracts/gates-flag-parse.md § Pre-flight absence.
+    // Re-pinned per PR #460 review: the absence check now covers all three
+    // UI-mode tools (cockpit_gate_open + cockpit_gate_status + cockpit_gate_list)
+    // so a partial-deployment cluster with only cockpit_gate_open bound cannot
+    // slip through and hit an unbound cockpit_gate_list at the pre-flight probe.
     // Exact spacing, exact wording — this is the load-bearing operator-facing
     // string; drift here changes the operator-visible failure mode.
     expect(step1).toContain(
-      "--gates=ui specified but cockpit_gate_open is not available in this session; re-invoke with --gates=local or --gates=auto",
+      "--gates=ui specified but one or more of cockpit_gate_open / cockpit_gate_status / cockpit_gate_list is not available in this session; re-invoke with --gates=local or --gates=auto",
     );
   });
 
@@ -4170,13 +4173,16 @@ describe("459 pre-flight functional probe", () => {
     expect(step1).not.toContain("two-part check, decided ONCE");
   });
 
-  it("459-2 § step 1 explicit `--gates=ui` block declares the probe as a post-tool-presence, post-identity-ref pre-flight step that hard-fails on any error", () => {
+  it("459-2 § step 1 explicit `--gates=ui` block declares the probe as a post-tool-presence, post-identity-ref, post-header-write pre-flight step that hard-fails on any error", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const step1 = extractInstructionsSteps(autoMd).get(1)!;
-    // The --gates=ui probe block MUST reference the post-tool-binding,
-    // post-identity-ref ordering AND the hard-fail (exit non-zero) contract.
+    // Re-pinned per PR #460 review: the probe block was extended from
+    // (post-tool-binding, post-identity-ref) to (…, post-header-write) so the
+    // probe's pass/fail ledger row can be safely appended after the header
+    // exists as the first line of the ledger file (per auto.md line 199 and
+    // § Ledger `Narrow amendment`).
     expect(step1).toContain(
-      "`--gates=ui` pre-flight functional probe (post-tool-binding, post-identity-ref)",
+      "`--gates=ui` pre-flight functional probe (post-tool-binding, post-identity-ref, post-header-write)",
     );
     const step1Normalized = step1.replace(/\s+/g, " ");
     expect(step1Normalized).toContain(
@@ -4199,16 +4205,19 @@ describe("459 pre-flight functional probe", () => {
     expect(step1).toContain("probe-failed");
   });
 
-  it("459-4 § step 1 states the Form 4 sequencing rule — probe fires AFTER F4.6/F4.4 has bound `trackingRef`, NOT alongside items 1–2", () => {
+  it("459-4 § step 1 states the Form 4 sequencing rule — probe fires AFTER F4.6/F4.4 has bound `trackingRef` (extended by PR #460 review with a post-F4.7 header-write requirement), NOT alongside items 1–2", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const step1 = extractInstructionsSteps(autoMd).get(1)!;
     // The Form 4 sequencing header AND the post-F4.6/F4.4 ordering are both
     // load-bearing — the identity ref is a required probe input, and before
     // F4.6/F4.4 completes there is no valid target under Form 4.
+    // Re-pinned per PR #460 review: the rule now ALSO requires F4.7's ledger
+    // header write to complete before the probe fires, so the probe's pass/fail
+    // ledger row can be safely appended.
     expect(step1).toContain("Form 4 sequencing rule");
     const step1Normalized = step1.replace(/\s+/g, " ");
     expect(step1Normalized).toMatch(
-      /probe fires AFTER F4\.6\/F4\.4 has bound `trackingRef`, NOT alongside items 1[–-]2/,
+      /probe fires AFTER F4\.6\/F4\.4 has bound `trackingRef` AND AFTER F4\.7 has written the ledger header, NOT alongside items 1[–-]2/,
     );
   });
 
@@ -4293,11 +4302,15 @@ describe("459 pre-flight functional probe", () => {
     expect(ledgerBlock).toContain(
       "Narrow amendment — pre-flight probe rows DO earn a ledger row",
     );
-    // The § step-1 hard-fail path (missing cockpit_gate_open; usage errors;
-    // F4.6 gh issue create failure) MUST remain ledger-free.
+    // The § step-1 hard-fail paths (missing any of the three UI-mode tools;
+    // usage errors; F4.6 gh issue create failure) MUST remain ledger-free.
+    // Re-pinned per PR #460 review: the amendment now names the path(s) in the
+    // plural (extended per Comment 2 to cover all three UI-mode tools), and
+    // adds a companion carve-out for the probe's own --gates=ui fail path,
+    // which is DIFFERENT because it fires post-header and does write a row.
     const ledgerNormalized = ledgerBlock.replace(/\s+/g, " ");
     expect(ledgerNormalized).toMatch(
-      /step-1 hard-fail path.*remains ledger-free/,
+      /step-1 hard-fail path[s]?.*remain[s]? ledger-free/,
     );
   });
 

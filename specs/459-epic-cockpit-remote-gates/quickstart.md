@@ -28,19 +28,20 @@ No new flags. The behavior change is entirely internal to how `/cockpit:auto` de
 **Expected observable behavior**:
 
 1. Pre-flight starts. § step 1 parses `--gates=ui`.
-2. The existing `cockpit_gate_open`-bound check passes (the tool IS bound).
+2. The three-tool absence check passes (`cockpit_gate_open`, `cockpit_gate_status`, `cockpit_gate_list` all bound).
 3. F4.6/F4.4 binds the identity ref (Form 4 only; other forms bind it earlier).
-4. The probe fires: exactly one `cockpit_gate_list({issueRef: <identity-ref>})` MCP call.
-5. The call returns `{status: 'error', class: 'internal', detail: 'cluster query endpoint returned 404'}` (or the analogous class for the specific failure mode).
-6. The plugin writes one ledger row:
+4. The ledger directory is created and the ledger header line is written as the first line of the ledger file (Forms 1/2: at the line-199 header write; Form 3: after G.6 approval; Form 4: at F4.7). This is the load-bearing precondition for the probe row to be safely appendable.
+5. The probe fires: exactly one `cockpit_gate_list({issueRef: <identity-ref>})` MCP call.
+6. The call returns `{status: 'error', class: 'internal', detail: 'cluster query endpoint returned 404'}` (or the analogous class for the specific failure mode).
+7. The plugin writes one ledger row (appended after the header):
    ```
    <identity-ref> · preflight · gate-query-probe · error: internal — cluster query endpoint returned 404 · source: ui-gate-probe
    ```
-7. The plugin prints the operator-facing line VERBATIM (the FR-013 frozen template):
+8. The plugin prints the operator-facing line VERBATIM (the FR-013 frozen template):
    ```
    gate-query surface unavailable (class: internal): cluster query endpoint returned 404 — re-run with --gates=local, or fix the cluster/cloud gate-query deployment
    ```
-8. The plugin exits non-zero. **No `Auto run starting` line is printed** (the run never starts). **No loop is entered.** **No events are dispatched.** **The run does NOT silently degrade to `local`.**
+9. The plugin exits non-zero. **No `Auto run starting` line is printed** (the run never starts). **No loop is entered.** **No events are dispatched.** **The run does NOT silently degrade to `local`.** The ledger directory + header + fail row remain on disk as the audit record of the aborted run.
 
 **What was broken before this fix**: pre-flight passed happily (the two tools were bound, so the tool-presence check succeeded). The startup sweep entered the main loop, drained events, and every event's Step 0 pre-draft-check tried to call `cockpit_gate_status(...)` — every call hit the same 404 → `internal` → `<issue-ref> · <transition-class> · pre-draft-check · error: internal — … · source: ui-gate` row. The loop woke, aborted, woke again, aborted again, indefinitely. Doorbell armed, events draining, ledger growing — zero progress. Diagnosing the underlying 404 required a container-log dive and a hand-rolled curl against the cloud API (cluster `snappoll-local-2`, 2026-07-25).
 
@@ -57,16 +58,16 @@ No new flags. The behavior change is entirely internal to how `/cockpit:auto` de
 **Expected observable behavior**:
 
 1. Pre-flight starts. § step 1 parses `--gates=auto`.
-2. Item 1 of the three-part check: `cockpit_gate_open` bound? YES.
-3. Item 2 of the three-part check: cluster cloud-activated? YES.
-4. F4.6/F4.4 binds the identity ref (Form 4 only; other forms bind it earlier).
-5. Item 3 of the three-part check (probe): `cockpit_gate_list({issueRef: <identity-ref>})` returns `{status: 'error', class: 'internal', detail: '…'}`.
-6. The plugin writes one ledger row:
+2. Item 1 of the three-part check (parse-time): `cockpit_gate_open`, `cockpit_gate_status`, `cockpit_gate_list` all bound? YES.
+3. Item 2 of the three-part check (parse-time): cluster cloud-activated? YES. Tentative resolution: `ui pending probe`.
+4. F4.6/F4.4 binds the identity ref (Form 4 only; other forms bind it earlier). The ledger directory is created and the ledger header is written as the first line of the ledger file (Forms 1/2 at line-199 header write; Form 3 after G.6 approval; Form 4 at F4.7).
+5. Item 3 of the three-part check (probe, deferred until post-header-write): `cockpit_gate_list({issueRef: <identity-ref>})` returns `{status: 'error', class: 'internal', detail: '…'}`.
+6. The plugin writes one ledger row (appended after the header):
    ```
    <identity-ref> · preflight · gate-query-probe · error: internal — … · source: ui-gate-probe
    ```
 7. The plugin prints the FR-013 template line (same wording as Scenario 1).
-8. The plugin prints:
+8. The plugin appends the `Auto run starting` line to the ledger and prints:
    ```
    Auto run starting · gates: local (source: --gates=auto → probe-failed)
    ```

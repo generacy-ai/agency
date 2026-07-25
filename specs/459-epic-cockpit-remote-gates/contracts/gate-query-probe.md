@@ -4,12 +4,12 @@ Load-bearing prose for the new pre-flight probe step in `packages/claude-plugin-
 
 ## Scope
 
-Applies at pre-flight, from exactly ONE call site in `auto.md` § step 1 (after F4.6/F4.4 has bound the identity ref; after the existing conditions have been evaluated; before § step 3's tool-presence check dispatches anything).
+Applies at pre-flight, from exactly ONE call site in `auto.md` § step 1 — deferred until AFTER the ledger header line has been written (Forms 1/2: at the line-199 header write in main step 1; Form 3: after G.6 approval writes the header; Form 4: at F4.7). The post-header ordering is load-bearing because the probe writes a ledger row on both pass and fail; a ledger row before the header would violate the header-first invariant (auto.md line 199). The probe fires after the existing pre-flight conditions have been evaluated and before § step 3's escape-hatch tick and synthetic-event dispatch.
 
 The probe is issued under **exactly two conditions**:
 
-1. **Explicit `--gates=ui`** — after the existing `cockpit_gate_open`-bound check passes. Failure → hard-fail (exit non-zero) via the § step-1 fail path.
-2. **`--gates=auto` third condition** — only after items 1 (`cockpit_gate_open` bound) AND 2 (cluster cloud-activated) BOTH pass. Failure → resolve to `local` (with the fail ledger row written).
+1. **Explicit `--gates=ui`** — after the three-tool absence check passes (`cockpit_gate_open`, `cockpit_gate_status`, AND `cockpit_gate_list` all bound). Failure → hard-fail (exit non-zero) via the § step-1 fail path.
+2. **`--gates=auto` third condition** — only after items 1 (all three UI-mode tools bound: `cockpit_gate_open`, `cockpit_gate_status`, `cockpit_gate_list`) AND 2 (cluster cloud-activated) BOTH pass. Failure → resolve to `local` (with the fail ledger row written).
 
 The probe is **NEVER** issued under `--gates=local` (explicit) OR under `--gates=auto` short-circuited to `local` by an earlier condition (per FR-005 short-circuit + Q3 answer).
 
@@ -110,9 +110,9 @@ On `{status: 'error', class: <one of four>, detail: <string>, hint?: <string>}`:
 
 - **Probe pass row** (`preflight · gate-query-probe · ok · source: ui-gate-probe`) — earns a ledger row.
 - **Probe fail row** (`preflight · gate-query-probe · error: <class> — <detail> · source: ui-gate-probe`) — earns a ledger row.
-- **§ step-1 hard-fail path** (missing `cockpit_gate_open` under explicit `ui`; usage errors; F4.6 `gh issue create` non-zero exit) — remains ledger-free. These failures happen BEFORE any ledger directory is created; a ledger row there would require creating the directory earlier.
+- **§ step-1 hard-fail path** (missing any of `cockpit_gate_open` / `cockpit_gate_status` / `cockpit_gate_list` under explicit `ui`; usage errors; F4.6 `gh issue create` non-zero exit) — remains ledger-free. These failures happen BEFORE any ledger directory is created; a ledger row there would require creating the directory earlier.
 
-The amendment is narrow: only rows carrying the `preflight` transition class are subject to it. It is safe because the probe fires AFTER F4.7 (Form 4) / top of step 3 (Forms 1/2/3), by which point the ledger header exists.
+The amendment is narrow: only rows carrying the `preflight` transition class are subject to it. It is safe by construction: the probe is DEFERRED until AFTER the ledger header write for the run's form (Forms 1/2: at line-199 header write; Form 3: at post-G.6 header write; Form 4: at F4.7), so the header exists as the first line of the ledger file BEFORE any probe row is appended.
 
 **Test assertion 459-8**: `auto.md` § Ledger declares the narrow amendment: `preflight · gate-query-probe · ok|error` earns a ledger row despite the general "pre-flight failures do not earn a row" clause; the § step-1 hard-fail path remains ledger-free.
 
@@ -151,9 +151,9 @@ The probe extends the existing pre-flight structure at exactly two points; nothi
 
 Today: parse → check `cockpit_gate_open` bound → hard-fail if absent, otherwise proceed.
 
-After this feature: parse → check `cockpit_gate_open` bound → hard-fail if absent → (wait for F4.6/F4.4 to bind identity ref if under Form 4) → issue probe → hard-fail on error, otherwise proceed.
+After this feature: parse → check all three UI-mode tools bound (`cockpit_gate_open`, `cockpit_gate_status`, `cockpit_gate_list`) → hard-fail if any absent (ledger-free, no ledger directory created) → (wait for F4.6/F4.4 to bind identity ref if under Form 4) → wait for the ledger header to be written for the run's form (line-199 for Forms 1/2; post-G.6 for Form 3; F4.7 for Form 4) → issue probe → on error write fail ledger row (safe because header exists) + hard-fail (exit non-zero, no fallback), on pass write pass ledger row + proceed.
 
-The additional step is entirely additive; the existing hard-fail behavior on missing `cockpit_gate_open` is unchanged and still ledger-free.
+The tool-binding check extended from one tool to three because a partial deployment cluster (pre-#1038 query tools, post-#1038 `cockpit_gate_open`) would otherwise pass the one-tool check and then invoke an unbound `cockpit_gate_list` at the probe. The additional probe step is otherwise additive; the existing hard-fail behavior on missing tools is unchanged and still ledger-free.
 
 ### § step 1 `--gates=auto` two-part check → three-part check
 
@@ -165,17 +165,17 @@ Today (verbatim from `auto.md:56–60`):
 2. **Cluster cloud-activation**: (…)
 ```
 
-After this feature: this becomes a three-part check with the short-circuit rule stated verbatim:
+After this feature: this becomes a three-part check with the two-phase split and short-circuit rule stated verbatim:
 ```
-**`--gates=auto` resolution (three-part check, decided ONCE)**. When the parsed value is `auto`, resolve to `ResolvedGateMode` via a three-part check performed at this point in pre-flight (with a load-bearing short-circuit — item 3 is issued ONLY when items 1 AND 2 both pass):
+**`--gates=auto` resolution (three-part check, decided ONCE)**. When the parsed value is `auto`, resolve to `ResolvedGateMode` via a three-part check — items 1 and 2 evaluated at parse-time pre-flight, item 3 (the probe) deferred until AFTER the ledger header is written; short-circuit rule applies (item 3 is issued ONLY when items 1 AND 2 both pass):
 
-1. **Tool binding**: … (unchanged)
+1. **Tool binding**: Are `cockpit_gate_open`, `cockpit_gate_status`, AND `cockpit_gate_list` ALL bound in the session? (extended from one tool to three so a partial deployment where only `cockpit_gate_open` is bound resolves cleanly to `local` under `auto` and hard-fails under explicit `ui`, rather than invoking an unbound `cockpit_gate_list` at the probe.)
 2. **Cluster cloud-activation**: … (unchanged)
-3. **Gate-query surface functional probe**: Issue one read-only `cockpit_gate_list({ issueRef: <identity-ref> })` call — an empty `{gates: []}` return is a perfectly good pass. Pass → resolve to `ui`; fail (any `{status: 'error'}`, any class) → resolve to `local` via the pre-flight probe fail path (write the fail ledger row, print the FR-013 template line, print `Auto run starting · gates: local (source: --gates=auto → probe-failed)`, proceed to § step 3).
+3. **Gate-query surface functional probe** (fires post-header-write): Issue one read-only `cockpit_gate_list({ issueRef: <identity-ref> })` call — an empty `{gates: []}` return is a perfectly good pass. Pass → resolve to `ui`, write pass ledger row; fail (any `{status: 'error'}`, any class) → resolve to `local` via the pre-flight probe fail path (write the fail ledger row, print the FR-013 template line, print `Auto run starting · gates: local (source: --gates=auto → probe-failed)`, proceed to § step 3).
 
-**Short-circuit rule**: when item 1 fails (`cockpit_gate_open` unbound) OR item 2 fails (cluster not cloud-activated), resolve to `local` with NO probe call and NO probe ledger row. Always-probing would break the byte-identity pin `auto`→`local` = explicit `--gates=local`, and would call `cockpit_gate_list` at a point where § step 3's conditional presence check does not require it to be bound.
+**Short-circuit rule**: when item 1 fails (any UI-mode tool unbound) OR item 2 fails (cluster not cloud-activated), resolve to `local` with NO probe call and NO probe ledger row. Always-probing would break the byte-identity pin `auto`→`local` = explicit `--gates=local`, and would call `cockpit_gate_list` at a point where § step 3's conditional presence check does not require it to be bound.
 
-**Form 4 sequencing**: item 3 requires `trackingRef` to be bound. Under Form 4 that binding happens at F4.4 (reuse) or F4.6 (fresh-creation), both inside step 1. Sequencing: items 1–2 (which do not need `trackingRef`) evaluate first; F4.4/F4.6 run per their own contracts; THEN item 3 fires only when items 1–2 both passed.
+**Form 4 sequencing**: item 3 requires (a) `trackingRef` to be bound (by F4.4 reuse or F4.6 fresh-creation), and (b) the ledger header to have been written (by F4.7). Both are late-step-1 states under Form 4. Sequencing: items 1–2 (which do not need `trackingRef` or the header) evaluate first at parse time; F4.4/F4.6 run per their own contracts; F4.7 writes the header; THEN item 3 fires only when items 1–2 both passed.
 ```
 
 **Test assertion 459-3**: The `Auto run starting · gates: local (source: --gates=auto → <reason>)` line's `<resolution reason>` suffix enumerates `probe-failed` as a possible value under `--gates=auto`.
