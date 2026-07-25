@@ -2882,6 +2882,12 @@ describe("449 UI-mode gates", () => {
   it("449-4 step 1 verbatim `--gates=ui` pre-flight absence hard-fail error string (Q3=A; extended by #459 to cover the two gate-query tools)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Verbatim error per contracts/gates-flag-parse.md § Pre-flight absence —
+    // that file is the SOURCE OF TRUTH for this string. Any change must move
+    // three artifacts together: the contract, auto.md § step 1, and this pin.
+    // (Round-3 note: the contract silently kept the old narrow string for three
+    // review rounds precisely because this pointer had been removed. Keep it.)
+    //
     // Re-pinned per PR #460 review: the absence check now covers all three
     // UI-mode tools (cockpit_gate_open + cockpit_gate_status + cockpit_gate_list)
     // so a partial-deployment cluster with only cockpit_gate_open bound cannot

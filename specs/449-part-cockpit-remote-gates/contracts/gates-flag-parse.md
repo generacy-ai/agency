@@ -34,14 +34,19 @@ Existing "unknown `--*` flag" row (auto.md line 38) is unchanged; `--gates` is n
 
 ## `--gates=auto` resolution (pre-flight)
 
-Decided ONCE at pre-flight, after arg parse, before the seven-cockpit-tools presence check at auto.md line 136. Does not flip mid-run.
+> **Extended by #459** from a two-part to a THREE-part check. auto.md § step-1 `--gates` resolution and pre-flight absence is the normative text; this contract mirrors it. Both must move together.
 
-Two-part check:
+Decided ONCE per run — items 1 and 2 at parse-time pre-flight (after arg parse, before the seven-cockpit-tools presence check at auto.md line 136), item 3 after the ledger header write. Does not flip mid-loop.
 
-1. **Tool binding**: Is `cockpit_gate_open` present in the session's MCP tool binding?
+Three-part check:
+
+1. **Tool binding**: Are `cockpit_gate_open`, `cockpit_gate_status`, AND `cockpit_gate_list` **all** present in the session's MCP tool binding? All three — not `cockpit_gate_open` alone — because a cluster mid-upgrade to generacy#1038 can have `cockpit_gate_open` bound while the query tools are not, and requiring only the former lets item 3 invoke an unbound `cockpit_gate_list`.
 2. **Cluster cloud-activation**: Is the cluster cloud-activated? Query surface pinned by the epic (see `cockpit-remote-gates-plan.md § Skill-side presence check` — implementation is expected to piggyback on either the doorbell handshake or a startup field returned by `cockpit_context`).
+3. **Pre-flight functional probe**: Does the gate-query surface actually WORK? Exactly one read-only `cockpit_gate_list({ issueRef: <identity-ref>, gateType: <omitted> })` call; any `status: 'error'` return is a failure. **DEFERRED** until after the ledger header line is written, because the probe writes a ledger row on both pass and fail. **Short-circuit rule (load-bearing)**: issue item 3 ONLY when items 1 AND 2 both pass; otherwise resolve to `local` with NO probe call and NO probe ledger row — `--gates=auto` → `local` is pinned byte-identical to explicit `--gates=local`, which never calls `cockpit_gate_list`.
 
-If both YES → `resolvedGateMode = "ui"`. If either NO → `resolvedGateMode = "local"` (byte-identical to explicit `--gates=local`).
+If items 1 AND 2 AND 3 all pass → `resolvedGateMode = "ui"`. If either of items 1–2 is NO → `resolvedGateMode = "local"` (byte-identical to explicit `--gates=local`; no probe issued). If item 3 alone fails → `resolvedGateMode = "local"` with resolution reason `probe-failed` — **except** when a remote UI gate was already consumed in the TENTATIVE window (currently only reachable via Form 3's G.6), in which case the run hard-fails with reason `probe-failed-after-remote-gate-consumed` rather than downgrading, because a `gates: local` ledger carrying a `· source: ui-gate` resolution row above it is exactly the ambiguous partial-UI / partial-local record the decide-once discipline exists to prevent.
+
+**TENTATIVE window**: between the parse-time decision (items 1–2) and the post-header probe (item 3), the resolution is TENTATIVE — `ui pending probe` when items 1–2 both YES, `local` otherwise. Any gate firing in that window presents under the TENTATIVE mode. Under current sequencing only Form 3's G.6 filing gate can fire there. See auto.md § TENTATIVE window gate-presentation rule.
 
 Ledger startup line records the resolution:
 ```
@@ -51,14 +56,16 @@ Auto run starting · gates: <resolvedGateMode> (source: --gates=<flag-value>)
 
 ## `--gates=ui` pre-flight absence (Q3=A)
 
-When `--gates=ui` is explicit AND `cockpit_gate_open` is absent from the session's MCP tool binding at pre-flight:
+When `--gates=ui` is explicit AND **any** of `cockpit_gate_open`, `cockpit_gate_status`, or `cockpit_gate_list` is absent from the session's MCP tool binding at pre-flight:
 
 **Response class**: `Print + exit`. No ledger directory created.
 
-**Verbatim error string**:
+**Verbatim error string** — this file is the source of truth for the string; test `449-4` in `packages/claude-plugin-cockpit/tests/playbook-verification.test.ts` pins it and auto.md reproduces it. All three must move together:
 ```
---gates=ui specified but cockpit_gate_open is not available in this session; re-invoke with --gates=local or --gates=auto
+--gates=ui specified but one or more of cockpit_gate_open / cockpit_gate_status / cockpit_gate_list is not available in this session; re-invoke with --gates=local or --gates=auto
 ```
+
+> **Widened by #459** from `cockpit_gate_open` alone to all three UI-mode tools. Requiring all three here is what prevents the deferred pre-flight probe from later invoking an unbound `cockpit_gate_list` on a partial-deployment cluster.
 
 **Exit code**: non-zero.
 
