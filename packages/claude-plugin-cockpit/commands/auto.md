@@ -53,12 +53,13 @@ $ARGUMENTS
 
    After arg parse succeeds (Forms 1–4 recognized + `--gates=<value>` validated per V1 above) and BEFORE any of ledger directory creation, ledger header write, the Form 4 workspace-repo inference (F4.1 below), or the `cockpit_*` tool-presence check (step 3 startup sweep — seven baseline tools always, plus `cockpit_gate_status` / `cockpit_gate_list` only under `ResolvedGateMode === "ui"`) — resolve the run's gate mode and check for pre-flight absence. Contract: `contracts/gates-flag-parse.md`. Reference: `cockpit-remote-gates-plan.md § Skill-side presence check`.
 
-   **`--gates=auto` resolution (two-part check, decided ONCE)**. When the parsed value is `auto`, resolve to `ResolvedGateMode` via a two-part check performed at this point in pre-flight:
+   **`--gates=auto` resolution (three-part check, decided ONCE)**. When the parsed value is `auto`, resolve to `ResolvedGateMode` via a three-part check performed at this point in pre-flight:
 
    1. **Tool binding**: Is `cockpit_gate_open` present in the session's MCP tool binding? (same shape as the `cockpit_*` tool-presence check at step 3 below — and, like that check's two gate-query tools, `cockpit_gate_open` is a UI-mode-only requirement.)
    2. **Cluster cloud-activation**: Is the cluster cloud-activated? Query surface pinned by the epic — implementation piggybacks on either the doorbell handshake or a startup field returned by `cockpit_context` (per `cockpit-remote-gates-plan.md § Skill-side presence check`).
+   3. **Pre-flight functional probe**: Does the gate-query surface actually WORK? Issue exactly one read-only `cockpit_gate_list({ issueRef: <identity-ref>, gateType: <omitted> })` call and treat any `status: 'error'` return as failure. See § Pre-flight probe (UI mode) below for the probe call shape, pass/fail ledger rows, and the operator-facing failure line. **Short-circuit rule (load-bearing)**: issue item 3 ONLY when items 1 AND 2 both pass; otherwise resolve to `local` with NO probe call and NO probe ledger row. Rationale: `--gates=auto` → `local` is pinned as byte-identical to explicit `--gates=local`, and `--gates=local` never calls `cockpit_gate_list`; issuing the probe under the short-circuit paths would make the byte-paths differ observably AND would call a tool the § step-3 conditional tool-presence check does not require to be bound under `local`.
 
-   If BOTH are YES → `ResolvedGateMode = ui`. If EITHER is NO → `ResolvedGateMode = local` (byte-identical to explicit `--gates=local`). The resolution is decided ONCE at pre-flight — it does not flip mid-run — because both inputs are static session properties; a mid-run flip would produce an ambiguous partial-UI / partial-local ledger. When `--gates=ui` is explicit, this two-part check is skipped and `ResolvedGateMode = ui` unconditionally (the absence check below covers tool-binding failure).
+   If items 1 AND 2 AND 3 all pass → `ResolvedGateMode = ui`. If item 3 alone fails (items 1–2 both passed) → `ResolvedGateMode = local` with the `probe-failed` resolution reason (the probe's fail ledger row is written). If EITHER of items 1–2 is NO → `ResolvedGateMode = local` (byte-identical to explicit `--gates=local`; no probe issued, no probe ledger row). The resolution is decided ONCE at pre-flight — it does not flip mid-run — because both static inputs are session properties and the probe is issued at most once per run (per FR-010); a mid-run flip would produce an ambiguous partial-UI / partial-local ledger. When `--gates=ui` is explicit, this three-part check is skipped and `ResolvedGateMode = ui` unconditionally (the absence check below covers tool-binding failure; the § Pre-flight probe (UI mode) below fires as an additional assertion under explicit `ui` on the same call site and hard-fails the run on any probe error).
 
    **`--gates=ui` pre-flight absence (Q3=A — hard-fail, Print + exit)**. When the parsed value is `ui` (explicit) AND `cockpit_gate_open` is absent from the session's MCP tool binding at this pre-flight point, print the verbatim error string and exit non-zero — matching the step-3 `cockpit_*` tool-presence check's `Print + exit` precedent (below):
 
@@ -66,7 +67,49 @@ $ARGUMENTS
    --gates=ui specified but cockpit_gate_open is not available in this session; re-invoke with --gates=local or --gates=auto
    ```
 
-   Exit non-zero. Do **NOT** create the ledger directory (`mkdir -p .generacy/cockpit/auto-runs`). Do **NOT** write the ledger header line (`Tracking ref: <ref> · form: <form>`). Do **NOT** emit the `Auto run starting …` line. The operator sees only the error string. Rationale: `--gates=ui` is an explicit operator override the environment cannot satisfy; a silent whole-run downgrade would reintroduce exactly the session-blocking behavior that `--gates=ui` was chosen to escape, and a prompt whose every option means "abort" is not a decision. Under `--gates=auto` the same tool-binding absence resolves silently to `local` (per the two-part check above); the hard-fail is specific to explicit `ui`. Distinct from US4 fallback: absence at pre-flight is a static session property (hard-fail); `cockpit_gate_open` **error at call time** is transient and covered by the per-gate `UI-mode fallback` block below (see § UI-mode fallback on `cockpit_gate_open` call error).
+   Exit non-zero. Do **NOT** create the ledger directory (`mkdir -p .generacy/cockpit/auto-runs`). Do **NOT** write the ledger header line (`Tracking ref: <ref> · form: <form>`). Do **NOT** emit the `Auto run starting …` line. The operator sees only the error string. Rationale: `--gates=ui` is an explicit operator override the environment cannot satisfy; a silent whole-run downgrade would reintroduce exactly the session-blocking behavior that `--gates=ui` was chosen to escape, and a prompt whose every option means "abort" is not a decision. Under `--gates=auto` the same tool-binding absence resolves silently to `local` (per the three-part check above); the hard-fail is specific to explicit `ui`. Distinct from US4 fallback: absence at pre-flight is a static session property (hard-fail); `cockpit_gate_open` **error at call time** is transient and covered by the per-gate `UI-mode fallback` block below (see § UI-mode fallback on `cockpit_gate_open` call error).
+
+   **`--gates=ui` pre-flight functional probe (post-tool-binding, post-identity-ref)**. When the parsed value is `ui` (explicit) AND the `cockpit_gate_open`-bound check above passed AND the identity ref is bound (Forms 1/2 at step-1 parse time; Form 3 after G.6 approval; Form 4 after F4.6 fresh creation OR F4.4 reuse — see § Form 4 sequencing rule below), issue the pre-flight probe per § Pre-flight probe (UI mode) below. **Hard-fail on ANY probe error** (any `class` from the four-class taxonomy): write the probe's fail ledger row, print the operator-facing line, and exit non-zero. Do NOT start the loop. Do NOT fall back to `local` — a `ui` run that quietly becomes `local` would re-introduce the duplicate-drafting hazard the pre-draft check exists to remove, and the operator asked for UI gates.
+
+   ### Pre-flight probe (UI mode)
+
+   The pre-flight functional probe issues **exactly one** read-only `cockpit_gate_list` call at pre-flight to verify that the gate-query surface actually WORKS (not just that its tools are BOUND). Fires from exactly ONE call site — this pre-flight step — under both explicit `--gates=ui` (as an additional assertion after the `cockpit_gate_open`-bound check) AND under `--gates=auto`'s three-part check item 3 (only after items 1 and 2 have both passed; the short-circuit rule above governs when it is issued). Under `--gates=local` (explicit OR `--gates=auto` short-circuited to `local`) the probe is NOT issued and NO probe ledger row is written — the two query tools are not required under `local` (per the § step-3 conditional tool-presence check), and a `local` run MUST NOT fail on a tool it never calls. The probe is issued AT MOST ONCE per run — no per-event re-probing (FR-010); the per-event pre-draft gate-status check (§ Pre-draft check — shared rules; § Dispatch step 0) is a distinct concern that consumes the same tools with the same error taxonomy.
+
+   **Call shape** — exactly one MCP call, using the identity ref bound above:
+
+   ```
+   cockpit_gate_list({ issueRef: <identity-ref>, gateType: <omitted> })
+   ```
+
+   The identity ref is the value written into the ledger header's `Tracking ref:` field — under Form 1 the epic ref, under Forms 2/3/4 the `trackingRef`. `gateType` is OPTIONAL on `CockpitGateListInputSchema` (per generacy `mcp/gates/query-schemas.ts`); omitting it returns every non-terminal gate for the identity ref across all gateTypes, which is strictly stronger than probing one `gateType`. Empty `gates: []` on a fresh identity ref is a perfectly good pass — the probe verifies the surface enumerates at all, not that any gate is present. `cockpit_gate_status` is NOT called by the probe (it requires `{issueRef, gateType, generation}` and there is no natural probe target for a functional health check).
+
+   **Pass path** (`{ status: 'ok', data: { gates: [...], truncated?: ... } }`) — write exactly one ledger row (verbatim shape):
+
+   ```
+   <identity-ref> · preflight · gate-query-probe · ok · source: ui-gate-probe
+   ```
+
+   Then proceed to § step 3 (under explicit `--gates=ui`, set `ResolvedGateMode = "ui"`; under `--gates=auto` items 1–2 also passed, so item 3's pass finalizes `ResolvedGateMode = "ui"`). The FR-005 "one pointer line" is NOT printed for a passing probe — the probe is functional health, not an operator-visible affordance; the observable output on the pass path is one ledger row.
+
+   **Fail path** (`{ status: 'error', class, detail }` for any of the four classes `query-unreachable` / `invalid-args` / `internal` / `transport` per § Pre-draft check — shared rules → Gate-query error taxonomy) — regardless of which mode invoked the probe:
+
+   1. Write the fail ledger row (verbatim shape):
+      ```
+      <identity-ref> · preflight · gate-query-probe · error: <class> — <detail> · source: ui-gate-probe
+      ```
+   2. Print the operator-facing line — a single frozen template with `<class>` / `<detail>` placeholders (per FR-013), produced by `lib/gate-status-check.ts § formatGateQueryProbeErrorLine`:
+      ```
+      gate-query surface unavailable (class: <class>): <detail> — re-run with --gates=local, or fix the cluster/cloud gate-query deployment
+      ```
+      Where `<class>` is one of `query-unreachable` / `invalid-args` / `internal` / `transport` and `<detail>` is the tool's `detail` field verbatim. All four classes share this ONE template; any change to the wording requires re-pinning the playbook prose AND the formatter's fixture-equality tests. The em-dash (`—`, U+2014) between `<detail>` and `re-run with…` is intentional; no trailing period.
+   3. **Under explicit `--gates=ui`** → exit non-zero. Do NOT start the loop. Do NOT fall back to `local`.
+   4. **Under `--gates=auto`** → resolve to `local` with `<resolution reason> = probe-failed` — the probe's fail ledger row (above) has already been written; the `Auto run starting · gates: local (source: --gates=auto → probe-failed)` line is emitted immediately after the fail row per the line's format below, and the run proceeds through § step 3 in `local` mode.
+
+   **Form 4 sequencing rule (load-bearing)**. Under Form 4 the probe fires AFTER F4.6/F4.4 has bound `trackingRef`, NOT alongside items 1–2 of the `--gates=auto` three-part check at step-1 parse time. The identity ref is a required input to the probe call; before F4.6/F4.4 there is no valid target. Under `--gates=auto` items 1–2 are evaluated at step-1 parse time as usual; item 3 (the probe) is DEFERRED until F4.6/F4.4 completes and then evaluated (short-circuit rule still applies — if items 1–2 already decided `local`, item 3 is not issued regardless of when F4.6/F4.4 completes). Under Forms 1/2/3 the identity ref is bound at parse time (Form 1: `<epic-ref>` positional) or by G.6 approval (Form 3: mid-step-1); the probe fires immediately after step-1's other conditions pass. Under explicit `--gates=ui` under Form 4 the probe likewise fires after F4.6/F4.4, following the same post-tool-binding, post-identity-ref ordering.
+
+   **No probe under `--gates=local`** (invariant). Under `--gates=local` (explicit) OR `--gates=auto` short-circuited to `local` (items 1 or 2 failed), NO probe is issued AND NO probe ledger row is written. The two query tools (`cockpit_gate_status`, `cockpit_gate_list`) are not required under `local` per the § step-3 conditional tool-presence check; a `local` run MUST NOT call — and MUST NOT fail on — a tool it never uses. The `--gates=auto` → `local` short-circuit path is pinned as byte-identical to explicit `--gates=local` (per `contracts/gates-flag-parse.md`); any pin that would produce a probe ledger row on the short-circuit path is a regression.
+
+   **Timeout budget**. No new skill-side timer. The probe inherits the query-client's `timeoutMs` (default 5000ms per attempt) × `QUERY_RETRY_SCHEDULE` (3 attempts + ~5s backoff, ~20s worst case). A timeout maps to the existing `query-unreachable` class via `fetchOnce` → `QueryTransportError` → `withRetry` exhaustion — the same path the per-event pre-draft check uses. No new class in the taxonomy, no dedicated `probe-timeout` special-case.
 
    ### Form 4 branch — parse, resolve, validate, reuse, create
 
@@ -162,10 +205,10 @@ $ARGUMENTS
    ```
 
    Two illustrative examples (per `quickstart.md § Expected output`):
-   - Explicit `--gates=ui`, resolved to UI (tool binding + cluster cloud-activation both YES): `Auto run starting · gates: ui (source: --gates=ui)`.
+   - Explicit `--gates=ui`, resolved to UI (tool binding + cluster cloud-activation both YES + probe pass): `Auto run starting · gates: ui (source: --gates=ui)`.
    - `--gates=auto`, resolved to local because `cockpit_gate_open` is unbound: `Auto run starting · gates: local (source: --gates=auto → cockpit_gate_open unbound)`.
 
-   The `→ <resolution reason>` suffix appears only when `--gates=auto` resolved down to `local` (naming which of the two-part checks failed); it is omitted for explicit `--gates=ui` / `--gates=local` and for `--gates=auto` that cleanly resolves to `ui`. Under a `--gates=ui` pre-flight absence hard-fail (above), this line is NOT emitted (the run refuses to touch the ledger surface for a run that can never succeed).
+   The `→ <resolution reason>` suffix appears only when `--gates=auto` resolved down to `local` (naming which of the three-part checks failed); it is omitted for explicit `--gates=ui` / `--gates=local` and for `--gates=auto` that cleanly resolves to `ui`. The enumerated `<resolution reason>` values are: `cockpit_gate_open unbound` (item 1 failed), `cluster not cloud-activated` (item 2 failed), and `probe-failed` (items 1–2 passed but item 3 — the pre-flight functional probe — returned an error; per § Pre-flight probe (UI mode) above, the probe's fail ledger row is written BEFORE this `Auto run starting` line). Under a `--gates=ui` pre-flight absence hard-fail (above) OR a `--gates=ui` pre-flight probe hard-fail (per § Pre-flight probe (UI mode) above), this line is NOT emitted (the run refuses to proceed past pre-flight for a run that can never succeed).
 
 2. **Arm the background sensor under harness `Monitor`.** Spawn `generacy cockpit doorbell <epic-ref>` under the harness `Monitor` tool at loop start. The verb's positional is named `<epic-ref>` (matching `generacy cockpit help doorbell`), but it takes the epic ref under `invocationForm: epic` or the tracking ref under `--tracking` / `--new` (matching the ledger header line's `Tracking ref:` field) — any task-list-bearing scope issue is accepted. The `Monitor.spawn(...)` call binds `monitorHandle` (see `data-model.md § In-memory loop state`) and re-invokes the model exactly when the child emits a stdout line — idle cost is zero. The stdout content is **NDJSON per-line** — the parent parses each line as a candidate enriched event per § Enriched-line dispatch contract (E2 detection gate). Enriched lines (JSON-parseable objects carrying `to` and `labels`) drive label-driven dispatch (D.1–D.4, D.7, D.9, D.9a–D.9d) and inform the D.5/D.6 merge gate via the baked `checks` verdict; bare or malformed lines fall back to `cockpit_await_events` for authoritative state. `cockpit_await_events` remains the sole source of typed batches for the merge-gate fallback and D.8/D.10/D.11 escalation surfaces (step 4). **No ledger line for sensor arm-up** — the doorbell subprocess is engine-owned per generacy#974 (it internally attaches to the shared event-bus poll loop `cockpit_await_events` drains rather than running its own poll cycle), and skill-side arm-up produces no ledger row. The pre-#431 `watch-lifecycle · spawn · armed` row is retired along with the C5 re-spawn state machine.
 
@@ -496,6 +539,8 @@ pre-draft gate check failed for <issue-ref> (<class>): <detail> — not drafting
 ```
 
 Note that call-time errors here are handled DIFFERENTLY from `cockpit_gate_open` call-time errors (§ UI-mode fallback): a failed gate-*open* falls back to a local `AskUserQuestion` because the operator still needs the gate; a failed gate-*query* has no safe fallback, because "I could not read the gate state" is not "there is no gate".
+
+**Cross-reference — pre-flight functional probe (§ step 1 § Pre-flight probe (UI mode))**. The four-class taxonomy above is ALSO consumed by the pre-flight functional probe. The probe issues exactly one read-only `cockpit_gate_list({ issueRef: <identity-ref>, gateType: <omitted> })` call at pre-flight (per § step 1 § Pre-flight probe (UI mode)) and classifies its response using the exact same four classes with the exact same routing (any `{ status: 'error', class, detail }` triggers the probe fail path — write the `preflight · gate-query-probe · error: <class> — <detail> · source: ui-gate-probe` ledger row, print the operator-facing line, then either exit non-zero (explicit `--gates=ui`) or resolve to `local` (short-circuit `--gates=auto` → `local` with `<resolution reason> = probe-failed`)). No new class is introduced — a divergence between per-event pre-draft-check classification and pre-flight probe classification would silently break the consistency contract this taxonomy exists to enforce. An operator diagnosing a `preflight · gate-query-probe · error: internal` ledger row finds the class definition in the table above; the underlying failure mode is the same server/tool bug the per-event `internal` bucket names.
 
 ### D.1 — `waiting-for:clarification`
 
@@ -1621,6 +1666,20 @@ or, using the mnemonic column names: `issue · transition · action · outcome`.
 **What counts as a "dispatch"**: any typed event from a `cockpit_await_events` batch that the parent processes (branches into the dispatch table); any event synthesized by the startup sweep; any escalation-gate retry that re-runs the fixer or re-presents the escalation gate; any session-mute skip.
 
 **What does NOT count**: re-check calls that don't produce a dispatch decision; pre-flight failures (before the loop begins); re-arms and doorbell arm-ups are not dispatches (re-arms are idempotent).
+
+**Narrow amendment — pre-flight probe rows DO earn a ledger row** (per § step 1 § Pre-flight probe (UI mode)). The general "pre-flight failures do not earn a row" clause above is narrowed for the pre-flight functional probe: rows carrying the `preflight` transition class AND the `gate-query-probe` action DO earn a ledger row (both `ok` and `error: <class> — <detail>` outcomes). This is safe because the probe fires AFTER the ledger header exists — the header is emitted at step 1 (Forms 1/2 before the startup sweep), after G.6 approval (Form 3), or at F4.7 (Form 4), all BEFORE the probe is issued. The § step-1 hard-fail path (missing `cockpit_gate_open` under explicit `--gates=ui`; `--gates=*` usage errors; F4.6 `gh issue create` non-zero exit) remains ledger-free unchanged: those failures fire BEFORE the ledger directory is created.
+
+**Preflight vocabulary additions** (per § step 1 § Pre-flight probe (UI mode)):
+
+- **`preflight`** — NEW transition class used exclusively by the pre-flight functional probe's ledger row (sibling of the existing `startup`, `heartbeat`, `cursor-recovery`, `epic-complete` control-flow transition classes). A future edit that introduces additional pre-flight probes MAY reuse the class; every probe row's action names the specific probe (currently `gate-query-probe`).
+- **`ui-gate-probe`** — NEW source token used exclusively by the pre-flight functional probe's ledger row (sibling of the existing `ui-gate`, `ui-gate-fallback`, `enriched-line` source tokens). The four-way provenance-suffix precedence (below, § Ledger Rule 4) is extended: `ui-gate-probe` applies to the pre-flight probe row's outcome slot and is mutually exclusive with `ui-gate` / `ui-gate-fallback` / `enriched-line` — a probe row is never an enriched-line dispatch and never a D.12 gate resolution.
+
+**Pre-flight probe row shapes** (verbatim, per § step 1 § Pre-flight probe (UI mode)):
+
+- Pass: `<identity-ref> · preflight · gate-query-probe · ok · source: ui-gate-probe`.
+- Fail: `<identity-ref> · preflight · gate-query-probe · error: <class> — <detail> · source: ui-gate-probe` (where `<class>` is one of `query-unreachable` / `invalid-args` / `internal` / `transport` per the § Gate-query error taxonomy, and `<detail>` is the tool's `detail` field verbatim).
+
+The `<identity-ref>` slot carries the value in the ledger header's `Tracking ref:` field (epic ref under Form 1; `trackingRef` under Forms 2/3/4). At most one probe row is written per run (per FR-010 and § Pre-flight probe (UI mode)).
 
 **Persistence rule (dual-write, unconditional)**:
 

@@ -225,6 +225,27 @@ export function formatPreDraftCheckErrorLine(
 }
 
 /**
+ * The visible operator-facing line the pre-flight gate-query probe prints on
+ * ANY error (pinned literally by auto.md § step 1 --gates resolution → probe
+ * fail path). Printed AFTER the fail ledger row and BEFORE the mode-specific
+ * tail action (exit non-zero under explicit --gates=ui; resolve to local under
+ * --gates=auto).
+ *
+ * Deliberately does NOT take issueRef — the probe is against a single identity
+ * ref already named in the ledger header's Tracking ref: field, and the
+ * operator's next action (--gates=local, or fix the cluster/cloud deployment)
+ * does not depend on which ref was probed. This mirrors the --gates=ui absence
+ * string (test 449-4), which also carries no identity ref.
+ *
+ * Single frozen template for all four `GateQueryErrorClass` values; any change
+ * to the wording requires re-pinning both the auto.md prose (test 459-7) and
+ * the fixture-equality assertions (test 459-7a).
+ */
+export function formatGateQueryProbeErrorLine(error: GateQueryError): string {
+  return `gate-query surface unavailable (class: ${error.class}): ${error.message} — re-run with --gates=local, or fix the cluster/cloud gate-query deployment`;
+}
+
+/**
  * The load-bearing N=3 escape-hatch threshold (V6 in data-model.md).
  * A future edit that changes this value re-triggers the spec's clarify phase.
  */
