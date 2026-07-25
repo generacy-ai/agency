@@ -94,13 +94,13 @@ No new flags. The behavior change is entirely internal to how `/cockpit:auto` de
 4. **No probe ledger row is written.** No `preflight · gate-query-probe` row appears in the ledger.
 5. The plugin prints:
    ```
-   Auto run starting · gates: local (source: --gates=auto → cockpit_gate_open unbound)
+   Auto run starting · gates: local (source: --gates=auto → ui-mode tools unbound)
    ```
    (or `→ cluster not cloud-activated`, per which condition failed).
 6. The plugin continues to § step 3 in `local` mode.
 
 **Verifying the short-circuit**:
-- The `Auto run starting` line names the earlier-condition failure (`cockpit_gate_open unbound` or `cluster not cloud-activated`), NOT `probe-failed`.
+- The `Auto run starting` line names the earlier-condition failure (`ui-mode tools unbound` or `cluster not cloud-activated`), NOT `probe-failed`.
 - The ledger contains ZERO `preflight · gate-query-probe` rows.
 - The run is byte-identical to what `--gates=local` would have produced (no extra rows, no extra prints, no extra tool calls).
 

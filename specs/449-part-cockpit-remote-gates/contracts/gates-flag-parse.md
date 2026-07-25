@@ -97,6 +97,7 @@ The 449-* describe block adds:
 - `assert usage string at line ~41 contains "[--gates=ui|local|auto]  (default: auto)"` (literal match)
 - `assert ambiguity table contains row for "gates-value-invalid"` (literal match of the reason string)
 - `assert step-1 parse block contains the verbatim Q3=A error string` (literal match, exact spacing)
-- `assert step-1 parse block contains the two-part auto-resolution rule (both cockpit_gate_open bound AND cluster cloud-activated → ui, else local)`
+- `assert step-1 parse block contains the THREE-part auto-resolution rule` — item 1 = `cockpit_gate_open` AND `cockpit_gate_status` AND `cockpit_gate_list` all bound, item 2 = cluster cloud-activated, item 3 = pre-flight functional probe passes (deferred past the header write), plus the short-circuit clause; all three → `ui`, else `local`. **Widened by #459 from the original two-part pin — do not re-narrow.**
+- `assert the enumerated <resolution reason> values are` `ui-mode tools unbound` / `cluster not cloud-activated` / `probe-failed` (literal match). The item-1 token is deliberately tool-agnostic: item 1 requires all three UI-mode tools, so a per-tool token would name the wrong tool on a partial-deployment cluster.
 
 Any of these breaking means the pre-flight contract has drifted; re-pin to the new contract, do not weaken.

@@ -2935,13 +2935,20 @@ describe("449 UI-mode gates", () => {
     // Two illustrative examples per quickstart.md § Expected output
     expect(step1).toContain("Auto run starting · gates: ui (source: --gates=ui)");
     expect(step1).toContain(
-      "Auto run starting · gates: local (source: --gates=auto → cockpit_gate_open unbound)",
+      "Auto run starting · gates: local (source: --gates=auto → ui-mode tools unbound)",
     );
     // Re-pinned from the OLD two-value enumeration to the NEW three-value
     // enumeration per specs/459-epic-cockpit-remote-gates/contracts/auto-resolution-fold-in.md
     // § The `Auto run starting` line — `probe-failed` value. Do NOT delete the
     // existing two enumerations; extend.
-    expect(step1).toContain("cockpit_gate_open unbound");
+    //
+    // Item-1 token re-pinned per PR #460 round-4 review from the tool-specific
+    // `cockpit_gate_open unbound` to the tool-agnostic `ui-mode tools unbound`:
+    // item 1 now requires all three UI-mode tools, so the old token asserted a
+    // specific tool was unbound when a DIFFERENT one was missing — precisely
+    // the partial-deployment case the widening exists to catch. Source of truth
+    // for the enumerated set: contracts/gates-flag-parse.md § Test pins.
+    expect(step1).toContain("ui-mode tools unbound");
     expect(step1).toContain("cluster not cloud-activated");
     expect(step1).toContain("probe-failed");
   });
@@ -4218,7 +4225,10 @@ describe("459 pre-flight functional probe", () => {
     // the `Auto run starting` line documentation block. This pin partially
     // overlaps re-pinned 449-6; both are retained per tasks.md (459-3 owns the
     // `probe-failed` value; 449-6 owns the format-pin).
-    expect(step1).toContain("cockpit_gate_open unbound");
+    // Item-1 token re-pinned per PR #460 round-4 review — tool-agnostic now
+    // that item 1 requires all three UI-mode tools. See contracts/
+    // gates-flag-parse.md § Test pins for the enumerated set.
+    expect(step1).toContain("ui-mode tools unbound");
     expect(step1).toContain("cluster not cloud-activated");
     expect(step1).toContain("probe-failed");
   });

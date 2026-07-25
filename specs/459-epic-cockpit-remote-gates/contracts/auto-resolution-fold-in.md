@@ -66,7 +66,7 @@ Under Form 4 (fresh-epic bootstrap), the identity ref is bound at F4.4 (reuse) o
 `auto.md` today prints an `Auto run starting · gates: <ui|local> (source: --gates=<value>[ → <resolution reason>])` line before the ledger header. The `→ <resolution reason>` suffix appears only when `--gates=auto` resolved down to `local`, and names which of the two-part checks failed.
 
 Today's possible values (from `auto.md:166`):
-- `cockpit_gate_open unbound` — item 1 failed.
+- `ui-mode tools unbound` — item 1 failed (any of `cockpit_gate_open` / `cockpit_gate_status` / `cockpit_gate_list` absent).
 - `cluster not cloud-activated` — item 2 failed.
 
 This feature adds ONE new value:
@@ -83,16 +83,16 @@ Under explicit `--gates=ui` the line is NOT printed — a probe failure under ex
 
 Complete table of `--gates=auto` resolution outcomes after this feature:
 
-| Item 1 (`cockpit_gate_open` bound) | Item 2 (cluster cloud-activated) | Item 3 (probe) | ResolvedGateMode | `Auto run starting` line | Probe ledger row |
+| Item 1 (all 3 UI-mode tools bound) | Item 2 (cluster cloud-activated) | Item 3 (probe) | ResolvedGateMode | `Auto run starting` line | Probe ledger row |
 |---|---|---|---|---|---|
-| NO | (short-circuit) | (short-circuit) | `local` | `Auto run starting · gates: local (source: --gates=auto → cockpit_gate_open unbound)` | NONE |
+| NO | (short-circuit) | (short-circuit) | `local` | `Auto run starting · gates: local (source: --gates=auto → ui-mode tools unbound)` | NONE |
 | YES | NO | (short-circuit) | `local` | `Auto run starting · gates: local (source: --gates=auto → cluster not cloud-activated)` | NONE |
 | YES | YES | PASS (`{status: 'ok'}`) | `ui` | `Auto run starting · gates: ui (source: --gates=auto)` | Pass row |
 | YES | YES | FAIL (any `{status: 'error'}`) | `local` | `Auto run starting · gates: local (source: --gates=auto → probe-failed)` | Fail row |
 
 Under explicit `--gates=ui`:
 
-| Item 1 (`cockpit_gate_open` bound) | Item 3 (probe) | Outcome |
+| Item 1 (all 3 UI-mode tools bound) | Item 3 (probe) | Outcome |
 |---|---|---|
 | NO | (not reached) | Hard-fail: verbatim `--gates=ui` absence string; exit non-zero; NO ledger dir created; NO ledger row |
 | YES | PASS | `ResolvedGateMode = "ui"`; `Auto run starting · gates: ui (source: --gates=ui)`; probe pass ledger row; continue to § step 3 |
