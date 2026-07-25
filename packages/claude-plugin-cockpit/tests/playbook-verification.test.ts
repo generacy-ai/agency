@@ -2903,7 +2903,14 @@ describe("449 UI-mode gates", () => {
     // `ui`.
     expect(step1).toContain("cockpit_gate_open");
     expect(step1).toContain("cluster cloud-activated");
-    expect(step1).toMatch(/decided ONCE at pre-flight|does not flip mid-run/i);
+    // Re-pinned per PR #460 review round 2: prose was updated to "decided ONCE
+    // per run" (parse-time items 1–2 vs post-header item 3 are decided at
+    // different phases, so a single "at pre-flight" no longer captures the
+    // contract) and "does not flip mid-loop" (was mid-run; loop is the
+    // narrower, correct scope now that TENTATIVE spans header write). Match
+    // either half so a future edit that reverts either half still passes the
+    // other half — the OR keeps the pin working under prose reflow.
+    expect(step1).toMatch(/decided ONCE per run|does not flip mid-loop/i);
     expect(step1).toContain("ResolvedGateMode");
     // NEW three-part contract wording (header + item 3 body).
     expect(step1).toContain("three-part check, decided ONCE");
@@ -4168,9 +4175,14 @@ describe("459 pre-flight functional probe", () => {
     expect(step1Normalized).toContain(
       "issue item 3 ONLY when items 1 AND 2 both pass; otherwise resolve to `local` with NO probe call and NO probe ledger row",
     );
-    // The two-part header MUST be gone (drift audit — a future edit that
-    // reverts to the OLD contract breaks this).
-    expect(step1).not.toContain("two-part check, decided ONCE");
+    // The two-part contract MUST be gone (drift audit — a future edit that
+    // reverts to the OLD contract breaks this). Re-pinned per PR #460 review:
+    // the previous literal `"two-part check, decided ONCE"` was unreachable
+    // (the stale prose that had to be removed read `"two-part check below"`),
+    // so the audit could not catch the drift class it was written for.
+    // Assert against ANY case-insensitive occurrence of `two-part check` in
+    // step 1 — any rewording of the stale sentence still trips this pin.
+    expect(step1).not.toMatch(/two-part check/i);
   });
 
   it("459-2 § step 1 explicit `--gates=ui` block declares the probe as a post-tool-presence, post-identity-ref, post-header-write pre-flight step that hard-fails on any error", () => {
@@ -4401,6 +4413,60 @@ describe("459 pre-flight functional probe", () => {
     const autoMdNormalized = autoMd.replace(/\s+/g, " ");
     expect(autoMdNormalized).toMatch(
       /No new class is introduced.*divergence.*silently break the consistency contract/,
+    );
+  });
+
+  it("459-14 § TENTATIVE window gate-presentation rule (added by PR #460 review round 2) pins the Form-3 remote-gate-consumed hard-fail path, the new `probe-failed-after-remote-gate-consumed` resolution reason, and the `gate-mode-resolution · aborted` ledger row shape", () => {
+    // Drift audit — the review flagged that the F1 fix (weakening the
+    // invariant from "does not flip mid-run" to "does not flip mid-loop"
+    // combined with the deferred probe) made this scenario reachable under
+    // Form 3 with default `--gates=auto`: G.6 fires immediately at step 1
+    // BEFORE the header exists and BEFORE the probe can be issued, so a
+    // TENTATIVE UI window opens; G.6 opens remotely per § UI-mode gate
+    // mapping row 9; if the probe subsequently fails, downgrading to `local`
+    // produces the ambiguous partial-UI / partial-local ledger the same
+    // paragraph claims to prevent. The fix (option c) makes that path a
+    // hard-fail. Any future edit that (a) weakens the hard-fail back to a
+    // downgrade, (b) drops the new resolution reason, or (c) reshapes the
+    // aborted ledger row breaks this pin — re-pin to the NEW contract; do
+    // NOT weaken.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The subsection heading is present in step 1 (the rule lives in the
+    // step-1 --gates resolution block, per plan).
+    expect(step1).toContain("TENTATIVE window gate-presentation rule");
+    // Only Form 3's G.6 fires in the window (Forms 1/2 have the ref at
+    // parse time; Form 4 has no gate before F4.7). If a future edit adds a
+    // second gate in the window, that pin has to re-declare the enumeration.
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toMatch(
+      /ONLY Form 3'?s G\.6 filing gate.*fires in this window/,
+    );
+    // Hard-fail — do NOT downgrade — new resolution reason.
+    expect(step1).toContain("probe-failed-after-remote-gate-consumed");
+    expect(step1Normalized).toMatch(
+      /do \*?\*?NOT\*?\*? downgrade|does NOT downgrade/,
+    );
+    // The `gate-mode-resolution · aborted` ledger row shape is pinned
+    // verbatim — this is the observable audit record of the aborted
+    // partial-UI run and the sole surface the resolution reason string
+    // appears on (since `Auto run starting` is NOT emitted on this path).
+    expect(autoMd).toContain(
+      "<identity-ref> · preflight · gate-mode-resolution · aborted · reason: probe-failed-after-remote-gate-consumed · source: ui-gate-probe",
+    );
+    // The `Auto run starting …` line documentation MUST enumerate the new
+    // hard-fail alongside the two existing hard-fail exceptions (absence,
+    // explicit --gates=ui probe fail) so future readers know the line is
+    // silently skipped on this path.
+    expect(step1).toContain(
+      "Form-3 `probe-failed-after-remote-gate-consumed` hard-fail",
+    );
+    // The `probe-failed-after-remote-gate-consumed` reason MUST be
+    // explicitly noted as absent from the `Auto run starting` line's
+    // enumerated `<resolution reason>` values (grep recipes rely on the
+    // plain `probe-failed` never widening to include this reason).
+    expect(step1Normalized).toMatch(
+      /Form-3 hard-fail reason `probe-failed-after-remote-gate-consumed` .* does NOT appear in this line/,
     );
   });
 });
