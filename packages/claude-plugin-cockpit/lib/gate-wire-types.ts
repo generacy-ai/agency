@@ -39,8 +39,29 @@ export type GateFlagValue = "ui" | "local" | "auto";
 
 /**
  * The mode the run actually uses after `--gates=auto` resolves per the
- * two-part check (cockpit_gate_open bound AND cluster cloud-activated).
- * Decided ONCE at pre-flight; does not flip mid-run.
+ * THREE-part check (#459):
+ *   1. Tool binding — cockpit_gate_open AND cockpit_gate_status AND
+ *      cockpit_gate_list all bound (all three, so item 3 cannot invoke an
+ *      unbound cockpit_gate_list on a cluster mid-upgrade to generacy#1038).
+ *   2. Cluster cloud-activation.
+ *   3. Pre-flight functional probe — exactly one read-only cockpit_gate_list
+ *      call proving the gate-query surface WORKS, not merely that its tools
+ *      are bound. DEFERRED until after the ledger header write (the probe
+ *      writes a ledger row on both pass and fail). Short-circuited entirely
+ *      when item 1 or 2 fails: no probe call, no probe ledger row.
+ *
+ * Decided ONCE per run — items 1–2 at parse-time pre-flight, item 3 after the
+ * header write. Between those two points the resolution is TENTATIVE
+ * ("ui pending probe" when items 1–2 both YES; "local" otherwise) and gates
+ * firing in that window present under the TENTATIVE mode; it does not flip
+ * mid-loop. Item 3 failing alone downgrades to "local" (reason
+ * `probe-failed`) EXCEPT when a remote UI gate was already consumed in the
+ * TENTATIVE window (currently only Form 3's G.6), which hard-fails with
+ * reason `probe-failed-after-remote-gate-consumed` rather than producing an
+ * ambiguous partial-UI / partial-local ledger.
+ *
+ * See auto.md § step-1 `--gates` resolution and pre-flight absence,
+ * § TENTATIVE window gate-presentation rule, and § Pre-flight probe (UI mode).
  */
 export type ResolvedGateMode = "ui" | "local";
 

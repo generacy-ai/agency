@@ -74,7 +74,7 @@ gate open: Manual validation for owner/repo#44 → answer in the generacy.ai inb
 ## Expected output (partial trace, `--gates=auto` resolved to local)
 
 ```
-Auto run starting · gates: local (source: --gates=auto → cockpit_gate_open unbound)
+Auto run starting · gates: local (source: --gates=auto → ui-mode tools unbound)
 [ledger] Tracking ref: owner/repo#42 · form: epic · started: 2026-07-22 14:30 UTC
 … (byte-identical to --gates=local from here on)
 ```

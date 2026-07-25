@@ -29,6 +29,7 @@ import {
   classifyGateQueryError,
   driftBranchMaySupersede,
   formatPreDraftCheckErrorLine,
+  formatGateQueryProbeErrorLine,
   tickAnsweredSweepCounter,
   selectEscapeHatchTargets,
   ANSWERED_SWEEP_THRESHOLD,
@@ -2878,35 +2879,78 @@ describe("449 UI-mode gates", () => {
     expect(step1).toContain("gates-duplicate");
   });
 
-  it("449-4 step 1 verbatim `--gates=ui` pre-flight absence hard-fail error string (Q3=A)", () => {
+  it("449-4 step 1 verbatim `--gates=ui` pre-flight absence hard-fail error string (Q3=A; extended by #459 to cover the two gate-query tools)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const step1 = extractInstructionsSteps(autoMd).get(1)!;
-    // Verbatim error per contracts/gates-flag-parse.md § Pre-flight absence.
+    // Verbatim error per contracts/gates-flag-parse.md § Pre-flight absence —
+    // that file is the SOURCE OF TRUTH for this string. Any change must move
+    // three artifacts together: the contract, auto.md § step 1, and this pin.
+    // (Round-3 note: the contract silently kept the old narrow string for three
+    // review rounds precisely because this pointer had been removed. Keep it.)
+    //
+    // Re-pinned per PR #460 review: the absence check now covers all three
+    // UI-mode tools (cockpit_gate_open + cockpit_gate_status + cockpit_gate_list)
+    // so a partial-deployment cluster with only cockpit_gate_open bound cannot
+    // slip through and hit an unbound cockpit_gate_list at the pre-flight probe.
     // Exact spacing, exact wording — this is the load-bearing operator-facing
     // string; drift here changes the operator-visible failure mode.
     expect(step1).toContain(
-      "--gates=ui specified but cockpit_gate_open is not available in this session; re-invoke with --gates=local or --gates=auto",
+      "--gates=ui specified but one or more of cockpit_gate_open / cockpit_gate_status / cockpit_gate_list is not available in this session; re-invoke with --gates=local or --gates=auto",
     );
   });
 
-  it("449-5 step 1 declares the `--gates=auto` two-part resolution rule (tool binding + cluster cloud-activated)", () => {
+  it("449-5 step 1 declares the `--gates=auto` THREE-part resolution rule (tool binding + cluster cloud-activated + pre-flight functional probe) with the short-circuit rule verbatim", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const step1 = extractInstructionsSteps(autoMd).get(1)!;
-    // Two-part check + decided-once semantics (research.md § R2)
+    // Re-pinned from the OLD two-part contract to the NEW three-part contract
+    // per specs/459-epic-cockpit-remote-gates/contracts/auto-resolution-fold-in.md.
+    // Do NOT weaken — this is the load-bearing invariant that a broken
+    // gate-query surface short-circuits `auto` to `local` instead of stalling in
+    // `ui`.
     expect(step1).toContain("cockpit_gate_open");
     expect(step1).toContain("cluster cloud-activated");
-    expect(step1).toMatch(/decided ONCE at pre-flight|does not flip mid-run/i);
+    // Re-pinned per PR #460 review round 2: prose was updated to "decided ONCE
+    // per run" (parse-time items 1–2 vs post-header item 3 are decided at
+    // different phases, so a single "at pre-flight" no longer captures the
+    // contract) and "does not flip mid-loop" (was mid-run; loop is the
+    // narrower, correct scope now that TENTATIVE spans header write). Match
+    // either half so a future edit that reverts either half still passes the
+    // other half — the OR keeps the pin working under prose reflow.
+    expect(step1).toMatch(/decided ONCE per run|does not flip mid-loop/i);
     expect(step1).toContain("ResolvedGateMode");
+    // NEW three-part contract wording (header + item 3 body).
+    expect(step1).toContain("three-part check, decided ONCE");
+    expect(step1).toContain("Pre-flight functional probe");
+    // Short-circuit rule pinned verbatim (whitespace-tolerant to survive
+    // markdown reflow).
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toContain(
+      "issue item 3 ONLY when items 1 AND 2 both pass; otherwise resolve to `local` with NO probe call and NO probe ledger row",
+    );
   });
 
-  it("449-6 step 1 `Auto run starting …` line format includes gates + source (both example resolutions)", () => {
+  it("449-6 step 1 `Auto run starting …` line format includes gates + source AND enumerates all THREE `<resolution reason>` values (probe-failed added by 459)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const step1 = extractInstructionsSteps(autoMd).get(1)!;
     // Two illustrative examples per quickstart.md § Expected output
     expect(step1).toContain("Auto run starting · gates: ui (source: --gates=ui)");
     expect(step1).toContain(
-      "Auto run starting · gates: local (source: --gates=auto → cockpit_gate_open unbound)",
+      "Auto run starting · gates: local (source: --gates=auto → ui-mode tools unbound)",
     );
+    // Re-pinned from the OLD two-value enumeration to the NEW three-value
+    // enumeration per specs/459-epic-cockpit-remote-gates/contracts/auto-resolution-fold-in.md
+    // § The `Auto run starting` line — `probe-failed` value. Do NOT delete the
+    // existing two enumerations; extend.
+    //
+    // Item-1 token re-pinned per PR #460 round-4 review from the tool-specific
+    // `cockpit_gate_open unbound` to the tool-agnostic `ui-mode tools unbound`:
+    // item 1 now requires all three UI-mode tools, so the old token asserted a
+    // specific tool was unbound when a DIFFERENT one was missing — precisely
+    // the partial-deployment case the widening exists to catch. Source of truth
+    // for the enumerated set: contracts/gates-flag-parse.md § Test pins.
+    expect(step1).toContain("ui-mode tools unbound");
+    expect(step1).toContain("cluster not cloud-activated");
+    expect(step1).toContain("probe-failed");
   });
 
   it("449-7 § UI-mode gate mapping section exists with the pinned heading", () => {
@@ -4092,6 +4136,414 @@ describe("457 sweep-time gate reuse", () => {
 
     // Even if the map were mistakenly re-populated later, the counter is fresh.
     expect(selectEscapeHatchTargets(counter)).toEqual([]);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 459 pre-flight functional probe — one-shot cockpit_gate_list call at
+// pre-flight so a broken gate-query surface aborts non-zero under --gates=ui
+// and short-circuits --gates=auto to `local` (never a stalled `ui` run).
+//
+// Pins the load-bearing prose additions to auto.md described by
+// specs/459-epic-cockpit-remote-gates/{plan.md,contracts/*.md}:
+//   - § step 1 --gates=auto: two-item check extended to a THREE-item list with
+//     the probe as item 3; short-circuit rule ("issue item 3 ONLY when items
+//     1 AND 2 both pass") pinned verbatim.
+//   - § step 1 explicit --gates=ui: probe as a post-tool-presence,
+//     post-identity-ref pre-flight step; hard-fail on ANY error.
+//   - § step 1 Auto run starting line: `probe-failed` added as an enumerated
+//     <resolution reason> value alongside `cockpit_gate_open unbound` and
+//     `cluster not cloud-activated`.
+//   - § step 1 Form 4 sequencing: probe fires AFTER F4.6/F4.4 has bound
+//     `trackingRef`, NOT alongside items 1–2.
+//   - § step 1 pass/fail ledger row shapes pinned verbatim.
+//   - § step 1 FR-013 operator-facing template line pinned verbatim.
+//   - § step 1 no-probe-under-local invariant (explicit AND short-circuit).
+//   - § Ledger: narrow amendment (probe rows earn a ledger row despite the
+//     general "pre-flight failures do not earn a row" clause); `preflight` as
+//     a new transition class, `ui-gate-probe` as a new source token.
+//   - § Gate-query error taxonomy (added by #457): unchanged, gains a
+//     cross-reference to the pre-flight probe step.
+//   - lib/gate-status-check.ts § formatGateQueryProbeErrorLine returns the
+//     exact same template as the prose line (fixture-equality per class).
+//
+// These are drift audits — if a heading rename, contract-rule edit, or literal
+// substitution breaks a pin, re-pin to the NEW contract in the same PR. Do NOT
+// weaken or delete an assertion to make the test pass (CLAUDE.md § Cockpit
+// playbook pins).
+// ────────────────────────────────────────────────────────────────────────────
+describe("459 pre-flight functional probe", () => {
+  it("459-1 § step 1 `--gates=auto` declares a three-item list with the probe as item 3 AND states the short-circuit rule verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The three-part header replaced the OLD two-part header.
+    expect(step1).toContain("three-part check, decided ONCE");
+    // Item 3 wording — the probe as a NEW third condition.
+    expect(step1).toContain("Pre-flight functional probe");
+    expect(step1).toContain(
+      "cockpit_gate_list({ issueRef: <identity-ref>, gateType: <omitted> })",
+    );
+    // Short-circuit rule pinned verbatim (whitespace-tolerant across reflow).
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toContain(
+      "issue item 3 ONLY when items 1 AND 2 both pass; otherwise resolve to `local` with NO probe call and NO probe ledger row",
+    );
+    // The two-part contract MUST be gone (drift audit — a future edit that
+    // reverts to the OLD contract breaks this). Re-pinned per PR #460 review:
+    // the previous literal `"two-part check, decided ONCE"` was unreachable
+    // (the stale prose that had to be removed read `"two-part check below"`),
+    // so the audit could not catch the drift class it was written for.
+    // Assert against ANY case-insensitive occurrence of `two-part check` in
+    // step 1 — any rewording of the stale sentence still trips this pin.
+    expect(step1).not.toMatch(/two-part check/i);
+  });
+
+  it("459-2 § step 1 explicit `--gates=ui` block declares the probe as a post-tool-presence, post-identity-ref, post-header-write pre-flight step that hard-fails on any error", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Re-pinned per PR #460 review: the probe block was extended from
+    // (post-tool-binding, post-identity-ref) to (…, post-header-write) so the
+    // probe's pass/fail ledger row can be safely appended after the header
+    // exists as the first line of the ledger file (per auto.md line 199 and
+    // § Ledger `Narrow amendment`).
+    expect(step1).toContain(
+      "`--gates=ui` pre-flight functional probe (post-tool-binding, post-identity-ref, post-header-write)",
+    );
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toContain(
+      "Hard-fail on ANY probe error",
+    );
+    // Explicit `ui` MUST NOT silently fall back to `local` — the FR-004
+    // invariant that motivated this feature.
+    expect(step1Normalized).toMatch(/Do NOT fall back to `local`|Do NOT fall back to local/);
+  });
+
+  it("459-3 § step 1 `Auto run starting` line's `<resolution reason>` suffix enumerates `probe-failed` as a possible value under `--gates=auto`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The three enumerated <resolution reason> values MUST all be present in
+    // the `Auto run starting` line documentation block. This pin partially
+    // overlaps re-pinned 449-6; both are retained per tasks.md (459-3 owns the
+    // `probe-failed` value; 449-6 owns the format-pin).
+    // Item-1 token re-pinned per PR #460 round-4 review — tool-agnostic now
+    // that item 1 requires all three UI-mode tools. See contracts/
+    // gates-flag-parse.md § Test pins for the enumerated set.
+    expect(step1).toContain("ui-mode tools unbound");
+    expect(step1).toContain("cluster not cloud-activated");
+    expect(step1).toContain("probe-failed");
+  });
+
+  it("459-4 § step 1 states the Form 4 sequencing rule — probe fires AFTER F4.6/F4.4 has bound `trackingRef` (extended by PR #460 review with a post-F4.7 header-write requirement), NOT alongside items 1–2", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The Form 4 sequencing header AND the post-F4.6/F4.4 ordering are both
+    // load-bearing — the identity ref is a required probe input, and before
+    // F4.6/F4.4 completes there is no valid target under Form 4.
+    // Re-pinned per PR #460 review: the rule now ALSO requires F4.7's ledger
+    // header write to complete before the probe fires, so the probe's pass/fail
+    // ledger row can be safely appended.
+    expect(step1).toContain("Form 4 sequencing rule");
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toMatch(
+      /probe fires AFTER F4\.6\/F4\.4 has bound `trackingRef` AND AFTER F4\.7 has written the ledger header, NOT alongside items 1[–-]2/,
+    );
+  });
+
+  it("459-5 probe pass ledger row shape pinned verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    expect(autoMd).toContain(
+      "<identity-ref> · preflight · gate-query-probe · ok · source: ui-gate-probe",
+    );
+  });
+
+  it("459-6 probe fail ledger row shape pinned verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    expect(autoMd).toContain(
+      "<identity-ref> · preflight · gate-query-probe · error: <class> — <detail> · source: ui-gate-probe",
+    );
+  });
+
+  it("459-7 FR-013 operator-facing template line pinned verbatim in auto.md", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Single frozen template with <class> / <detail> placeholders, shared by
+    // ALL four error classes. Any change to the wording requires re-pinning
+    // both this assertion AND the 459-7a fixture equalities below.
+    expect(autoMd).toContain(
+      "gate-query surface unavailable (class: <class>): <detail> — re-run with --gates=local, or fix the cluster/cloud gate-query deployment",
+    );
+  });
+
+  describe("formatGateQueryProbeErrorLine", () => {
+    it("459-7a formats query-unreachable class verbatim", () => {
+      expect(
+        formatGateQueryProbeErrorLine({
+          class: "query-unreachable",
+          message: "gate-query-service: connect ETIMEDOUT",
+        }),
+      ).toBe(
+        "gate-query surface unavailable (class: query-unreachable): gate-query-service: connect ETIMEDOUT — re-run with --gates=local, or fix the cluster/cloud gate-query deployment",
+      );
+    });
+
+    it("459-7a formats invalid-args class verbatim", () => {
+      expect(
+        formatGateQueryProbeErrorLine({
+          class: "invalid-args",
+          message: "unrecognized key issueId (expected: issueRef)",
+        }),
+      ).toBe(
+        "gate-query surface unavailable (class: invalid-args): unrecognized key issueId (expected: issueRef) — re-run with --gates=local, or fix the cluster/cloud gate-query deployment",
+      );
+    });
+
+    it("459-7a formats internal class verbatim (the incident class — cluster snappoll-local-2, 2026-07-25)", () => {
+      expect(
+        formatGateQueryProbeErrorLine({
+          class: "internal",
+          message: "cluster query endpoint returned 404",
+        }),
+      ).toBe(
+        "gate-query surface unavailable (class: internal): cluster query endpoint returned 404 — re-run with --gates=local, or fix the cluster/cloud gate-query deployment",
+      );
+    });
+
+    it("459-7a formats transport class verbatim", () => {
+      expect(
+        formatGateQueryProbeErrorLine({
+          class: "transport",
+          message: "cockpit process exited with code 1 before responding",
+        }),
+      ).toBe(
+        "gate-query surface unavailable (class: transport): cockpit process exited with code 1 before responding — re-run with --gates=local, or fix the cluster/cloud gate-query deployment",
+      );
+    });
+  });
+
+  it("459-8 § Ledger declares the narrow amendment — probe rows earn a ledger row despite the general `pre-flight failures do not earn a row` clause", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const ledgerBlock = extractLedgerSection(autoMd);
+    // The general exclusion clause MUST still be present (unchanged).
+    expect(ledgerBlock).toContain(
+      "pre-flight failures (before the loop begins)",
+    );
+    // The narrow amendment header MUST be present.
+    expect(ledgerBlock).toContain(
+      "Narrow amendment — pre-flight probe rows DO earn a ledger row",
+    );
+    // The § step-1 hard-fail paths (missing any of the three UI-mode tools;
+    // usage errors; F4.6 gh issue create failure) MUST remain ledger-free.
+    // Re-pinned per PR #460 review: the amendment now names the path(s) in the
+    // plural (extended per Comment 2 to cover all three UI-mode tools), and
+    // adds a companion carve-out for the probe's own --gates=ui fail path,
+    // which is DIFFERENT because it fires post-header and does write a row.
+    const ledgerNormalized = ledgerBlock.replace(/\s+/g, " ");
+    expect(ledgerNormalized).toMatch(
+      /step-1 hard-fail path[s]?.*remain[s]? ledger-free/,
+    );
+  });
+
+  it("459-9 § Ledger declares `preflight` as a transition class AND `ui-gate-probe` as a source token", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const ledgerBlock = extractLedgerSection(autoMd);
+    // preflight transition class — sibling of startup / heartbeat /
+    // cursor-recovery / epic-complete.
+    expect(ledgerBlock).toContain("`preflight`");
+    expect(ledgerBlock).toMatch(/sibling of.*`startup`.*`heartbeat`.*`cursor-recovery`.*`epic-complete`/s);
+    // ui-gate-probe source token — sibling of ui-gate / ui-gate-fallback /
+    // enriched-line.
+    expect(ledgerBlock).toContain("`ui-gate-probe`");
+    expect(ledgerBlock).toMatch(/sibling of.*`ui-gate`.*`ui-gate-fallback`.*`enriched-line`/s);
+  });
+
+  it("459-10 § step 1 declares that under `--gates=local` (explicit OR `--gates=auto` short-circuited) NO probe is issued AND NO probe ledger row is written", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The no-probe-under-local invariant MUST be stated explicitly, and MUST
+    // cover BOTH the explicit-local path AND the auto-short-circuit-to-local
+    // path (the byte-identity contract vs explicit --gates=local depends on
+    // this).
+    expect(step1).toContain("No probe under `--gates=local`");
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toMatch(
+      /Under `--gates=local` \(explicit\) OR `--gates=auto` short-circuited to `local`/,
+    );
+    expect(step1Normalized).toMatch(/NO probe is issued AND NO probe ledger row is written/);
+  });
+
+  it("459-11 on probe failure, `--gates=ui` exits non-zero (no fallback to `local`) AND `--gates=auto` resolves to `local` (with the probe's fail ledger row written)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    // Explicit --gates=ui probe failure → exit non-zero, no fallback.
+    expect(step1Normalized).toMatch(
+      /Under explicit `--gates=ui`.*exit non-zero.*Do NOT start the loop.*Do NOT fall back to `local`/,
+    );
+    // --gates=auto probe failure → resolve to local with probe-failed reason
+    // and the fail ledger row written.
+    expect(step1Normalized).toMatch(
+      /Under `--gates=auto`.*resolve to `local`.*<resolution reason> = probe-failed/,
+    );
+  });
+
+  it("459-12 probe is issued AT MOST ONCE per run (drift audit — per-event re-probing breaks this pin, per FR-010)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Load-bearing "at most once per run" wording MUST appear in the
+    // Pre-flight probe (UI mode) subsection. A future edit that adds
+    // per-event re-probing must also update this pin — the intent is a drift
+    // audit, so the assertion re-pins to the NEW contract explicitly.
+    expect(autoMd).toContain(
+      "The probe is issued AT MOST ONCE per run",
+    );
+    // Load-bearing single-call-site rule: the probe is defined to fire from
+    // "exactly ONE call site" in the playbook. A per-event re-probing site
+    // would break this wording.
+    const autoMdNormalized = autoMd.replace(/\s+/g, " ");
+    expect(autoMdNormalized).toMatch(
+      /Fires from exactly ONE call site/,
+    );
+    // Explicit FR-010 rationale: distinct from the per-event pre-draft check
+    // (which is a separate concern that consumes the same tools). A future
+    // edit that folds the probe into the per-event site erases this
+    // distinction.
+    expect(autoMdNormalized).toMatch(
+      /no per-event re-probing \(FR-010\).*per-event pre-draft gate-status check.*is a distinct concern/,
+    );
+  });
+
+  it("459-13 § Gate-query error taxonomy (added by #457) is unchanged AND acquires a new cross-reference to the pre-flight probe step, pinned verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // The four-class taxonomy heading MUST still exist (drift audit — a
+    // divergence between per-event and pre-flight classification silently
+    // breaks the consistency contract).
+    expect(autoMd).toContain("#### Gate-query error taxonomy");
+    // All four class tokens still enumerated as row headers in the taxonomy
+    // table (unchanged by #459).
+    expect(autoMd).toContain("| `query-unreachable` |");
+    expect(autoMd).toContain("| `invalid-args` |");
+    expect(autoMd).toContain("| `internal` |");
+    expect(autoMd).toContain("| `transport`");
+    // NEW cross-reference from the taxonomy to the pre-flight probe step.
+    expect(autoMd).toContain(
+      "Cross-reference — pre-flight functional probe",
+    );
+    const autoMdNormalized = autoMd.replace(/\s+/g, " ");
+    expect(autoMdNormalized).toMatch(
+      /No new class is introduced.*divergence.*silently break the consistency contract/,
+    );
+  });
+
+  it("459-14 § TENTATIVE window gate-presentation rule (added by PR #460 review round 2, re-pinned by round 3) pins the Form-3 remote-gate-consumed hard-fail path, the new `probe-failed-after-remote-gate-consumed` resolution reason, and the augmented probe Fail row's outcome slot (fold-in shape — no separate `gate-mode-resolution` row)", () => {
+    // Drift audit — the review flagged that the F1 fix (weakening the
+    // invariant from "does not flip mid-run" to "does not flip mid-loop"
+    // combined with the deferred probe) made this scenario reachable under
+    // Form 3 with default `--gates=auto`: G.6 fires immediately at step 1
+    // BEFORE the header exists and BEFORE the probe can be issued, so a
+    // TENTATIVE UI window opens; G.6 opens remotely per § UI-mode gate
+    // mapping row 9; if the probe subsequently fails, downgrading to `local`
+    // produces the ambiguous partial-UI / partial-local ledger the same
+    // paragraph claims to prevent. Round-3 re-pin: the R2 aborted-row shape
+    // (`gate-mode-resolution · aborted · reason: …`) was flagged as
+    // unregistered vocabulary that violates § Ledger's four-column grammar
+    // AND its "at most one probe row per run" invariant. Option (b) from the
+    // reviewer folds the aborted-reason marker into the existing probe Fail
+    // row's outcome slot in-place, keeping the registered `gate-query-probe`
+    // action + `ui-gate-probe` source vocabulary AND the single-row
+    // invariant. Any future edit that (a) weakens the hard-fail back to a
+    // downgrade, (b) drops the new resolution reason, (c) reintroduces a
+    // second row for the aborted resolution, or (d) uses unregistered
+    // vocabulary breaks this pin — re-pin to the NEW contract; do NOT
+    // weaken.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The subsection heading is present in step 1 (the rule lives in the
+    // step-1 --gates resolution block, per plan).
+    expect(step1).toContain("TENTATIVE window gate-presentation rule");
+    // Only Form 3's G.6 fires in the window (Forms 1/2 have the ref at
+    // parse time; Form 4 has no gate before F4.7). If a future edit adds a
+    // second gate in the window, that pin has to re-declare the enumeration.
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toMatch(
+      /ONLY Form 3'?s G\.6 filing gate.*fires in this window/,
+    );
+    // Hard-fail — do NOT downgrade — new resolution reason.
+    expect(step1).toContain("probe-failed-after-remote-gate-consumed");
+    expect(step1Normalized).toMatch(
+      /do \*?\*?NOT\*?\*? downgrade|does NOT downgrade/,
+    );
+    // The augmented probe Fail row shape is pinned verbatim — this is the
+    // sole observable audit record of the aborted partial-UI run (since
+    // `Auto run starting` is NOT emitted on this path) and the sole surface
+    // the resolution reason string appears on. Fold-in preserves the "at
+    // most one probe row per run" invariant AND reuses the registered
+    // `gate-query-probe` action + `ui-gate-probe` source vocabulary.
+    expect(autoMd).toContain(
+      "<identity-ref> · preflight · gate-query-probe · error: <class> — <detail> (aborted: probe-failed-after-remote-gate-consumed) · source: ui-gate-probe",
+    );
+    // Belt-and-suspenders: the RETIRED R2 row shape (with the unregistered
+    // `gate-mode-resolution` action + a `reason:` field the four-column
+    // grammar does not carry) MUST NOT reappear as a ledger row shape.
+    // A future edit that reintroduces the aborted row — either verbatim or
+    // as a differently spelled second row for the same resolution — would
+    // restore the § Ledger conformance failure this fix removed. (The
+    // prose may still MENTION `gate-mode-resolution` explanatorily — the
+    // check is on the row shape, not the token.)
+    expect(autoMd).not.toContain("gate-mode-resolution · aborted");
+    expect(autoMd).not.toMatch(
+      /· preflight · gate-mode-resolution ·/,
+    );
+    // The "at most one probe row per run" invariant MUST be preserved
+    // (a second row for the aborted resolution would break it). The
+    // § Ledger `Pre-flight probe row shapes` block now explicitly
+    // acknowledges the fold-in as preserving this invariant.
+    expect(autoMd).toContain(
+      "At most one probe row is written per run",
+    );
+    // The `Auto run starting …` line documentation MUST enumerate the new
+    // hard-fail alongside the two existing hard-fail exceptions (absence,
+    // explicit --gates=ui probe fail) so future readers know the line is
+    // silently skipped on this path.
+    expect(step1).toContain(
+      "Form-3 `probe-failed-after-remote-gate-consumed` hard-fail",
+    );
+    // The `probe-failed-after-remote-gate-consumed` reason MUST be
+    // explicitly noted as absent from the `Auto run starting` line's
+    // enumerated `<resolution reason>` values (grep recipes rely on the
+    // plain `probe-failed` never widening to include this reason).
+    expect(step1Normalized).toMatch(
+      /Form-3 hard-fail reason `probe-failed-after-remote-gate-consumed` .* does NOT appear in this line/,
+    );
+  });
+
+  it("459-15 line 28 `--gates=ui` AND `--gates=auto` summary clauses BOTH name all three UI-mode tools, matching the normative blocks at items 1 (three-tool `--gates=auto` check) and the widened `--gates=ui` pre-flight absence hard-fail (PR #460 review round 3)", () => {
+    // Drift audit — the review flagged that the R2 fix widened both the
+    // `--gates=auto` item 1 (three-tool bind check) and the `--gates=ui`
+    // pre-flight absence hard-fail to require all three UI-mode tools
+    // (`cockpit_gate_open`, `cockpit_gate_status`, `cockpit_gate_list`),
+    // but the R2 fix only rewrote the `--gates=auto` clause of the line-28
+    // summary — the `--gates=ui` clause on the same line still named just
+    // `cockpit_gate_open`. The summary drifted from its own normative
+    // block. Round-3 re-pin: both clauses on that line MUST now name all
+    // three tools so an executor reading the summary first cannot miss
+    // the widened check and skip the hard-fail on a partial-deployment
+    // cluster mid-upgrade to generacy#1038.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    // The `--gates=ui` summary clause MUST name all three UI-mode tools
+    // (not just `cockpit_gate_open`). The exact wording is
+    // whitespace-tolerant to survive markdown reflow, but the three tool
+    // names MUST appear together in the `--gates=ui forces UI mode`
+    // summary sentence's `hard-fails at pre-flight if …` clause.
+    expect(step1Normalized).toMatch(
+      /`--gates=ui` forces UI mode.*hard-fails at pre-flight if any of `cockpit_gate_open` \/ `cockpit_gate_status` \/ `cockpit_gate_list` is absent/,
+    );
+    // The `--gates=auto` summary clause MUST also name all three UI-mode
+    // tools (the R2 fix only widened this one to say `cockpit_gate_open`
+    // bound; the R3 fix widens it to ALL three bound so it matches item 1
+    // of the three-part check verbatim).
+    expect(step1Normalized).toMatch(
+      /`--gates=auto` resolves per the three-part check below \(`cockpit_gate_open` AND `cockpit_gate_status` AND `cockpit_gate_list` ALL bound AND cluster cloud-activated AND pre-flight functional probe pass/,
+    );
   });
 });
 
