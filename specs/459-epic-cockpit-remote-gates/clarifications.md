@@ -16,7 +16,7 @@
 - C: Ad-hoc lists are out of scope for this feature — either reject the invocation with an operator-facing error, or fall back to the tool-presence-only pre-flight (skip the functional probe).
 - D: Issue one probe per top-level issue in the list (violates FR-010's "at most once per run" — flag if this is intended).
 
-**Answer**: *Pending*
+**Answer**: The premise is false — there is no invocation form without a single identity ref. The probe target is the run's identity ref under EVERY form: the epic ref under Form 1, and `trackingRef` under Forms 2/3/4 (Form 4 binds it at F4.4 reuse or F4.6 fresh creation, which both run before step 3's tool-presence check and therefore before the probe). Amend FR-001 to read "the run's identity ref — the value in the ledger header's `Tracking ref:` field" rather than "the tracking ref's own issueRef". Rationale: A would probe a different target on the F4.4 reuse path than on the F4.6 fresh-creation path; B's sentinel exercises a different issue's authorization path, so a pass proves strictly less than the probe claims; C carves out the most common invocation form for a problem it does not have. One real design consequence: because Form 4 binds `trackingRef` after the step-1 `--gates` resolution, the probe — and hence the `auto` resolution's probe condition — must be sequenced after F4.6, not evaluated at step 1 alongside conditions 1–2.
 
 ---
 
@@ -29,7 +29,7 @@
 - C: Bounded budget (e.g., 10 seconds), timeout mapped to `internal` class (uniform with the 404 case documented in the spec).
 - D: No explicit timeout — inherit the underlying `cockpit_gate_list` transport's default timeout, whatever that is.
 
-**Answer**: *Pending*
+**Answer**: D's mechanism with A's class mapping: no new skill-side timer — inherit the tool layer's already-bounded budget (query-client `timeoutMs`, default 5000ms, aborting each attempt, times QUERY_RETRY_SCHEDULE's 3 attempts plus ~5s of backoff, so ~20s worst case) — and map a timeout to the existing `query-unreachable` class. Record the inherited ~20s bound in the spec rather than inventing a ~10s budget. Rationale: the hang premise is already answered upstream, since `fetchOnce` aborts each attempt at `timeoutMs` and rethrows `QueryTransportError`, which `withRetry` exhausts into `query-unreachable` — an unbounded pre-flight hang is not reachable. A 10s skill-side budget is both redundant and unenforceable, because auto.md is prose driving a model with no primitive to cancel an in-flight MCP call. A dedicated `probe-timeout` class would be the only class in the taxonomy the tool layer can never actually emit, and `internal` would mislabel a transport failure as the deterministic server/tool bug that bucket is documented to hold exclusively.
 
 ---
 
@@ -41,7 +41,7 @@
 - B: Always probe when the tools are bound, regardless of cloud-activated status. Uniform behavior; probe result is recorded but does not affect the `local` outcome in this case.
 - C: Short-circuit AND record a distinguishable ledger row (e.g., `probe-skipped: not-cloud-activated`) so operators can see why no probe was attempted.
 
-**Answer**: *Pending*
+**Answer**: A — short-circuit: skip the probe when `cockpit_gate_open` is not bound or the cluster is not cloud-activated. The resolution is `local` with no probe call and no probe ledger row. Rationale: auto.md pins the `auto`→`local` outcome as "byte-identical to explicit `--gates=local`", and FR-007 forbids the probe under `local`, so always-probing would make auto→local observably different from the mode it is defined to equal — and would call `cockpit_gate_list` at a point where step 3 does not even require it to be bound, producing an unbound-tool harness error with no row in the gate-query taxonomy to classify it. Option C's ledger row is mechanically unwritable at the moment of the skip decision, because the `--gates` resolution is specified to run before ledger-directory creation; it would also fire on every non-cloud dev cluster, while the resolved mode is already visible in the startup line and the ledger header.
 
 ---
 
@@ -54,7 +54,7 @@
 - C: Reuse the existing shape with `source: ui-gate` (unchanged) and a new `transition-class: probe`; do not introduce a new event kind.
 - D: Defer this to the /plan phase — spec need only require "a ledger row is written," schema details determined during design.
 
-**Answer**: *Pending*
+**Answer**: A — reuse the existing four-column ledger shape: `<identity-ref> · preflight · gate-query-probe · ok · source: ui-gate-probe` on pass, and `<identity-ref> · preflight · gate-query-probe · error: <class> — <detail> · source: ui-gate-probe` on fail. `preflight` is a new transition class; `ui-gate-probe` is a sibling of the existing `ui-gate` / `ui-gate-fallback` source tokens, and the suffix sits inside the outcome slot per the existing marker rule. Rationale: option C's reuse of `source: ui-gate` would make the probe-failure row grep-identical to the per-event `pre-draft-check · error: internal … · source: ui-gate` rows whose indistinguishability is exactly why the real cause stayed buried in the incident that motivated this issue, whereas A buys two independent filters for the cost of one new token in a vocabulary that already carries `ui-gate-fallback`. B breaks the "four-column ledger format preserved verbatim" rule that every ledger consumer and every playbook-verification pin depends on, and D leaves FR-011 with nothing to pin. Implementation note: § Ledger currently excludes "pre-flight failures (before the loop begins)" from what earns a row, so that clause needs a narrow amendment — safe here precisely because the probe fires after the ledger header exists, unlike the § step-1 hard-fail that forbids touching the filesystem at all.
 
 ---
 
@@ -66,6 +66,6 @@
 - B: Only the shape is pinned — the printed line must include the observed error class name and a suggested workaround, but exact phrasing can evolve.
 - C: Exact wording is pinned per error class — different classes (e.g., `internal`, `unauthorized`, `query-unreachable`) get distinct pre-approved wordings, each pinned separately.
 
-**Answer**: *Pending*
+**Answer**: A — exact wording contract-frozen and pinned: one template with `<class>` / `<detail>` placeholders (e.g. `gate-query surface unavailable (class: <class>): <detail> — re-run with --gates=local, or fix the cluster/cloud gate-query deployment`), pinned verbatim in auto.md and against a reference formatter in `lib/`, exactly as the pre-draft-check line already is. Any change requires re-pinning. Rationale: both existing operator-facing strings on this path are already pinned verbatim as single templates — the `--gates=ui` absence string (test 449-4) and the pre-draft-check line, which is pinned twice, once in the prose and once against `formatPreDraftCheckErrorLine` (test 457-9a) — so pinning only the shape would make this the one operator-visible string in the playbook free to drift, which is precisely how drift ships. Option C quadruples the frozen surface for no diagnostic gain, since the class token is already interpolated into the single template and all four classes share the same workaround (`--gates=local`, or fix the deployment).
 
 ---
