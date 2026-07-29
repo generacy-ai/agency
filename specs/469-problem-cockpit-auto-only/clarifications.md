@@ -25,7 +25,7 @@ Every pre-draft check returns `absent`, Step 0 concludes no gate is open, the dr
 - B: No — status stays 3-input; accept that the pre-draft dedup invariant is intentionally relaxed for this phase and duplicates will be tolerated (please justify).
 - C: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: **A** — `runId` on every pre-draft `cockpit_gate_status`. Without it, `cockpit_gate_open` derives a 4-segment key and the Step-0 check derives a 3-segment one; every check returns `absent` and the loop re-drafts a gate it already opened. Shipping the write half alone would leave the epic measurably worse than before it started, since today's 3-input identity at least coalesces. Add FR-004b requiring `runId` on every pre-draft `cockpit_gate_status` invocation; add an AC to US2 asserting "a second wake for an already-open gate takes the Step 0 reuse branch, not the draft branch"; and assert that `cockpit_gate_open` and pre-draft `cockpit_gate_status` for the same natural gate in the same run derive the same `gateId`.
 
 ---
 
@@ -42,7 +42,7 @@ The spec's "Out of Scope" section does not mention `cockpit_gate_list`. Given th
 - B: No — leave unstated (implementer discretion / covered by "no change to schemas" clause).
 - C: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: **A** — forbid `runId` on `cockpit_gate_list`, with one explicit carve-out. Silence is genuinely risky: Phase B accepts `runId` on `CockpitGateListInputSchema` for surface parity, so an implementer who sees the field on the schema will reasonably assume it is meant to be passed. Add the FR and the Out-of-Scope entry pointing at generacy-cloud#894. **Deliberate exception**: the pre-flight capability probe (per Q5) passes `runId` to `cockpit_gate_list` on purpose. This is safe — post-#1067 the handler drops it before the cloud call, so it never reaches the endpoint that would 400. Word the FR as: *"no functional `cockpit_gate_list` call may carry `runId`; the pre-flight capability probe is the sole exception and does so precisely because the value is dropped locally"*, so the carve-out reads as intentional rather than as the first violation of a fresh rule.
 
 ---
 
@@ -58,7 +58,7 @@ The spec's "Out of Scope" section does not mention `cockpit_gate_list`. Given th
 - C: Only if Q1 = A (auto-yes when scope expands, auto-no otherwise).
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: **A** — `auto.md:283` lands in the same PR. Given Q1=A, A and C produce the same outcome; A is preferable because it states the deliverable outright instead of leaving a conditional for a later reader to re-evaluate. The line is not incidental documentation — it is the stated contract for when two `gateId`s coalesce and is what someone will consult when a gate does or does not dedup as expected. Prose that says "the same three inputs" while the code names four is worse than no prose, because it will be trusted. B's follow-up doc issue would leave that window open for exactly as long as follow-up doc issues usually stay open.
 
 ---
 
@@ -78,7 +78,7 @@ They also differ in edge cases: two runs against different epics in the same sec
 - B: Timestamp only — the trailing timestamp component of the ledger filename.
 - C: Something else — please specify (e.g. hash of the composite).
 
-**Answer**: *Pending*
+**Answer**: **A** — full composite `<tracking-ref-slug>-<timestamp>`. Note: the option's stated rationale (cross-epic timestamp collisions) does NOT actually hold — `issueRef` is already the first segment of the key (`gateKey = ${issueRef}:${gateType}:${generation}[:${runId}]`), so two runs against different epics touch different issues and cannot collide on `gateId` regardless of `runId`. A same-second cross-epic `runId` collision is cosmetic, not functional. **The argument that does hold is traceability.** The tracking ref appears nowhere else in a gate document. Under B, an operator looking at a gate doc — or at a `cockpit_gate_list` row (which surfaces `runId` per generacy-cloud#892) — sees a bare `20260729-051000` and has to guess which run that was. Under A the row is self-describing and greps directly against `.generacy/cockpit/auto-runs/`, matching the design note *"reusing it keeps the ledger and the gate identity mutually traceable during a post-mortem."* Only the full stem is the ledger filename. Corroboration: generacy#1067's `runIdSource` log line deliberately records `'explicit' | 'unset'` and never the value, on the stated grounds that auto-run ids embed cluster/repo/issue/timestamp. **Invariant to pin**: `runId` must contain no `:`. It is the trailing key segment, and `generation` can already contain colons (`spec-review:<sha>`, `sweep:needs-clarification:2`), so a colon-bearing `runId` would make the tail genuinely ambiguous to anything still parsing keys by position. Both A and B are colon-free today (slug is `/`→`-` with `#` stripped; timestamp is `YYYYMMDD-HHMMSS`); state the invariant so a future change to the ledger filename format cannot quietly introduce one.
 
 ---
 
@@ -96,7 +96,22 @@ Spec's Assumptions section says "Generacy Phase B is deployed" but doesn't say w
 - C: Assumption only — extend the Assumptions section to explicitly name commit `82077f1a` (or a version bound) and state behaviour is undefined if violated; no runtime guard.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: **A** — pre-flight capability probe, decided once, whole-session. Corrections to the question's premise:
+
+1. **The question's premise about "silent failure" is wrong.** An `invalid-args` from the pre-draft check does NOT fail into duplicate-drafting. The pre-draft failure line is pinned verbatim: *"pre-draft gate check failed for <issue-ref> (<class>): <detail> — not drafting; see the run ledger"*. On a pre-#1067 cluster the run aborts every dispatch, loudly, one ledger row per event, with a detail that names `runId` as the unrecognized key. That is a safe and diagnosable failure, not silent. The real competitor to A is C, not B.
+
+2. **B must be rejected outright** — not on cost grounds. Disabling `runId` mid-session and reverting to 3-input identity produces a *mixed-identity run*. The startup sweep opens gates via `cockpit_gate_open` before any Step-0 check runs, so by the time the first `invalid-args` arrives there can already be 4-segment gates open; reverting the read side then orphans exactly those gates for the rest of the session. It also breaks two things this issue commits to: the AC *"every `cockpit_gate_open` and `cockpit_gate_ack` in one auto run carries the same `runId`"*, and the design note *"a `runId` used to open a gate but not to ack it means the ack targets a different key."* B is the one option that can leave a run in a state neither identity scheme describes.
+
+3. **A over C because the probe is free.** The pre-flight functional probe today is `cockpit_gate_list({ issueRef: <identity-ref>, gateType: <omitted> })`. Add `runId` to it. `CockpitGateListInputSchema` is `.strict()` and gained `runId` only in #1067, so:
+   - pre-#1067 cluster → `invalid-args` → disable `runId` threading for the whole session, log the startup warning, run with today's 3-input identity (i.e. generacy#1053 unfixed, which is the status quo, and the warning says so);
+   - #1067 or later → the field is accepted and dropped locally → probe passes exactly as it does today → enable `runId`.
+
+Zero additional calls, zero cloud impact (the handler drops the field before the request), and it fits the file's existing philosophy of probing whether the surface *works* rather than whether its tools are *bound*.
+
+**Implementer notes**:
+- This probes `CockpitGateListInputSchema` but the dependency in Q1 is `CockpitGateStatusInputSchema`. They are safe to infer from one another — both live in `mcp/gates/query-schemas.ts` and both gained `runId` in the same commit (`82077f1a`), so no deployment can split them. State this in the spec.
+- Decide **once**, at pre-flight, before any gate is opened, and never flip mid-run. That keeps A free of B's mixed-identity hazard and mirrors the existing `--gates=auto` resolution (also decided once, explicitly does not flip mid-loop).
+- C remains a reasonable fallback if the probe complicates `--gates` resolution ordering more than expected; the failure it leaves behind is loud and self-describing. But given the probe costs one field on a call that already happens, A is worth it and keeps a heterogeneous fleet working instead of hard-stopping on older clusters.
 
 ---
 
@@ -110,7 +125,7 @@ Spec's Assumptions section says "Generacy Phase B is deployed" but doesn't say w
 - B: Just the timestamp portion: `<timestamp>` (e.g., `20260729T143012Z`)
 - C: A dedicated hash/UUID derived from the ledger filename but not equal to it
 
-**Answer**: *Pending*
+**Answer**: **A** — full ledger filename stem `<tracking-ref-slug>-<timestamp>`. Semantic duplicate of Batch 1 Q4; see that answer for the full rationale (traceability under `cockpit_gate_list` rows; no functional cross-epic collision risk because `issueRef` already segments the key). Also invariant: `runId` MUST NOT contain `:` (trailing key segment; `generation` can already contain colons).
 
 ### Q2: resume semantics
 **Context**: The `cockpit_resume` verb exists and the spec doesn't say whether a resumed auto session reuses the original run's runId (recovered from the ledger) or mints a fresh one. This directly affects whether a `cockpit_gate_ack` issued after a resume can find the gate that the pre-resume `cockpit_gate_open` created (US2 acceptance) — and whether resume is treated as 'same run' or 'new run' by SC-003.
@@ -140,7 +155,7 @@ Spec's Assumptions section says "Generacy Phase B is deployed" but doesn't say w
 - B: A capability probe at pre-flight (e.g., call `cockpit_gate_status` with a runId; if the server rejects the field, refuse to run auto)
 - C: An explicit environment/feature flag that must be set on the cluster to activate runId threading
 
-**Answer**: *Pending*
+**Answer**: **B** — pre-flight capability probe. This matches Batch 1 Q5 (option A there = "preflight check" = same semantic answer). Concretely: extend the existing pre-flight `cockpit_gate_list({ issueRef, gateType: <omitted> })` call to also carry `runId`. On pre-#1067 clusters the strict schema returns `invalid-args` → disable `runId` threading for the session, log a startup warning, revert to today's 3-input identity (status quo). On #1067+, the field is accepted and dropped locally → probe passes → enable `runId`. Decision is made ONCE at pre-flight and never flips mid-run (mixed-identity would orphan sweep-opened gates; see Batch 1 Q5 answer). This is not option A here — the guard is a runtime probe, not deploy-order discipline; and not C — an env flag adds a coordination surface that the probe makes unnecessary.
 
 ### Q5: runId format constraints
 **Context**: The cloud storage layer (Phase A) accepts an optional runId, but the spec doesn't state what format constraints it imposes (character set, max length, case sensitivity). If the ledger filename stem contains characters that Firestore document IDs or the gate composite key can't handle (slashes, dots, colons, unicode), the write will fail on production data. This blocks safe implementation of FR-001.
@@ -150,5 +165,44 @@ Spec's Assumptions section says "Generacy Phase B is deployed" but doesn't say w
 - B: URL-safe / DNS-safe only: `[A-Za-z0-9._-]`, max 128 chars (typical Firestore doc-ID constraints)
 - C: Constraints exist but haven't been specified yet — a follow-up clarification is needed against generacy-cloud Phase A
 
+**Answer**: **One constraint pinned by this issue, others inherited from Phase A.** From Batch 1 Q4 answer: `runId` MUST NOT contain `:` (it is the trailing key segment; `generation` may already contain colons like `spec-review:<sha>` and `sweep:needs-clarification:2`, so a colon-bearing `runId` would make the tail genuinely ambiguous to anything still parsing keys by position). Both today's candidate values (full composite `<tracking-ref-slug>-<timestamp>` and timestamp-only) are colon-free — slug is `/`→`-` with `#` stripped; timestamp is `YYYYMMDD-HHMMSS`. Beyond the no-colon invariant, character-set/length constraints inherit from Phase A's storage layer; the ledger filename is a filesystem-safe string by construction so B-style constraints (`[A-Za-z0-9._-]`, ≤128 chars) are satisfied in practice. If Phase A imposes tighter constraints, this must be filed as a follow-up clarification against generacy-cloud (option C's tail).
+
+---
+
+## Batch 2 — 2026-07-29 (follow-ups from GitHub answers)
+
+### Q6: session-resume semantics
+
+**Context**: The `cockpit_resume` verb exists in `auto.md` but is a **per-issue engine action** (line 829) that clears `agent:error` / `failed:*` labels — not a session-level restore of `/cockpit:auto` itself. Re-invoking `/cockpit:auto` against the same tracking ref creates a NEW ledger file at pre-flight (line 209), which by FR-001 mints a NEW `runId`. That means "session resume" doesn't really exist as a design surface in this skill — a re-invocation is a new run by construction. But the spec doesn't say so explicitly, and a future reader might assume otherwise.
+
+**Question**: How should the spec handle "session resume" for `runId`?
+
+**Options**:
+- A: Recover the ORIGINAL runId from an existing ledger — treat re-invocation as "same run", in-flight gates remain reachable by ack.
+- B: Mint a NEW runId on every `/cockpit:auto` invocation — re-invocation is definitionally a new run; any in-flight gate from a crashed prior run stays terminal under its old runId.
+- C: Explicitly out of scope for this issue — the per-issue `cockpit_resume` verb is orthogonal (it clears labels, not gates), and session-level resume is not a surface `/cockpit:auto` exposes today. If a future session-resume surface is added, it needs its own clarification.
+
+**Recommended**: **C**. Rationale: there is no session-resume surface to design against today, so pinning behaviour would import a design decision with no caller. Behaviourally the code is already at B (re-invocation → new ledger → new runId), and US1's whole point is that terminal gates don't block re-runs; making that explicit as an out-of-scope note keeps the spec honest.
+
 **Answer**: *Pending*
+
+---
+
+### Q7: runId propagation to subagents
+
+**Context**: FR-002 requires `runId` stability across "all wakes, all gate verbs, all subagent dispatches". Subagents run as fresh Agent-tool contexts and cannot see the parent's variables. The spec doesn't say HOW `runId` reaches a subagent that itself issues `cockpit_gate_open` / `cockpit_gate_ack`. If each subagent re-derives `runId` from the ledger filename it discovers on its own, an inconsistent view (e.g. a fresh ledger file created mid-run, a stale prior-run file, concurrent runs against different tracking refs) breaks FR-002.
+
+`auto.md` already uses explicit-literal propagation for every other run-scoped value passed to subagents (epic ref, gateId, cursor, prompts).
+
+**Question**: How does the runId reach subagents that issue gate verbs?
+
+**Options**:
+- A: Passed as an explicit literal in the subagent's prompt — the playbook writes the current run's `runId` into every dispatch, exactly as it does for every other run-scoped value today.
+- B: Subagents re-derive the runId themselves from the ledger filename they discover on their own (requires an invariant that only one ledger file exists per run and that all subagents view it identically at all times).
+- C: Stored in an environment variable or shared file that subagents read on entry.
+
+**Recommended**: **A**. Rationale: the parent loop computed `runId` at pre-flight (FR-001) and is the authority; passing it as an explicit literal keeps the subagent stateless with respect to which run it belongs to. Pattern A matches every other run-scoped value in `auto.md`. B risks derivation drift under the exact scenarios FR-002 exists to prevent. C adds a global surface for one value that already has a clean propagation path.
+
+**Answer**: *Pending*
+
 

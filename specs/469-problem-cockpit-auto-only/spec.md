@@ -48,6 +48,9 @@ A and B are both no-ops while nothing supplies a `runId`. This issue is where be
 
 **Acceptance Criteria**:
 - [ ] Every `cockpit_gate_open` and `cockpit_gate_ack` in one auto run carries the same `runId`.
+- [ ] Every pre-draft `cockpit_gate_status` call in the six Step 0 blocks (D.1, D.2, D.3, D.4, D.7, D.11) also carries the run's `runId`.
+- [ ] `cockpit_gate_open` and pre-draft `cockpit_gate_status` for the same natural gate in the same run derive the same `gateId`.
+- [ ] A second wake for an already-open gate takes the Step 0 reuse branch, not the draft branch (proves pre-draft dedup coalesces the run's own writes).
 - [ ] A mid-run MCP reconnect does not change the `runId`.
 - [ ] The pre-draft dedup invariant (`auto.md:283`) continues to hold: `cockpit_gate_status` for a gate this run just opened returns non-`absent`.
 
@@ -75,7 +78,7 @@ A and B are both no-ops while nothing supplies a `runId`. This issue is where be
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | `/cockpit:auto` derives a run-scoped `runId` at pre-flight, sourced from the ledger filename timestamp (`<tracking-ref-slug>-<timestamp>`). | P1 | Same source keeps ledger and gate identity mutually traceable. |
+| FR-001 | `/cockpit:auto` derives a run-scoped `runId` at pre-flight. The value on the wire is the **full ledger filename stem** verbatim: `<tracking-ref-slug>-<timestamp>` (e.g. `epic-1053-20260729T143012Z`), NOT the trailing timestamp alone. | P1 | Traceability: `runId` appears in gate documents and `cockpit_gate_list` rows (per generacy-cloud#892); only the full stem greps directly against `.generacy/cockpit/auto-runs/` and is self-describing to a post-mortem operator. Cross-epic `runId` collisions at the same second are cosmetic (not functional), because `issueRef` is already the leading key segment. |
 | FR-002 | The `runId` is stable for the entire lifetime of one auto run (all wakes, all gate verbs, all subagent dispatches). | P1 | Must survive mid-run MCP reconnects. |
 | FR-003 | The `runId` is distinct across separate auto runs, even against the same epic and phase. | P1 | Verified by comparing two consecutive runs. |
 | FR-004 | Every `cockpit_gate_open` invocation in an auto run passes the current run's `runId`. | P1 | Spec FR-006 on generacy#1053. |
@@ -83,6 +86,11 @@ A and B are both no-ops while nothing supplies a `runId`. This issue is where be
 | FR-006 | The `runId` MUST NOT be sourced from a per-process or per-MCP-connection value (e.g. the rejected `INSTANCE_NONCE` from generacy#1055). | P1 | Cockpit MCP server is long-lived; per-process values are stable across runs — the opposite of what's needed. |
 | FR-007 | The `--gates=local` code path issues no `cockpit_gate_open` / `cockpit_gate_ack` calls and therefore carries no `runId`. | P1 | Preserves today's local-only behaviour. |
 | FR-008 | Landing order: this change MUST NOT ship before generacy-cloud Phase A (`runId` read/write acceptance) AND generacy Phase B (`runId` on `cockpit_gate_status` / `cockpit_gate_list` inputs) are deployed. | P1 | Otherwise `cockpit_gate_status` returns `absent` on the run's own gates and the drafting subagent duplicates inbox entries every wake. |
+| FR-009 | Every per-event pre-draft `cockpit_gate_status` invocation in all six Step 0 blocks (D.1, D.2, D.3, D.4, D.7, D.11) MUST carry the current run's `runId`. | P1 | Without this, `cockpit_gate_open` derives a 4-segment key while pre-draft `cockpit_gate_status` derives a 3-segment one; every check returns `absent` and the drafting subagent re-runs on every wake, producing exactly the duplicate-gate regression this feature exists to eliminate. |
+| FR-010 | `auto.md:283` prose MUST be updated in the same PR as the caller wiring to reflect the pre-draft check naming four inputs (`issueRef`, `gateType`, `generation`, `runId`) rather than three. | P1 | The line is the load-bearing contract for when two `gateId`s coalesce; leaving stale prose that says "the same three inputs" is worse than no prose because it will be trusted. |
+| FR-011 | No functional `cockpit_gate_list` call in an auto run may carry `runId`. The pre-flight capability probe (FR-012) is the sole exception, and only because Phase B's handler drops the field before it reaches the cloud endpoint that would 400. | P1 | Phase B accepts `runId` on `CockpitGateListInputSchema` for surface parity only; the cloud contract refines `runId requires generation`, and the sweep probe has no `generation`. See generacy-cloud#894 for list-mode `runId` filtering as a separate concern. |
+| FR-012 | On session start, `/cockpit:auto` MUST run a pre-flight capability probe that extends the existing `cockpit_gate_list({ issueRef: <identity-ref>, gateType: <omitted> })` call with a `runId` field. If the strict schema returns `invalid-args`, disable `runId` threading for the entire session, log a startup warning naming the pre-#1067 cluster condition, and fall back to today's 3-input identity. If the probe passes, enable `runId` threading for the session. The decision is made ONCE at pre-flight and MUST NOT flip mid-run. | P1 | Probes `CockpitGateListInputSchema`, but the dependency in FR-009 is `CockpitGateStatusInputSchema`. Both live in `mcp/gates/query-schemas.ts` and both gained `runId` in commit `82077f1a` (Phase B / generacy#1067), so no deployment can split them. Mid-run flipping is forbidden because the startup sweep opens gates before any Step-0 check runs — reverting the read side after opens would orphan sweep-opened 4-segment gates for the rest of the session. |
+| FR-013 | `runId` MUST NOT contain the `:` character. | P1 | `runId` is the trailing composite-key segment (`${issueRef}:${gateType}:${generation}[:${runId}]`), and `generation` may already contain colons (`spec-review:<sha>`, `sweep:needs-clarification:2`); a colon-bearing `runId` would make the tail ambiguous to anything parsing keys by position. Both candidate values today (full ledger stem, timestamp-only) are colon-free; pin the invariant so a future change to the ledger filename format cannot silently introduce one. |
 
 ## Success Criteria
 
@@ -94,14 +102,18 @@ A and B are both no-ops while nothing supplies a `runId`. This issue is where be
 | SC-004 | Mid-run reconnect stability | `runId` value unchanged after an MCP-connection restart mid-run. | Force MCP reconnect during a test run; assert `runId` unchanged in the next gate call. |
 | SC-005 | `--gates=local` invariance | Zero occurrences of `runId` in `--gates=local` traces. | Log grep on a `--gates=local` run. |
 | SC-006 | Silent-block regression prevention | Zero `console.warn` "log-dropped as terminal" entries in cloud logs when re-running a completed epic phase. | Cloud log audit over a re-run window. |
+| SC-007 | Pre-draft dedup coalescing under `runId` | A second wake for an already-open gate in the same run takes the Step 0 reuse branch (not the draft branch); zero duplicate inbox gates against the same natural-gate identity within one run. | Integration test: force two wakes for the same gate; assert exactly one `cockpit_gate_open`, one inbox entry, and the second wake logs "gate exists, reusing". |
+| SC-008 | Pre-#1067 cluster graceful fallback | On a cluster where `CockpitGateStatusInputSchema` does not accept `runId`, the pre-flight probe disables `runId` threading for the whole session, logs the startup warning once, and completes the run using 3-input identity — no mid-run identity flip, no orphaned gates. | Test against a stubbed pre-#1067 MCP server; assert one warning at startup, zero `runId` fields on any subsequent gate call, and no mid-run reversion. |
+| SC-009 | `runId` colon-free invariant | Zero occurrences of `:` in any observed `runId` on the wire. | Static assertion in the pre-flight `runId` derivation code path; log-grep assertion in test runs. |
 
 ## Assumptions
 
 - Generacy-cloud Phase A is deployed and accepting an optional `runId` on both write (`cockpit_gate_open` / `cockpit_gate_ack` handlers) and read (`cockpit_gate_status` / `cockpit_gate_list` handlers) paths.
-- Generacy Phase B is deployed: the cockpit MCP server declares optional `runId` on `cockpit_gate_status` / `cockpit_gate_list` inputs and forwards it to the cloud query client.
-- The ledger filename timestamp is already computed at pre-flight and is unique across runs at second (or finer) granularity.
+- Generacy Phase B is deployed: specifically, the cockpit MCP server is at or above commit `82077f1a` (generacy#1067), which added `runId` to `CockpitGateStatusInputSchema` and `CockpitGateListInputSchema` (both live in `mcp/gates/query-schemas.ts` and both gained the field in the same commit, so no deployment can split them).
+- Behaviour on a pre-#1067 cluster is well-defined by FR-012: the pre-flight probe fails closed at startup, `runId` threading is disabled for the entire session, a warning is logged once, and the run continues under today's 3-input identity (i.e. status quo, with generacy#1053 still unfixed for that session).
+- The ledger filename stem (`<tracking-ref-slug>-<timestamp>`) is already computed at pre-flight, is unique across runs at second (or finer) granularity, and is colon-free by construction (slug is `/`→`-` with `#` stripped; timestamp is `YYYYMMDD-HHMMSS`).
 - The cockpit MCP server is long-lived in the orchestrator container (a re-established design assumption from generacy#1055).
-- Existing gate identity components (`issueRef`, `gateType`, `generation`) remain unchanged; `runId` extends the composite key rather than replacing any part of it.
+- Existing gate identity components (`issueRef`, `gateType`, `generation`) remain unchanged; `runId` extends the composite key rather than replacing any part of it. The full key shape is `${issueRef}:${gateType}:${generation}[:${runId}]`.
 
 ## Out of Scope
 
@@ -110,8 +122,10 @@ A and B are both no-ops while nothing supplies a `runId`. This issue is where be
 - Any changes to the local-gates code path (`--gates=local`).
 - Any change to how `generation` is derived, incremented, or stored.
 - Backfilling existing terminal gates with a `runId`; existing gates remain as-is and the new field applies to new opens only.
-- Introducing a `runId` on gate verbs other than `cockpit_gate_open` and `cockpit_gate_ack` (e.g., `cockpit_gate_open` sub-events, non-gate cockpit verbs).
+- Introducing a `runId` on gate verbs beyond `cockpit_gate_open`, `cockpit_gate_ack`, and pre-draft `cockpit_gate_status` (per FR-009) — e.g. non-gate cockpit verbs.
+- Adding `runId` to functional `cockpit_gate_list` calls. Per FR-011, `runId` is forbidden on `cockpit_gate_list` in this phase; list-mode `runId` filtering is tracked separately as generacy-cloud#894. The pre-flight capability probe (FR-012) is the sole exception and is only safe because Phase B's handler drops the field before it reaches the cloud endpoint.
 - Rejected: sourcing `runId` from `INSTANCE_NONCE` or any per-process / per-MCP-connection value (see FR-006).
+- Rejected: mid-run reversion from `runId` threading to 3-input identity (see FR-012 rationale — mixed-identity runs orphan sweep-opened gates).
 
 ## Provenance
 
