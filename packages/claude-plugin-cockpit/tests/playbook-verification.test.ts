@@ -5716,6 +5716,96 @@ describe("471 startup-sweep adoption", () => {
     );
   });
 
+  it("471-19 § Pre-draft check — shared rules 'Consequence' paragraph AGREES with the D.7 / D.11 row prose on the list call (the paragraph must NOT claim the list call is skipped for D.7 / D.11 — since #471, those two rows DO issue `cockpit_gate_list` on `absent` to reach the same-generation adoption branch; only D.6 / D.10, which have no Step 0, genuinely skip it) — this is the round-2 assertion shape that would have caught the shared-rule/row-prose contradiction reviewers flagged", () => {
+    // Round-1 (#471 round 1) caught the D.11-only scoping of the drift-branch
+    // guard leaving the D.7 mirror hazard live; that was fixed by broadening
+    // the guard to all four escalation rows. Round-2 (#471 round 2) caught
+    // that the same "Consequence" paragraph — which had said "the plugin
+    // skips the list call and the drift branch" for all four rows — was
+    // never updated when D.7 / D.11 gained a same-generation adoption branch
+    // that REQUIRES the list call. The general rule and the specific rows
+    // contradicted each other, and an executor following the general rule
+    // never reached the adoption branch in D.7 / D.11, reproducing the
+    // round-1 duplicate-gate hazard on exactly the two escalation rows.
+    //
+    // The pin: the shared "Consequence" paragraph must (a) still disable
+    // the drift branch for all four rows, (b) name D.7 / D.11 as the two
+    // rows that DO issue the list call for adoption, and (c) name D.6 /
+    // D.10 as the two rows without a Step 0 that genuinely skip it. A grep
+    // for "skips the list call" as an unqualified assertion applied to all
+    // four rows is a defect this pin fails on.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const shared = extractSubheadingBlock(
+      autoMd,
+      "Pre-draft check — shared rules (UI mode)",
+    );
+    const sharedNormalized = shared.replace(/\s+/g, " ");
+
+    // (a) The drift branch stays disabled for all four rows — the anti-
+    // hazard property preserved from round 1.
+    expect(sharedNormalized).toMatch(
+      /drift branch is DISABLED for `gateType: 'escalation'` \(D\.6, D\.7, D\.10, D\.11\)/,
+    );
+    expect(sharedNormalized).toMatch(
+      /in D\.6, D\.7, D\.10, and D\.11 the \*\*drift branch never fires\*\*/,
+    );
+
+    // (b) The list call is NOT unqualifiedly skipped for D.7 / D.11 — the
+    // paragraph names them explicitly as the two rows that DO call
+    // cockpit_gate_list for the same-generation adoption branch (#471 /
+    // SC-006).
+    expect(
+      sharedNormalized,
+      "shared-rules 'Consequence' paragraph must name D.7 and D.11 as the escalation rows that DO issue cockpit_gate_list for the same-generation adoption branch",
+    ).toMatch(
+      /list call itself is NOT skipped for the two escalation rows that have a Step 0 \(D\.7, D\.11\)/,
+    );
+    expect(sharedNormalized).toMatch(/same-generation adoption branch/);
+    expect(sharedNormalized).toMatch(/per #471 \/ SC-006/);
+
+    // (c) D.6 / D.10 are named as the two rows WITHOUT a Step 0 that
+    // genuinely issue no list call — this is what keeps the paragraph
+    // internally consistent with `:588` (which lists the rows without a
+    // pre-draft check).
+    expect(
+      sharedNormalized,
+      "shared-rules 'Consequence' paragraph must name D.6 / D.10 as the two rows without a Step 0 for which the original 'skip the list call' sentence stays true",
+    ).toMatch(/D\.6 and D\.10 have no Step 0/);
+
+    // NEGATIVE PIN — the pre-round-2 wording is forbidden: the paragraph
+    // must NOT claim that D.6, D.7, D.10, and D.11 (all four together)
+    // skip the list call. That is the exact defect this pin exists to
+    // catch — a general rule that contradicts the specific rows.
+    expect(
+      sharedNormalized,
+      "shared-rules 'Consequence' paragraph MUST NOT assert that all four escalation rows skip the list call on `absent` — since #471, D.7 and D.11 DO issue the list call to reach the same-generation adoption branch. If this pin fails, do NOT weaken it — re-verify that the D.7 (`:871`) and D.11 (`:988`) row prose issue `cockpit_gate_list` on `absent` and rewrite the shared paragraph to name D.7 / D.11 as the exception.",
+    ).not.toMatch(
+      /in D\.6, D\.7, D\.10, and D\.11,? on a `\{ status: 'absent' \}` return the plugin skips the list call/,
+    );
+
+    // Cross-check the row prose: D.7 and D.11 Step 0 `absent` sub-branches
+    // MUST actually issue the list call the shared paragraph now claims
+    // they do. This is the "general rule and specific rows agree" shape
+    // reviewers asked for — the assertion that would have caught round 2.
+    for (const header of [
+      "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)",
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+    ]) {
+      const block = extractSubheadingBlock(autoMd, header);
+      const blockNormalized = block.replace(/\s+/g, " ");
+      // The row's Step 0 `absent` sub-branch issues the list call.
+      expect(
+        block,
+        `${header} Step 0 \`absent\` sub-branch must issue cockpit_gate_list — the shared-rules paragraph names this row as one that DOES call it for adoption`,
+      ).toContain("cockpit_gate_list({ issueRef, gateType })");
+      // The row cites SC-006 alongside the same-generation adoption branch.
+      expect(
+        blockNormalized,
+        `${header} same-generation adoption branch must cite #471 / SC-006`,
+      ).toMatch(/#471 \/ SC-006/);
+    }
+  });
+
   it("471-18 `--gates=local` byte-path invariance — zero adoption-path `cockpit_gate_list` occurrences under the `local` branch of § step 3 (complements 469-29)", () => {
     // Under --gates=local the § Adoption pass block is dead prose. This pin
     // asserts (a) the block's dead-prose guard sentence declares the fact
