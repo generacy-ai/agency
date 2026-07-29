@@ -3283,17 +3283,35 @@ describe("457 sweep-time gate reuse", () => {
     );
   });
 
-  it("457-2 § step 3 sweep NO LONGER contains the literal `generation=1`; new prose names `hash(issueRef, gateType, generation)`", () => {
+  it("457-2 § step 3 sweep NO LONGER contains the literal `generation=1`; new prose names `hash(issueRef, gateType, generation[, runId])` (re-pinned per #469 to the extended 4-input-under-runIdEnabled contract; CLAUDE.md § Cockpit playbook pins — do NOT weaken)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const step3 = extractInstructionsSteps(autoMd).get(3)!;
     // Negative: the pre-#457 hard-coded default is gone.
     expect(step3).not.toContain("generation=1");
-    // Positive: the replacement prose names the content-derived hash + the pre-
-    // draft check reference (per contracts/sweep-generation-fix.md § Verbatim
-    // removal).
-    expect(step3).toContain("hash(issueRef, gateType, generation)");
+    // Positive: the replacement prose names the content-derived hash with the
+    // #469 optional `runId` fourth input (under `runIdEnabled === true`) + the
+    // pre-draft check reference (per contracts/sweep-generation-fix.md §
+    // Verbatim removal, extended by contracts/runid-threading.md § auto.md:283
+    // prose update).
+    expect(step3).toContain("hash(issueRef, gateType, generation[, runId])");
     expect(step3).toContain("§ Dispatch step 0");
     expect(step3).toMatch(/Generation discriminator \(UI mode\)/);
+    // The 4-input shape MUST also be named in the pre-draft `cockpit_gate_status`
+    // reference (re-pinned per #469 / FR-010 — the load-bearing "same N inputs"
+    // clause names FOUR under runIdEnabled === true, three under false).
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    expect(step3Normalized).toContain(
+      "pre-draft `cockpit_gate_status({issueRef, gateType, generation, runId})` check",
+    );
+    expect(step3Normalized).toMatch(
+      /names the same FOUR inputs under `runIdEnabled === true` \(three under `runIdEnabled === false`/,
+    );
+    // Negative pin: the pre-#469 "same three inputs" prose is gone from the
+    // gateId-idempotency paragraph (stale prose is worse than no prose per
+    // plan.md § Approach; leaving it would be trusted).
+    expect(step3Normalized).not.toMatch(
+      /pre-draft `cockpit_gate_status\(\{issueRef, gateType, generation\}\) check[^.]*names the same three inputs/,
+    );
   });
 
   it("457-3 § step 3 escape-hatch block: verbatim heading + N=3 literal + exact ack detail string", () => {
@@ -3439,11 +3457,23 @@ describe("457 sweep-time gate reuse", () => {
     expect(block).toMatch(/SAME per-gateType generation function the live path uses/);
     // Skips entirely under local mode.
     expect(block).toMatch(/Skip Step 0 entirely under `ResolvedGateMode === "local"`/);
-    // gate-status is called with the frozen {issueRef, gateType, generation}
-    // schema (per #458 review comment 1 — the tool's .strict() input schema
-    // rejects a hand-built {gateId} payload).
+    // gate-status is called with the frozen {issueRef, gateType, generation,
+    // runId} schema (per #458 review comment 1 — the tool's .strict() input
+    // schema rejects a hand-built {gateId} payload). Re-pinned per #469 /
+    // FR-009: the optional `runId` fourth field is passed under `runIdEnabled
+    // === true`, OMITTED under `runIdEnabled === false` (V6). Phase B
+    // (generacy#1067 commit `82077f1a`) extended CockpitGateStatusInputSchema
+    // with the optional `runId` field; the plugin now supplies the value.
+    // Do NOT weaken the pin to accept the pre-#469 3-input shape (CLAUDE.md
+    // § Cockpit playbook pins).
     expect(block).toContain(
-      "cockpit_gate_status({ issueRef, gateType, generation })",
+      "cockpit_gate_status({ issueRef, gateType, generation, runId })",
+    );
+    // The V6 omission rule is stated at every Step 0 site so a subagent /
+    // executor reading only this row knows the field is OMITTED (not null,
+    // not undefined) on a pre-#1067 cluster.
+    expect(block).toContain(
+      "the `runId` field is OMITTED under `runIdEnabled === false` (V6)",
     );
     // The reuse record carries the mandatory dispatchClass — D.12 step 3/4
     // key on it; without it an answer to a reused gate resolves no handler.
@@ -4544,6 +4574,569 @@ describe("459 pre-flight functional probe", () => {
     expect(step1Normalized).toMatch(
       /`--gates=auto` resolves per the three-part check below \(`cockpit_gate_open` AND `cockpit_gate_status` AND `cockpit_gate_list` ALL bound AND cluster cloud-activated AND pre-flight functional probe pass/,
     );
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 469 — Thread run-scoped `runId` from `/cockpit:auto` into gate open/ack calls.
+//
+// Pins:
+//   - § step 1 Pre-flight `runId` derivation (compute-once + no-`:` invariant).
+//   - § step 1 § Pre-flight probe (UI mode) extended call shape with `runId` +
+//     `invalid-args` graceful-degradation branch + startup warning verbatim.
+//   - § In-memory loop state additions declares `runId` + `runIdEnabled`.
+//   - § step 3 startup sweep `gateId idempotency` names FOUR inputs under
+//     `runIdEnabled === true`; every sweep-time `cockpit_gate_open` passes
+//     `runId`; the § step 3 / § step 4 sub-step 0 answered-gate escape-hatch
+//     `cockpit_gate_ack(superseded)` passes `runId`.
+//   - Each of § Dispatch step 0 (D.1, D.2, D.3, D.4, D.7, D.11) declares the
+//     extended `cockpit_gate_status({issueRef, gateType, generation, runId})`
+//     call shape.
+//   - Each of § Dispatch step 0 (D.1, D.2, D.3, D.4) generation-drift branch
+//     declares the extended `cockpit_gate_ack(staleGateId, …, runId)` call
+//     shape (D.7 / D.11 NOT pinned — drift branch disabled per escalation
+//     guard).
+//   - Each of § Dispatch step 0 (D.1, D.2, D.3, D.4) `absent`-branch
+//     drift-detection `cockpit_gate_list({issueRef, gateType})` MUST NOT
+//     carry `runId` (FR-011 / R4).
+//   - § D.12 gate-answer: step 5 (operator apply), step 1 (no record), step 3
+//     (live-state supersession) `cockpit_gate_ack` calls each declare `runId`
+//     threading.
+//   - Enumerated live-path `cockpit_gate_open` `runId` threading across every
+//     drafting D.n (FR-016 / Batch 2 Q7 — sampling one call site is
+//     INSUFFICIENT).
+//   - Subagent dispatch prompts declare the explicit-literal `runId` rule
+//     (FR-015).
+//   - § step 3 sweep prose update names FOUR inputs under `runIdEnabled ===
+//     true` (FR-010).
+//   - § Pre-draft check — shared rules names `runId` as the fourth input under
+//     `runIdEnabled === true`.
+//   - `--gates=local` byte-path invariance: zero `runId` occurrences under
+//     `local`-branch prose.
+//
+// These are drift audits — if a heading rename, contract-rule edit, or literal
+// substitution breaks a pin, re-pin to the NEW contract in the same PR. Do NOT
+// weaken or delete an assertion to make the test pass (CLAUDE.md § Cockpit
+// playbook pins).
+// ────────────────────────────────────────────────────────────────────────────
+describe("469 runId threading", () => {
+  const RUN_ID_DERIVATION_LITERAL = "runId := <tracking-ref-slug>-<timestamp>";
+  const STATUS_CALL_LITERAL =
+    "cockpit_gate_status({ issueRef, gateType, generation, runId })";
+  const PROBE_CALL_LITERAL =
+    "cockpit_gate_list({ issueRef: <identity-ref>, gateType: <omitted>, runId: <runId> })";
+  const STARTUP_WARNING_VERBATIM =
+    "runId threading disabled for this session — cluster's cockpit MCP server does not accept runId on cockpit_gate_list (pre-generacy#1067). Run continues under today's 3-input gate identity; generacy#1053 (re-run terminal gates) will not be fixed for this session. Upgrade the cluster's generacy build to ≥ commit 82077f1a to enable runId threading.";
+
+  const SIX_STEP0_HEADERS: ReadonlyArray<string> = [
+    "D.1 — `waiting-for:clarification`",
+    "D.2 — `waiting-for:<artifact>-review`",
+    "D.3 — `waiting-for:implementation-review`",
+    "D.4 — `waiting-for:manual-validation`",
+    "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)",
+    "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+  ];
+  const ONE_TO_ONE_STEP0_HEADERS: ReadonlyArray<string> = SIX_STEP0_HEADERS.slice(0, 4);
+
+  it("469-1 § step 1 declares the runId derivation `runId := <tracking-ref-slug>-<timestamp>` immediately after ledger filename computation", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The derivation heading + verbatim expression must appear inside step 1.
+    expect(step1).toContain("Pre-flight `runId` derivation");
+    expect(step1).toContain(RUN_ID_DERIVATION_LITERAL);
+    // The derivation block explicitly names its placement relative to the
+    // ledger filename computation (per contracts/runid-derivation.md § Site:
+    // "IMMEDIATELY AFTER the ledger filename computation currently at
+    // `auto.md:209`"). The load-bearing narrative "Immediately after the
+    // ledger filename is computed above" pins the ordering rule at the
+    // derivation site itself — the pre-flight probe subsection (earlier in
+    // step 1 but later in the interpretive flow) references it but does
+    // NOT redeclare it.
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toMatch(
+      /\*\*Pre-flight `runId` derivation \(load-bearing, per #469 \/ FR-001\)\.\*\* Immediately after the ledger filename is computed above/,
+    );
+    // The derivation MUST run before any gate verb — pinned in the same
+    // sentence so an edit that folds it into a post-probe or post-sweep
+    // position trips this pin.
+    expect(step1Normalized).toMatch(
+      /This step MUST run before any gate verb fires — before the § Pre-flight probe \(UI mode\) below, before the § step 3 startup sweep opens any gate, and before any drafting D\.n dispatch/,
+    );
+  });
+
+  it("469-2 § step 1 declares the compute-once invariant (single derivation site; no consumer re-derives — V2 / FR-014)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The compute-once heading must appear.
+    expect(step1).toContain("Compute-once invariant (V2 / FR-014)");
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    // Every downstream consumer receives the pre-computed value as an
+    // EXPLICIT LITERAL.
+    expect(step1Normalized).toMatch(/explicit\s+literal/i);
+    expect(step1Normalized).toMatch(/NO consumer re-derives/i);
+    // FR-015 — the rule binds subagents too.
+    expect(step1Normalized).toMatch(
+      /rule binds subagents too \(per FR-015\)/,
+    );
+  });
+
+  it("469-3 § step 1 declares the no-`:` invariant on runId verbatim (V1 / FR-013)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    expect(step1).toContain("No-`:` invariant (V1 / FR-013)");
+    // The runtime assertion is named at the derivation site.
+    expect(step1).toContain("runId.indexOf(':') === -1");
+    // The rationale — a colon-bearing runId ambiguates key parsing — is
+    // pinned so a future ledger-format change cannot silently introduce one.
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toMatch(
+      /trailing composite-key segment.*generation.*may already contain colons/,
+    );
+  });
+
+  it("469-4 § step 1 § Pre-flight probe (UI mode) declares the extended probe call shape `cockpit_gate_list({issueRef, gateType: <omitted>, runId})` verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Verbatim probe call shape appears in the probe subsection.
+    expect(autoMd).toContain(PROBE_CALL_LITERAL);
+    // FR-011 — the probe is the SOLE cockpit_gate_list call carrying runId.
+    const autoMdNormalized = autoMd.replace(/\s+/g, " ");
+    expect(autoMdNormalized).toMatch(
+      /SOLE `cockpit_gate_list` call in the run that carries `runId`/,
+    );
+    // FR-011 — functional list calls never carry runId.
+    expect(autoMdNormalized).toMatch(
+      /functional `cockpit_gate_list` calls never carry it/,
+    );
+  });
+
+  it("469-5 § step 1 § Pre-flight probe (UI mode) declares the `invalid-args` graceful-degradation branch with the verbatim startup warning", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // The graceful-degrade routing text is present.
+    const autoMdNormalized = autoMd.replace(/\s+/g, " ");
+    expect(autoMdNormalized).toMatch(
+      /`\{ status: 'error', class: 'invalid-args', … \}`.*runIdEnabled := false.*graceful degradation, NOT a probe failure/,
+    );
+    // The startup warning is pinned verbatim (no normalization — the exact
+    // wording is load-bearing for the operator-visible degradation notice).
+    expect(autoMd).toContain(STARTUP_WARNING_VERBATIM);
+  });
+
+  it("469-6 § step 1 § Pre-flight probe (UI mode) declares runIdEnabled is decided ONCE at this site AND MUST NOT flip mid-run (V5 / FR-012)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // The decide-once, whole-session, MUST NOT flip mid-run heading.
+    expect(autoMd).toContain("`runId` capability outcome — `runIdEnabled` decided ONCE here, whole-session, MUST NOT flip mid-run (V5 / FR-012)");
+    // The rationale for forbidding a mid-run flip — mixed-identity run
+    // (startup sweep opens gates before any Step-0 check runs; reverting
+    // the read side would orphan sweep-opened 4-segment gates).
+    const autoMdNormalized = autoMd.replace(/\s+/g, " ");
+    expect(autoMdNormalized).toMatch(
+      /mixed-identity run.*orphan sweep-opened 4-segment gates/,
+    );
+  });
+
+  it("469-7 § In-memory loop state additions declares `runId: string | null` and `runIdEnabled: boolean` verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const section = extractSubheadingBlock(
+      autoMd,
+      "In-memory loop state additions (UI mode)",
+    );
+    // Verbatim declarations.
+    expect(section).toContain("`runId: string | null`");
+    expect(section).toContain("`runIdEnabled: boolean`");
+    // Under --gates=local runId is null and runIdEnabled is false.
+    const sectionNormalized = section.replace(/\s+/g, " ");
+    expect(sectionNormalized).toMatch(
+      /Under `--gates=local`.*`runIdEnabled` is `false` unconditionally/,
+    );
+    expect(sectionNormalized).toMatch(
+      /`runId` is `null` for symmetry with the UI-mode branch/,
+    );
+    // V6 — OMITTED under runIdEnabled === false (not null, not undefined).
+    expect(sectionNormalized).toMatch(
+      /not passed as `null`, not passed as `undefined`, not passed as an empty string/,
+    );
+    // MUST NOT flip mid-run (V5).
+    expect(sectionNormalized).toMatch(/mid-run flip is FORBIDDEN/);
+  });
+
+  it("469-8 § step 3 startup sweep declares every `cockpit_gate_open` call passes `runId` under `runIdEnabled === true` (per FR-004 / R11)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // The runId-on-open heading appears in step 3.
+    expect(step3).toContain(
+      "`runId` on every sweep-time `cockpit_gate_open` (per #469 / FR-004 / R11)",
+    );
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    // Every extended-trigger cockpit_gate_open in the sweep carries runId.
+    expect(step3Normalized).toMatch(
+      /every `cockpit_gate_open` call in the extended trigger set above.*passes the run's pre-flight-derived `runId`/,
+    );
+    // V6 omission rule.
+    expect(step3Normalized).toMatch(
+      /Under `runIdEnabled === false` the `runId` field is OMITTED from every sweep-time open call \(V6\)/,
+    );
+  });
+
+  it("469-9 § step 3 answered-gate escape-hatch AND § step 4 sub-step 0 per-wake escape-hatch declare `cockpit_gate_ack(superseded)` passes `runId` under `runIdEnabled === true`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    const step4 = extractInstructionsSteps(autoMd).get(4)!;
+    // Step 3 escape hatch ack passes runId (statement present alongside the
+    // 'answered-not-consumed — presumed stuck at cloud delivered/applied'
+    // detail literal). Case-insensitive on the leading "Under" — my/lowercase
+    // "under" and title-case "Under" both satisfy the pin; the load-bearing
+    // content is the runId threading rule, not the capitalization.
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    expect(step3Normalized).toMatch(
+      /[Uu]nder `runIdEnabled === true` this call ALSO passes the run's pre-flight-derived `runId`/,
+    );
+    expect(step3Normalized).toMatch(
+      /[Uu]nder `runIdEnabled === false` the `runId` field is OMITTED \(V6\)/,
+    );
+    // Step 4 sub-step 0 per-wake escape hatch ack passes runId.
+    const step4Normalized = step4.replace(/\s+/g, " ");
+    expect(step4Normalized).toMatch(
+      /[Uu]nder `runIdEnabled === true` this per-wake `cockpit_gate_ack` ALSO passes the run's pre-flight-derived `runId` verbatim/,
+    );
+    expect(step4Normalized).toMatch(
+      /[Uu]nder `runIdEnabled === false` the `runId` field is OMITTED — V6/,
+    );
+  });
+
+  it("469-10 § step 3 sweep `gateId idempotency` paragraph declares FOUR inputs under `runIdEnabled === true` (three under `runIdEnabled === false` — FR-010)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // The gateId idempotency paragraph must name the 4-input hash under
+    // runIdEnabled === true.
+    expect(step3).toContain(
+      "hash(issueRef, gateType, generation[, runId])",
+    );
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    // The pre-draft check names four inputs under runIdEnabled === true
+    // (three under runIdEnabled === false).
+    expect(step3Normalized).toMatch(
+      /names the same FOUR inputs under `runIdEnabled === true` \(three under `runIdEnabled === false`/,
+    );
+    // Pointer to the behaviour-change appendix in the spec.
+    expect(step3Normalized).toMatch(
+      /Two runs against the same tracking ref intentionally derive DIFFERENT `gateId`s/,
+    );
+    expect(step3Normalized).toMatch(
+      /specs\/469-problem-cockpit-auto-only\/spec\.md/,
+    );
+  });
+
+  it.each(SIX_STEP0_HEADERS)(
+    "469-11..16 § Dispatch %s Step 0 declares the extended cockpit_gate_status call shape `{issueRef, gateType, generation, runId}` verbatim",
+    (header) => {
+      const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+      const block = extractSubheadingBlock(autoMd, header);
+      expect(block).toContain(STATUS_CALL_LITERAL);
+      // Under runIdEnabled === false the runId field is OMITTED (V6).
+      expect(block).toContain(
+        "the `runId` field is OMITTED under `runIdEnabled === false` (V6)",
+      );
+      // The plugin reads runId verbatim from loop state — no re-derivation.
+      const blockNormalized = block.replace(/\s+/g, " ");
+      expect(blockNormalized).toMatch(
+        /`runId` is read verbatim from loop state; NO consumer re-derives \(V2 \/ FR-014\)/,
+      );
+    },
+  );
+
+  it.each(ONE_TO_ONE_STEP0_HEADERS)(
+    "469-17..20 § Dispatch %s Step 0 generation-drift branch declares `cockpit_gate_ack(staleGateId, …, runId)` under `runIdEnabled === true` (drift-ack + runId)",
+    (header) => {
+      const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+      const block = extractSubheadingBlock(autoMd, header);
+      // The drift-branch ack literal is still present (unchanged from #457).
+      expect(block).toContain(
+        "cockpit_gate_ack(staleGateId, outcome: 'superseded', detail: 'generation drift — content changed since original draft (was g<old>, now g<new>)')",
+      );
+      // The runId threading rule immediately follows the ack literal.
+      const blockNormalized = block.replace(/\s+/g, " ");
+      expect(blockNormalized).toMatch(
+        /under `runIdEnabled === true` this drift-branch ack ALSO passes the run's pre-flight-derived `runId` verbatim/,
+      );
+      expect(blockNormalized).toMatch(
+        /under `runIdEnabled === false` the `runId` field is OMITTED \(V6\)/,
+      );
+    },
+  );
+
+  it("469-21 § Dispatch step 0 `absent`-branch drift-detection `cockpit_gate_list({issueRef, gateType})` MUST NOT carry `runId` (FR-011 / R4) — asserted on every 1:1 Step 0 row (D.1, D.2, D.3, D.4)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    for (const header of ONE_TO_ONE_STEP0_HEADERS) {
+      const block = extractSubheadingBlock(autoMd, header);
+      // Positive pin: the runId-agnostic drift-detection call shape survives.
+      expect(block, `${header} must retain the runId-agnostic drift list call`).toContain(
+        "cockpit_gate_list({ issueRef, gateType })",
+      );
+      // Negative pin: no functional cockpit_gate_list call in this block
+      // carries runId. `cockpit_gate_list({...runId...})` on a functional
+      // (i.e. non-probe) call site would break this pin.
+      expect(
+        block,
+        `${header} absent-branch drift-detection cockpit_gate_list MUST NOT carry runId`,
+      ).not.toMatch(/cockpit_gate_list\(\{[^)]*runId[^)]*\}\)/);
+      // The FR-011 rationale is explicitly reproduced in the block: this
+      // drift-detection call is runId-agnostic; the sole runId-bearing list
+      // call in the run is the pre-flight capability probe.
+      const blockNormalized = block.replace(/\s+/g, " ");
+      expect(blockNormalized).toMatch(
+        /this drift-detection call MUST NOT carry `runId` \(per FR-011 \/ R4/,
+      );
+      expect(blockNormalized).toMatch(
+        /the sole `runId`-bearing list call in the run is the § step 1 § Pre-flight probe/,
+      );
+    }
+  });
+
+  it("469-22 § D.12 gate-answer step 5 (operator answer applied) `cockpit_gate_ack(applied)` declares `runId` threading verbatim under `runIdEnabled === true`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    // Step 5 heading and cockpit_gate_ack call literal are present.
+    expect(block).toContain("**Ack outcome**");
+    expect(block).toContain(`cockpit_gate_ack(gateId, outcome: "applied")`);
+    const blockNormalized = block.replace(/\s+/g, " ");
+    // The runId threading rule immediately follows the operator-apply ack.
+    expect(blockNormalized).toMatch(
+      /under `runIdEnabled === true` this operator-answer-applied ack ALSO passes the run's pre-flight-derived `runId` verbatim/,
+    );
+    // The rationale — `runId` is accepted-and-ignored on the ack path;
+    // `cockpit_gate_ack` targets an existing `gateId` and performs no key
+    // derivation (per GateAckInputSchema); the payload passes `runId` only
+    // for envelope symmetry with `cockpit_gate_open` — is present. Re-pinned
+    // from the prior (incorrect) "MUST target the SAME runId or the answer
+    // routes nowhere" wording, which described a derivation mechanism that
+    // does not exist on the ack path.
+    expect(blockNormalized).toMatch(
+      /envelope symmetry with `cockpit_gate_open`/,
+    );
+    expect(blockNormalized).toMatch(
+      /`runId` is \*\*accepted-and-ignored\*\* on the ack path/,
+    );
+    expect(blockNormalized).toMatch(
+      /`cockpit_gate_ack` targets an existing `gateId` and performs no key derivation \(per generacy `mcp\/gates\/schemas\.ts § GateAckInputSchema`/,
+    );
+  });
+
+  it("469-23 § D.12 gate-answer step 1 no-record `cockpit_gate_ack(superseded, 'no matching open record …')` declares `runId` threading under `runIdEnabled === true`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    // Step 1 no-record ack literal is present.
+    expect(block).toContain(
+      `cockpit_gate_ack(gateId, outcome: "superseded", detail: "no matching open record — likely startup-race or duplicate delivery")`,
+    );
+    const blockNormalized = block.replace(/\s+/g, " ");
+    // The runId threading rule appears immediately after the no-record ack
+    // (co-located in the same step-1 "Look up record" bullet). Pin the
+    // co-occurrence: the ack literal AND the runId threading sentence AND
+    // the V6 omission rule appear together in step 1.
+    expect(blockNormalized).toMatch(
+      /\*\*Look up record\*\*.*cockpit_gate_ack\(gateId, outcome: "superseded", detail: "no matching open record — likely startup-race or duplicate delivery"\).*[Uu]nder `runIdEnabled === true` this call ALSO passes the run's pre-flight-derived `runId` verbatim.*[Uu]nder `runIdEnabled === false` the `runId` field is OMITTED \(V6\)/s,
+    );
+  });
+
+  it("469-24 § D.12 gate-answer step 3 live-state supersession `cockpit_gate_ack(superseded, 'live state moved past …')` declares `runId` threading under `runIdEnabled === true`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    // Step 3 live-state ack literal is present.
+    expect(block).toContain(
+      `cockpit_gate_ack(gateId, outcome: "superseded", detail: "live state moved past <transition-class>")`,
+    );
+    const blockNormalized = block.replace(/\s+/g, " ");
+    expect(blockNormalized).toMatch(
+      /under `runIdEnabled === true` this live-state-supersession ack ALSO passes the run's pre-flight-derived `runId` verbatim/,
+    );
+  });
+
+  it("469-25 enumerated live-path `cockpit_gate_open` `runId` threading across every drafting D.n (D.1, D.2, D.3, D.4, D.6 G.4a, D.7 G.4b, D.8 G.5, D.10 G.4c, D.11 G.4d) — FR-016 / Batch 2 Q7 (sampling one call site is INSUFFICIENT)", () => {
+    // Enumerated by design (FR-016 / R11): every drafting D.n row must be
+    // named in the § UI-mode gate mapping header note so a future edit that
+    // adds a new drafting row cannot slip past the runId invariant.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const enumeratedNoteStart = autoMd.indexOf(
+      "**`runId` — compute-once, threaded as an explicit literal, propagated to gate-verb-issuing subagents",
+    );
+    expect(
+      enumeratedNoteStart,
+      "§ UI-mode gate mapping header must declare the enumerated-runId-threading note",
+    ).toBeGreaterThan(-1);
+    // Every named row (D.1 clarification through D.11 escalation) must appear
+    // in the enumerated list — sampling is INSUFFICIENT per FR-016.
+    const noteEnd = autoMd.indexOf("\n\n", enumeratedNoteStart);
+    const note = autoMd.slice(enumeratedNoteStart, noteEnd);
+    for (const enumeration of [
+      "D.1 clarification",
+      "D.2 artifact-review",
+      "D.3 implementation-review",
+      "D.4 manual-validation",
+      "D.6 G.4a escalation",
+      "D.7 G.4b escalation",
+      "D.8 G.5 phase-queue",
+      "D.10 G.4c escalation",
+      "D.11 G.4d escalation",
+    ]) {
+      expect(
+        note,
+        `enumerated drafting-D.n runId note must name ${enumeration}`,
+      ).toContain(enumeration);
+    }
+    // Under runIdEnabled === true the payload carries runId; under false it
+    // is OMITTED.
+    const noteNormalized = note.replace(/\s+/g, " ");
+    expect(noteNormalized).toMatch(
+      /passes the run's pre-flight-derived `runId`.*VERBATIM on the payload/,
+    );
+    expect(noteNormalized).toMatch(
+      /Under `runIdEnabled === false` the `runId` field is OMITTED from every payload \(V6\)/,
+    );
+    // No per-gateType runId column is added to the mapping table — runId is
+    // per-run, not per-gateType.
+    expect(noteNormalized).toMatch(
+      /No `runId` column is added to the mapping-table rows below because `runId` is per-run, NOT per-gateType/,
+    );
+  });
+
+  it("469-26 subagent dispatch prompts declare `runId` is passed as an EXPLICIT LITERAL (FR-015) — enumerated across every gate-verb-issuing subagent", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // The subagent dispatch prompt template addition heading exists.
+    expect(autoMd).toContain(
+      "**Subagent dispatch prompt template addition (per FR-015 / R8).**",
+    );
+    // The explicit-literal template line is pinned verbatim.
+    expect(autoMd).toContain(`runId: "<runId-literal>"`);
+    // The enumeration names every gate-verb-issuing subagent (D.1, D.2, D.3,
+    // D.4, D.7, D.11 drafting/analyzer/diagnosis subagents).
+    const templateStart = autoMd.indexOf(
+      "**Subagent dispatch prompt template addition",
+    );
+    const templateEnd = autoMd.indexOf(
+      "\n\n",
+      autoMd.indexOf("Rationale:", templateStart),
+    );
+    const template = autoMd.slice(templateStart, templateEnd);
+    for (const enumeration of [
+      "D.1 clarification-drafter",
+      "D.2 review-verdict analyzer",
+      "D.3 review-verdict analyzer",
+      "D.4 manual-validation summarizer",
+      "D.7 diagnosis subagent",
+      "D.11 merge-conflicts diagnosis subagent",
+    ]) {
+      expect(
+        template,
+        `subagent dispatch prompt template must name ${enumeration}`,
+      ).toContain(enumeration);
+    }
+    // Subagents MUST NOT re-derive runId from any other source (V2 / FR-014).
+    const templateNormalized = template.replace(/\s+/g, " ");
+    expect(templateNormalized).toMatch(
+      /Subagents MUST NOT re-derive `runId`/,
+    );
+    // Under runIdEnabled === false the runId: line is OMITTED from the
+    // prompt entirely.
+    expect(templateNormalized).toMatch(
+      /Under `runIdEnabled === false` the `runId:` line is OMITTED from the prompt entirely/,
+    );
+  });
+
+  it("469-27 § step 3 sweep prose update names FOUR inputs under `runIdEnabled === true` AND points at spec § Assumptions for the behaviour change (FR-010)", () => {
+    // Prose update to the load-bearing gateId-idempotency paragraph
+    // (previously auto.md:283) — the paragraph MUST name FOUR inputs under
+    // runIdEnabled === true (three under runIdEnabled === false) so the
+    // sweep-time and pre-draft-check gateId derivations coalesce.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    // Four inputs under runIdEnabled === true — matches the pre-draft check
+    // call shape declared in every Step 0 block (per 469-11..16).
+    expect(step3Normalized).toMatch(
+      /names the same FOUR inputs under `runIdEnabled === true`/,
+    );
+    // The pre-#469 3-input identity is preserved under runIdEnabled === false.
+    expect(step3Normalized).toMatch(
+      /three under `runIdEnabled === false`, matching the pre-#469 3-input identity/,
+    );
+    // Pointer to the behaviour-change appendix in the spec (§ Assumptions).
+    expect(step3Normalized).toMatch(
+      /specs\/469-problem-cockpit-auto-only\/spec\.md/,
+    );
+    expect(step3Normalized).toMatch(/behaviour change/);
+    // The negative pin: the pre-#469 "three inputs" language is GONE from the
+    // paragraph. (A future edit that reverts the prose to "the same three
+    // inputs" breaks this pin — the stale prose is worse than no prose per
+    // plan.md § Approach.)
+    expect(step3Normalized).not.toMatch(
+      /pre-draft `cockpit_gate_status\(\{issueRef, gateType, generation\}\) check[^.]*names the same three inputs/,
+    );
+  });
+
+  it("469-28 § Pre-draft check — shared rules names `runId` as the fourth input under `runIdEnabled === true`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const shared = extractSubheadingBlock(
+      autoMd,
+      "Pre-draft check — shared rules (UI mode)",
+    );
+    // The runId bullet must appear in the shared-rules section.
+    expect(shared).toContain(
+      "**`runId` (fourth input under `runIdEnabled === true`) — per #469 / FR-010 / FR-014.**",
+    );
+    const sharedNormalized = shared.replace(/\s+/g, " ");
+    // The runId is threaded as an explicit literal (V2 / FR-014).
+    expect(sharedNormalized).toMatch(
+      /threaded on the `cockpit_gate_status` payload as an explicit literal.*NEVER re-derived by the Step 0 site/,
+    );
+    // Under runIdEnabled === false the field is OMITTED and the pre-#469
+    // 3-input identity applies (V6).
+    expect(sharedNormalized).toMatch(
+      /Under `runIdEnabled === false` the field is OMITTED from the wire payload \(V6\) and the pre-#469 3-input identity applies/,
+    );
+    // Points at the compute-once + explicit-literal invariant in § UI-mode
+    // gate mapping for subagents (FR-015).
+    expect(sharedNormalized).toMatch(
+      /Subagent dispatch prompt template addition/,
+    );
+  });
+
+  it("469-29 `--gates=local` byte-path invariance — zero `runId` field appearances under `local`-branch prose in the six Step 0 blocks (SC-005 / US4 / FR-007)", () => {
+    // Under --gates=local Step 0 is skipped entirely — every Step 0 block
+    // starts with "Skip Step 0 entirely under `ResolvedGateMode === 'local'`".
+    // The 469 test pins runId onto Step 0's cockpit_gate_status call, but
+    // that call fires ONLY under UI. A local-branch mention of runId inside
+    // any Step 0 block would break the byte-path invariance the FR-007
+    // guarantee is written to preserve. This pin is a grep-style audit:
+    // it scans every Step 0 block for any co-occurrence of `local` and
+    // `runId` that could imply the field appears on a local-mode wire.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    for (const header of SIX_STEP0_HEADERS) {
+      const block = extractSubheadingBlock(autoMd, header);
+      // Extract the "Skip Step 0 entirely under local" sentence and its
+      // immediate context (5 words). Assert `runId` does not appear inside
+      // any explicit local-mode branch statement in this block. The rule is
+      // narrower than "block has no runId AT ALL" (the block DOES mention
+      // runId — that is the whole point of 469-11..16) — the audit ensures
+      // no local-branch sentence mentions runId as a wire field.
+      const localSkipSentence = block.match(
+        /Skip Step 0 entirely under `ResolvedGateMode === "local"`[^.]*\./,
+      );
+      expect(
+        localSkipSentence,
+        `${header} must retain the "Skip Step 0 entirely under local" sentence`,
+      ).not.toBeNull();
+      // Positive assertion: the local-branch skip sentence itself never
+      // names runId. (A future edit that inlines "and MUST NOT pass runId
+      // under local" here is fine — that is a NEGATIVE runId reference —
+      // so the pin is on POSITIVE wire-field references only, i.e. no
+      // `cockpit_gate_(open|ack|status|list)(\{...runId...\})` under the
+      // local branch.)
+      const localBranchText = localSkipSentence![0];
+      expect(
+        localBranchText,
+        `${header} local-branch skip sentence must not name runId as a wire field`,
+      ).not.toMatch(/cockpit_gate_\w+\([^)]*runId[^)]*\)/);
+    }
   });
 });
 
