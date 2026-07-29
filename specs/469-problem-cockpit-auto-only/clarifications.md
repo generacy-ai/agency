@@ -99,3 +99,56 @@ Spec's Assumptions section says "Generacy Phase B is deployed" but doesn't say w
 **Answer**: *Pending*
 
 ---
+
+## Batch 1 - 2026-07-29 05:19
+
+### Q1: runId string composition
+**Context**: FR-001 says the runId is 'sourced from the ledger filename timestamp (`<tracking-ref-slug>-<timestamp>`)'. This is ambiguous: the parenthetical could describe either the full ledger filename (which is what gets used as the runId) or just the timestamp portion inside it. This determines the exact string value sent to the cloud on every gate verb, and whether cross-ref runIds can ever collide at the same timestamp.
+**Question**: What is the exact string value the runId carries?
+**Options**:
+- A: The full ledger filename stem: `<tracking-ref-slug>-<timestamp>` (e.g., `epic-1053-20260729T143012Z`)
+- B: Just the timestamp portion: `<timestamp>` (e.g., `20260729T143012Z`)
+- C: A dedicated hash/UUID derived from the ledger filename but not equal to it
+
+**Answer**: *Pending*
+
+### Q2: resume semantics
+**Context**: The `cockpit_resume` verb exists and the spec doesn't say whether a resumed auto session reuses the original run's runId (recovered from the ledger) or mints a fresh one. This directly affects whether a `cockpit_gate_ack` issued after a resume can find the gate that the pre-resume `cockpit_gate_open` created (US2 acceptance) — and whether resume is treated as 'same run' or 'new run' by SC-003.
+**Question**: When an auto session is resumed (e.g., after crash or explicit `cockpit_resume`), what runId should the resumed session use?
+**Options**:
+- A: Recover the ORIGINAL runId from the existing ledger — resume is 'same run', in-flight gates remain reachable by ack
+- B: Mint a NEW runId — resume is treated as a fresh run and any in-flight gate opened by the crashed run becomes orphaned
+- C: Resume path is out of scope for this issue — leave undefined and address in a follow-up
+
+**Answer**: *Pending*
+
+### Q3: runId propagation to subagents
+**Context**: FR-002 requires runId stability across 'all wakes, all gate verbs, all subagent dispatches'. Subagents are spawned via the Agent tool with fresh context and cannot see the parent's variables. The spec doesn't say HOW the runId reaches a subagent that itself issues `cockpit_gate_open` — this is a real risk area because if each subagent recomputes the runId from its own view of the ledger filename, an inconsistent view (e.g., a fresh ledger file created mid-run) would break FR-002.
+**Question**: How does the runId reach subagents that issue gate verbs?
+**Options**:
+- A: Passed as an explicit literal in the subagent's prompt (playbook writes the runId into every dispatch)
+- B: Subagents re-derive the runId themselves from the ledger filename they discover on their own (requires an invariant that only one ledger file exists per run)
+- C: Stored in an environment variable or shared file that subagents read on entry
+
+**Answer**: *Pending*
+
+### Q4: landing-order enforcement
+**Context**: FR-008 mandates this change MUST NOT ship before Phase A (cloud) and Phase B (MCP read side) are deployed, because otherwise `cockpit_gate_status` returns `absent` for the run's own gates and the drafter duplicates inbox entries on every wake. The spec doesn't say how this ordering is enforced at runtime — process/discipline only, or an actual runtime guard.
+**Question**: How is the Phase A + Phase B deployment precondition enforced at runtime in the cluster?
+**Options**:
+- A: Deploy-order discipline only — no runtime check; humans coordinate the rollout
+- B: A capability probe at pre-flight (e.g., call `cockpit_gate_status` with a runId; if the server rejects the field, refuse to run auto)
+- C: An explicit environment/feature flag that must be set on the cluster to activate runId threading
+
+**Answer**: *Pending*
+
+### Q5: runId format constraints
+**Context**: The cloud storage layer (Phase A) accepts an optional runId, but the spec doesn't state what format constraints it imposes (character set, max length, case sensitivity). If the ledger filename stem contains characters that Firestore document IDs or the gate composite key can't handle (slashes, dots, colons, unicode), the write will fail on production data. This blocks safe implementation of FR-001.
+**Question**: What format constraints does the cloud (Phase A) require the runId string to satisfy?
+**Options**:
+- A: No constraints — Phase A accepts any UTF-8 string of any length
+- B: URL-safe / DNS-safe only: `[A-Za-z0-9._-]`, max 128 chars (typical Firestore doc-ID constraints)
+- C: Constraints exist but haven't been specified yet — a follow-up clarification is needed against generacy-cloud Phase A
+
+**Answer**: *Pending*
+
