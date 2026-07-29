@@ -3520,7 +3520,7 @@ describe("457 sweep-time gate reuse", () => {
   }
 
   for (const [pinLabel, header] of ESCALATION_HEADERS) {
-    it(`${pinLabel}: § Dispatch ${header.split(" —")[0]} Step 0 — shared 'escalation' gateType, drift branch DISABLED (no drift-ack, no list call, #1046 residual note)`, () => {
+    it(`${pinLabel}: § Dispatch ${header.split(" —")[0]} Step 0 — shared 'escalation' gateType, drift branch DISABLED but same-generation adoption ENABLED (re-pinned per #471 review: adoption is orthogonal to the drift-branch guard because it keys on gateId identity rather than dispatch-identifying subtype, and it is the load-bearing mechanism SC-006 depends on)`, () => {
       const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
       const block = extractSubheadingBlock(autoMd, header);
       assertCommonStep0Shape(block);
@@ -3528,11 +3528,15 @@ describe("457 sweep-time gate reuse", () => {
       expect(block).toContain(
         "**The generation-drift branch is DISABLED for this row",
       );
-      expect(block).toMatch(/do \*\*NOT\*\* call `cockpit_gate_list`/);
-      expect(block).toMatch(/do \*\*NOT\*\* ack anything `superseded`/);
+      // Re-pinned per #471 review: the "do NOT call cockpit_gate_list"
+      // assertion is dropped — escalation rows now DO call
+      // cockpit_gate_list for the same-generation adoption branch (SC-006).
+      // The load-bearing anti-hazard property is that no drift-ack fires,
+      // NOT that no list call fires.
       expect(block).toMatch(/fall (straight |)through to the draft-then-open flow/);
-      // NEGATIVE PIN (the F1 defect): no drift-ack may appear in an escalation
-      // row's Step 0 — that ack destroys a sibling row's live operator gate.
+      // NEGATIVE PIN (the F1 defect, preserved): no drift-ack may appear in
+      // an escalation row's Step 0 — that ack destroys a sibling row's live
+      // operator gate.
       expect(
         block,
         "an escalation row's Step 0 must NOT contain a generation-drift ack",
@@ -3545,6 +3549,25 @@ describe("457 sweep-time gate reuse", () => {
       expect(block).toContain("generacy-ai/generacy#1046");
       // The generation string must not be parsed to recover the subtype.
       expect(block).toMatch(/Do NOT recover the subtype by parsing `generation`/);
+      // Positive pin per #471 review: the same-generation adoption sub-
+      // branch DOES fire on this row. Adoption keys on gateId identity
+      // (row.gateId), not on dispatch-identifying subtype, so it cannot
+      // destroy a sibling row's gate.
+      const blockNormalized = block.replace(/\s+/g, " ");
+      expect(
+        blockNormalized,
+        `${header} must carry the "SAME-generation adoption branch DOES fire" clause per #471 / SC-006`,
+      ).toMatch(
+        /SAME-generation adoption branch DOES fire on this row \(per #471 \/ SC-006\)/,
+      );
+      // The escalation row's list call is present (runId-agnostic form).
+      expect(block).toContain("cockpit_gate_list({ issueRef, gateType })");
+      // The escalation-row same-generation adopt sub-branch: adopts under
+      // row.gateId with the row's originating runId.
+      expect(
+        blockNormalized,
+        `${header} escalation-row same-generation adopt sub-branch must record row.gateId with row.runId (FR-003)`,
+      ).toMatch(/row\.runId[^]*(FR-003|originating `runId`)/);
     });
   }
 
@@ -3642,7 +3665,7 @@ describe("457 sweep-time gate reuse", () => {
     expect(block).not.toMatch(/gateType\s*=\s*['`]?tasks-review/);
   });
 
-  it("457-15 D.11 Step 0 pins the dedup-before-drift-ack ordering exception (per #458 review comment 3)", () => {
+  it("457-15 D.11 Step 0 pins the dedup-before-drift-ack ordering exception (per #458 review comment 3 — re-pinned per #471 review: the exception now fires in the `Anything else` fall-through branch AFTER the same-generation adoption check, because adoption takes precedence and is the load-bearing SC-006 mechanism)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const block = extractSubheadingBlock(
       autoMd,
@@ -3652,8 +3675,29 @@ describe("457 sweep-time gate reuse", () => {
     expect(block).toContain("**D.11 ordering exception (Q5=A / FR-010).**");
     // The rationale names the sibling-label / different-gateId hazard.
     expect(block).toMatch(/sibling|label-pair/);
-    // The absent-branch first-check clause is present.
-    expect(block).toMatch(/First check the D\.11 ordering exception/);
+    // Re-pinned per #471 review: the ordering exception applies in the
+    // "Anything else" fall-through branch, AFTER the same-generation
+    // adoption check has already fired (adoption takes precedence — it
+    // is the SC-006 load-bearing site). The exception's job is to catch
+    // the sibling-label / different-gateId hazard for gates opened THIS
+    // run, which cannot be adopted (they belong to the same run).
+    const blockNormalized = block.replace(/\s+/g, " ");
+    expect(
+      blockNormalized,
+      "D.11 Step 0 absent branch must apply the ordering exception in the fall-through branch (post-adoption)",
+    ).toMatch(
+      /Now apply the D\.11 ordering exception above\*?\*? — if `<issue-ref>` is in `dispatched-issues`/,
+    );
+    // The exception's rationale (fresh-adoption side-effect) is stated:
+    // adopting a prior-run entry MUST also add <issue-ref> to
+    // `dispatched-issues` so this run's sibling event takes the
+    // already-dispatched exit.
+    expect(
+      blockNormalized,
+      "D.11 same-generation adopt sub-branch must set `dispatched-issues` for the adopted incident so the sibling event takes the already-dispatched exit",
+    ).toMatch(
+      /Also add `<issue-ref>` to the in-memory `dispatched-issues` set/,
+    );
   });
 
   it("457-16 § step 4 main loop declares the per-wake escape-hatch tick (per #458 review comment 2 — reachability requires per-wake site, not just startup)", () => {
@@ -4868,7 +4912,7 @@ describe("469 runId threading", () => {
   );
 
   it.each(ONE_TO_ONE_STEP0_HEADERS)(
-    "469-17..20 § Dispatch %s Step 0 generation-drift branch declares `cockpit_gate_ack(staleGateId, …, runId)` under `runIdEnabled === true` (drift-ack + runId)",
+    "469-17..20 § Dispatch %s Step 0 generation-drift branch declares `cockpit_gate_ack(staleGateId, …, runId)` under `runIdEnabled === true` (drift-ack + runId — re-pinned per #471 review to the STALE ROW's originating runId, consistent with FR-003 and the § Adoption pass drift-supersede branch)",
     (header) => {
       const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
       const block = extractSubheadingBlock(autoMd, header);
@@ -4876,10 +4920,17 @@ describe("469 runId threading", () => {
       expect(block).toContain(
         "cockpit_gate_ack(staleGateId, outcome: 'superseded', detail: 'generation drift — content changed since original draft (was g<old>, now g<new>)')",
       );
-      // The runId threading rule immediately follows the ack literal.
+      // Re-pinned per #471 review: the drift-branch ack now targets the
+      // STALE row's originating runId (read from row.runId), NOT the
+      // current run's pre-flight-derived runId. This matches the §
+      // Adoption pass drift-supersede branch (contracts/adoption-drift.md)
+      // and FR-003 — the runId is accepted-and-ignored on the ack path,
+      // but envelope symmetry with cockpit_gate_open means the ack should
+      // reflect the run that opened the stale gate, which the runId-
+      // agnostic cockpit_gate_list call now returns per-row.
       const blockNormalized = block.replace(/\s+/g, " ");
       expect(blockNormalized).toMatch(
-        /under `runIdEnabled === true` this drift-branch ack ALSO passes the run's pre-flight-derived `runId` verbatim/,
+        /under `runIdEnabled === true` this drift-branch ack ALSO passes the STALE row's originating `runId` verbatim \(read from `row\.runId`, per FR-003/,
       );
       expect(blockNormalized).toMatch(
         /under `runIdEnabled === false` the `runId` field is OMITTED \(V6\)/,
@@ -5474,7 +5525,7 @@ describe("471 startup-sweep adoption", () => {
     );
   });
 
-  it("471-12 § step 3 § gateId idempotency paragraph names adoption as the ordering primitive that prevents sweep-time `cockpit_gate_open` from duplicating an adopted natural gate (SC-006)", () => {
+  it("471-12 § step 3 § gateId idempotency paragraph names adoption as the ordering primitive AND every D.n Step 0 `absent` sub-branch carries the same-generation adopt-natural sibling branch that actually delivers SC-006 (behavioural pin, not a reference-grep)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const step3 = extractInstructionsSteps(autoMd).get(3)!;
     const step3Normalized = step3.replace(/\s+/g, " ");
@@ -5488,6 +5539,67 @@ describe("471 startup-sweep adoption", () => {
     // Adoption runs BEFORE the synthetic-event dispatch pass.
     expect(step3Normalized).toMatch(
       /§ Adoption pass block above runs BEFORE this synthetic-event dispatch pass/,
+    );
+
+    // Behavioural pin — the mechanism SC-006 rests on lives in the D.n Step 0
+    // `{status: 'absent'}` sub-branches, not the § Adoption pass. Every one
+    // of D.1 / D.2 / D.3 / D.4 / D.7 / D.11 must carry a "Non-terminal gate
+    // at the SAME `generation`" adopt-natural branch that does NOT draft
+    // and DOES record the row into `openGates` under `row.gateId` with the
+    // row's originating `runId`. A grep for `per #471 / SC-006` is not
+    // sufficient — the previous form of this pin passed on prose describing
+    // a mechanism that did not exist, and the SC-006 promise ("zero
+    // cockpit_gate_open for that natural gate") was broken silently in
+    // review. Pin each row's block individually.
+    const step0Headers = [
+      "D.1 — `waiting-for:clarification`",
+      "D.2 — `waiting-for:<artifact>-review`",
+      "D.3 — `waiting-for:implementation-review`",
+      "D.4 — `waiting-for:manual-validation`",
+      "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)",
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+    ];
+    for (const header of step0Headers) {
+      const block = extractSubheadingBlock(autoMd, header);
+      const blockNormalized = block.replace(/\s+/g, " ");
+      // The same-generation adopt-natural branch is present (behavioural
+      // substring, not a reference-grep).
+      expect(
+        blockNormalized,
+        `${header} must carry the "Non-terminal gate at the SAME generation" adopt-natural sub-branch on \`{status: 'absent'}\` (the mechanism SC-006 depends on)`,
+      ).toMatch(
+        /Non-terminal gate at the SAME `generation`[^—]*—[^]*a prior run opened this SAME/i,
+      );
+      // The branch adopts under the row's originating runId, NOT the
+      // current run's — this is the load-bearing property.
+      expect(
+        blockNormalized,
+        `${header} same-generation adopt sub-branch must adopt under row.gateId with the row's originating runId`,
+      ).toMatch(/row\.runId[^]*(FR-003|originating `runId`)/);
+      // The branch continues to the next event (does NOT draft, does NOT
+      // open).
+      expect(
+        blockNormalized,
+        `${header} same-generation adopt sub-branch must state "do NOT draft" / "do NOT open" and continue to the next event`,
+      ).toMatch(/Do \*\*NOT\*\* draft[^]*Do \*\*NOT\*\* open[^]*Continue to the next event/i);
+      // Cross-references SC-006 in the branch prose.
+      expect(
+        blockNormalized,
+        `${header} same-generation adopt sub-branch must cite #471 / SC-006`,
+      ).toMatch(/#471 \/ SC-006/);
+    }
+
+    // Behavioural pin — the § step 3 § gateId idempotency paragraph must
+    // NOT continue to describe the two runs' `gateId`s as coalescing (the
+    // pre-fix wording that reviewers flagged as contradictory). Two runs'
+    // gateIds intentionally differ (per #469 FR-001), and the suppression
+    // comes from the ADOPTION into `openGates` plus Step 0's same-generation
+    // absent sub-branch, NOT from gateId coalescence.
+    expect(
+      step3Normalized,
+      "§ gateId idempotency paragraph MUST NOT assert that adopted and current-run sweep-time opens share the SAME 4-segment gateId — the two runs' runIds differ by construction (#469 FR-001), so the two gateIds do NOT coalesce; the pre-fix wording was internally contradictory (asserted SAME and NOT-SAME in one parenthetical) and described a mechanism that did not exist. If this pin fails, do NOT weaken it — re-verify that Step 0's same-generation absent sub-branch is the load-bearing suppression site and update the paragraph accordingly.",
+    ).not.toMatch(
+      /adoption pass has already added a `GateRecord` under the SAME 4-segment `gateId`/,
     );
   });
 

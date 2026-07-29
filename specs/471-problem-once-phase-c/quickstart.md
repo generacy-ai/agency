@@ -73,7 +73,7 @@ grep 'gateType=clarification' .generacy/cockpit/auto-runs/<R2-ledger>.ledger | g
 
 **Setup**: R1 opened `clarification` on `<childN>` at `generation=g1`. R2 sweep derives `generation=g1` for the same natural gate (content unchanged between runs).
 
-**Behaviour**: The `cockpit_gate_list({ issueRef: <childN>, gateType: <omitted> })` call returns one non-terminal row for the clarification gate. The classifier picks `adopt-natural` (per [`contracts/adoption-sweep.md § Branch: adopt-natural`](./contracts/adoption-sweep.md)). The row is added to `openGates` with the R1 `runId` preserved. The sweep's subsequent `cockpit_gate_open` for the natural gate finds the entry under the same 4-segment `gateId` and skips (per SC-006).
+**Behaviour**: The `cockpit_gate_list({ issueRef: <childN>, gateType: <omitted> })` call returns one non-terminal row for the clarification gate. The classifier picks `adopt-natural` (per [`contracts/adoption-sweep.md § Branch: adopt-natural`](./contracts/adoption-sweep.md)). The row is added to `openGates` with the R1 `runId` preserved. The current run's derivation for the same natural gate produces a DIFFERENT 4-segment `gateId` from the prior-run row (because R1's `runId` and R2's `runId` differ — per §  gateId idempotency), so the sweep's subsequent D.1 dispatch calls `cockpit_gate_status` at the R2 `gateId` and gets `absent`. D.1 Step 0's `absent` branch then calls the runId-agnostic `cockpit_gate_list`, finds the SAME-generation prior-run row this adoption pass just adopted, takes the same-generation adopt branch, and continues to the next event — no `cockpit_gate_open` fires for this natural gate (per SC-006).
 
 **Operator sees**: ONE gate. Same content, same options.
 
