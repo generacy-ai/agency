@@ -21,7 +21,15 @@ The trade-off is that broad adoption keeps every prior-run inbox entry answerabl
 - C: **Adopt-and-ack-supersede on generation mismatch** — adopt rows whose `(gateType, generation)` matches; for rows whose `gateType` matches but `generation` differs, ack the prior-run gate `superseded` (targeting the prior-run's `runId` per FR-003) and draft fresh at the current generation. Rationale: this is what today's D.n Step-0 `generation-drift branch` does for the four dispatch rows that map 1:1 onto `gateType`; extending the same rule to adopted gates keeps the sweep and the live path symmetric. Note: `gateType: 'escalation'` disables the drift branch (per `auto.md` line 317; four dispatch rows share the one enum value); this option MUST preserve that carve-out.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: **A — adopt every non-terminal row for in-scope issues, with Q4's drift rule taking precedence.**
+
+B is self-defeating: it leaves non-matching rows orphaned, and an orphaned gate is the entire symptom this issue exists to remove. Narrowing the repair to the subset that needs it least is not a trade-off, it is a partial fix that will read as a complete one.
+
+The case B and C both miss is a **gateType** the current run would not draft at all — a prior run opened `implementation-review` on a child that has since moved to a phase where this run would draft `manual-validation`. The old gate is still open, still unanswered, still visible in the inbox, and under anything narrower than A it stays untracked forever.
+
+Adopting it is safe. The record carries a `dispatchClass` derived from `(gateType, generation)` by the same mapping-table rule, so if the operator answers it, D.12 routes on `(dispatchClass, optionId)` and it lands. If they never answer, an adopted `open` entry simply sits in `openGates` — the escape hatch only ticks `answered` entries, so nothing churns.
+
+**Precedence to state explicitly in the spec:** Q4's drift rule is the more specific rule and wins where it applies. Adopt broadly (Q1=A); but for a row whose `gateType` matches something the run would draft while `generation` differs, do not adopt at the stale generation — supersede and redraft per Q4=A.
 
 ---
 
@@ -41,7 +49,19 @@ If FR-001 means "once with the epic ref", child-issue gates from prior runs stay
 - C: **Per tracking ref, with a cross-issue list surface** — add a new/extended `cockpit_gate_list` mode that returns every non-terminal gate under a tracking-ref's transitive scope (epic + all children) in one call. Requires an upstream generacy change; likely out of scope for this phase per the spec's "Out of Scope" clause forbidding MCP schema changes.
 - D: Something else — please specify (e.g. per-issue call is only issued when the sweep would draft a gate for that issue).
 
-**Answer**: *Pending*
+**Answer**: **A — one call per in-scope issue. The issue text was wrong and this question caught it.**
+
+`cockpit_gate_list` filters by `issueRef`, and the gates that matter — D.1 clarification, D.2 clarification-review, D.3 plan-review, D.4 tasks-review, D.7 implementation-review, D.11 manual-validation — are opened against **child** issues. One call against the epic ref sees only D.6 and D.7-phase-complete gates on the epic body.
+
+B implements the repair for the rarest case and leaves the common one — a session dying with a clarification gate open on a child — exactly as orphaned as before. It would satisfy FR-001 as literally written while missing the point of the issue.
+
+C needs a cross-issue list mode upstream in generacy, which the spec's Out of Scope clause forbids and which would be a new MCP surface.
+
+D (call only for issues the sweep would draft for) misses precisely the orphans. A gate can be open on a child whose labels have since moved — that is one of the ways a gate gets orphaned in the first place — and those issues would not be in the trigger set, so their gates would never be seen.
+
+**Action**: rewrite FR-001 from "exactly once per tracking ref" to "exactly once per in-scope issue (the tracking ref itself plus every in-scope child)", with SC-004 / SC-005's log-grep assertions updated to N+1 rather than 1.
+
+The cost is N+1 startup calls instead of 1. That is acceptable: it happens once per run, the sweep already does per-issue work, and each call is a bounded 500-cap scan. Worth stating the count in the spec so nobody later "optimises" it back to one call.
 
 ---
 
@@ -62,7 +82,20 @@ The auto.md § "reuse-answered" branches at D.n Step 0 also handle this shape: t
 - D: **Ack-superseded on adoption for `answered` (retreat from FR-010)** — treat adopted `answered` entries identically to no-adoption: ack `superseded` on the spot with detail `'adopted-answered — answer not carried across runs'`, delete, and rely on the current run's D.n Step-0 to draft fresh from current labels. Loses the answer but keeps `openGates` shape unambiguous. Adoption applies to `status: 'open'` only.
 - E: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: **A — record with the counter at 1, and write down the limitation instead of implying it away.**
+
+A is right by elimination, but the spec must not present it as "the answer is preserved". It is not, reliably, and the reason is structural: **no surface returns the answer document.** `cockpit_gate_status` returns `{gateId, status}`; `cockpit_gate_list` returns `{gateId, gateType, generation, status, runId}`. Neither carries the operator's answer. `auto.md` already records this as a DATA GAP on the reuse path, and adoption inherits it wholesale.
+
+So the current run structurally cannot consume a prior-run answer on its own. What A actually buys is: if D.12 redelivery fires, the answer is consumed via the existing `deliveryId` dedup path; if it does not, the escape hatch supersedes after 3 sweeps and re-derives from current labels — which either dispatches correctly (labels moved) or re-asks (they did not).
+
+That worst case — the operator re-answers — is acceptable *and* self-healing, and no path produces a wrong action from a stale answer. Any option that supersedes immediately guarantees the re-ask even in the cases where redelivery would have worked, so A dominates.
+
+**Two things to add:**
+
+1. **State the limitation in the spec** rather than letting FR-010's "preserves an answer the operator may have already given" stand unqualified. It preserves the answer *if redelivery fires*; otherwise the operator is asked again.
+2. **File the follow-up** for a surface that returns the answer document (cloud-side, so adoption can consume a prior-run answer directly). That is the change that would make FR-010's promise unconditional, and it is out of scope here.
+
+Add an FR pinning the counter's initial value at `1` for adopted `answered` entries.
 
 ---
 
@@ -82,7 +115,15 @@ The spec is silent on whether the adoption path applies the drift branch. FR-002
 - C: **Skip the adoption (leave prior gate orphaned) and draft fresh** — the sweep sees the prior-run gate but does not adopt it (generation mismatch); drafts a fresh `g2` gate. Duplicate inbox symptom is reintroduced for the drift case only; the operator sees both G1 and G2. Rationale: keeps adoption path simple; the drift case is rare enough to tolerate.
 - D: Something else — please specify.
 
-**Answer**: *Pending*
+**Answer**: **A — mirror the live-path drift branch, escalation carve-out preserved.**
+
+B is the dangerous one and should be rejected on correctness, not preference. Adopting a gate at its prior `generation` means an operator verdict computed against **old content** gets applied to **current content** — a new PR head SHA, a revised answer-set, an advanced phase. That is precisely the hazard the live-path drift branch exists to prevent, and `auto.md` already says so at the drift site: *"Re-attaching would apply an operator verdict computed against an old head SHA to current content — the correctness hazard D.12's supersession checks exist to prevent."* The adoption path does not get a different answer to the same question just because the gate arrived by a different route.
+
+C reintroduces the duplicate-inbox symptom for the drift case, which is the one case where duplication is most likely (content moves while a session is dead).
+
+A keeps the sweep and the live path symmetric, which matters for a reason beyond elegance: there is now one drift rule to reason about, not two that can diverge. **Preserve the `escalation` carve-out exactly** — four dispatch rows share that one enum value and the wire carries no subtype discriminator, so the drift branch cannot tell them apart (upstream generacy#1046). A prior-run `escalation` gate is adopted under Q1=A and left non-terminal; it must not be superseded.
+
+Corroborating the FR-003 detail the question raises: the ack works regardless of which run opened the gate. `GateAckInputSchema` documents `runId` as *"accepted-and-ignored on the ack path — no derivation happens here (the ack targets an existing gateId)"*, and `GateOutcomeWireSchema` drops it before the wire. So superseding a prior-run gate needs nothing special.
 
 ---
 
@@ -102,6 +143,22 @@ If the adoption pass hard-fails on `cockpit_gate_list` error, a transient cloud 
 - C: **Bounded retry, then hard-fail** — retry the `cockpit_gate_list` call with backoff (e.g. 3 attempts, 1s / 2s / 4s); on final failure, hard-fail per (A). Rationale: absorbs transient blips without silently downgrading. Requires pinning the retry policy in an FR.
 - D: Something else — please specify (e.g. bounded retry then soft-fail; per-issue soft-fail so one child's failure doesn't abort the whole run).
 
-**Answer**: *Pending*
+**Answer**: **D — per-issue defer, and no new retry layer, because one already exists.**
+
+**C would stack retries on top of retries.** `cockpit_gate_list` already retries internally: `withRetry({ fn: () => client.listGates(...), schedule: QUERY_RETRY_SCHEDULE, shouldRetry: isRetryableGateQueryError })`. `auto.md` states the budget in the probe section — 3 attempts, ~5s backoff, 5000ms per attempt, ~20s worst case. Adding 1s/2s/4s in the playbook would turn a transient blip into ~35s of blocking per failing issue, and with Q2=A there are N+1 of them. By the time the playbook sees `status: 'error'`, the transient case has already been absorbed.
+
+**A is too blunt.** Aborting an entire run because one read failed is a large blast radius for a repair path — and under Q2=A a single child's failure would take down a run whose other N issues adopted fine.
+
+**B silently produces the exact symptom** the issue exists to remove, and does it in the situation where nobody is looking.
+
+**Resolution: on a per-issue `cockpit_gate_list` error, skip both adoption and drafting for that issue this pass.** Write a ledger row naming the issue and the error class. Do not abort the run; do not draft without having successfully attempted adoption.
+
+This is not a new pattern — it is the one `auto.md` already uses for a sweep-time `cockpit_gate_open` failure:
+
+> the specific gate's initiation is DEFERRED to the main loop's first natural wake … The record is NOT opened, but the underlying event WILL re-fire naturally because the label is persistent.
+
+Same reasoning applies exactly: the label is persistent, the event re-fires, the next wake retries adoption for that issue. No duplicates, no aborted run, and the failure is visible in the ledger rather than inferred from a duplicate gate appearing later.
+
+Add an FR pinning the ledger row shape and the defer-not-draft rule, and a success criterion that a failed adoption call for one issue leaves the other in-scope issues' adoption unaffected.
 
 ---
