@@ -4777,7 +4777,7 @@ describe("469 runId threading", () => {
     );
   });
 
-  it("469-9 § step 3 answered-gate escape-hatch AND § step 4 sub-step 0 per-wake escape-hatch declare `cockpit_gate_ack(superseded)` passes `runId` under `runIdEnabled === true`", () => {
+  it("469-9 § step 3 answered-gate escape-hatch AND § step 4 sub-step 0 per-wake escape-hatch declare `cockpit_gate_ack(superseded)` passes `runId` under `runIdEnabled === true` (re-pinned per #471 to the new `openGates[gateId].runId` sourcing rule; runId envelope-symmetry preserved from #469 — the two acks compose)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const step3 = extractInstructionsSteps(autoMd).get(3)!;
     const step4 = extractInstructionsSteps(autoMd).get(4)!;
@@ -4786,20 +4786,43 @@ describe("469 runId threading", () => {
     // detail literal). Case-insensitive on the leading "Under" — my/lowercase
     // "under" and title-case "Under" both satisfy the pin; the load-bearing
     // content is the runId threading rule, not the capitalization.
+    //
+    // Re-pin per #471: the ack ALSO passes runId (envelope symmetry rule
+    // from #469 survives), AND the runId is now READ from
+    // `openGates[gateId].runId` (NOT the run-wide loop-state runId — that
+    // pre-#471 wording is gone from this site because adopted entries carry
+    // a different runId than the current run).
     const step3Normalized = step3.replace(/\s+/g, " ");
     expect(step3Normalized).toMatch(
-      /[Uu]nder `runIdEnabled === true` this call ALSO passes the run's pre-flight-derived `runId`/,
+      /[Uu]nder `runIdEnabled === true` this call ALSO passes `runId`/,
+    );
+    expect(step3Normalized).toMatch(
+      /the `runId` value is READ from `openGates\[gateId\]\.runId`/,
     );
     expect(step3Normalized).toMatch(
       /[Uu]nder `runIdEnabled === false` the `runId` field is OMITTED \(V6\)/,
     );
-    // Step 4 sub-step 0 per-wake escape hatch ack passes runId.
+    // Step 4 sub-step 0 per-wake escape hatch ack passes runId, same
+    // re-pinned rule (READ from openGates[gateId].runId).
     const step4Normalized = step4.replace(/\s+/g, " ");
     expect(step4Normalized).toMatch(
-      /[Uu]nder `runIdEnabled === true` this per-wake `cockpit_gate_ack` ALSO passes the run's pre-flight-derived `runId` verbatim/,
+      /[Uu]nder `runIdEnabled === true` this per-wake `cockpit_gate_ack` ALSO passes `runId` verbatim/,
+    );
+    expect(step4Normalized).toMatch(
+      /the `runId` value is READ from `openGates\[gateId\]\.runId`/,
     );
     expect(step4Normalized).toMatch(
       /[Uu]nder `runIdEnabled === false` the `runId` field is OMITTED — V6/,
+    );
+    // Negative pin: the pre-#471 wording "the run's pre-flight-derived
+    // `runId` verbatim for envelope symmetry" is GONE from both sites (its
+    // replacement is the new READ-from-openGates rule). A future edit that
+    // reverts either site to the pre-#471 phrasing breaks this pin.
+    expect(step3Normalized).not.toMatch(
+      /this call ALSO passes the run's pre-flight-derived `runId` for envelope symmetry with `cockpit_gate_open`/,
+    );
+    expect(step4Normalized).not.toMatch(
+      /this per-wake `cockpit_gate_ack` ALSO passes the run's pre-flight-derived `runId` verbatim for envelope symmetry with `cockpit_gate_open`/,
     );
   });
 
@@ -4892,16 +4915,22 @@ describe("469 runId threading", () => {
     }
   });
 
-  it("469-22 § D.12 gate-answer step 5 (operator answer applied) `cockpit_gate_ack(applied)` declares `runId` threading verbatim under `runIdEnabled === true`", () => {
+  it("469-22 § D.12 gate-answer step 5 (operator answer applied) `cockpit_gate_ack(applied)` declares `runId` threading verbatim under `runIdEnabled === true` (re-pinned per #471 to the new `openGates[event.gateId].runId` sourcing rule; envelope-symmetry rationale preserved from #469 — the two acks compose)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
     // Step 5 heading and cockpit_gate_ack call literal are present.
     expect(block).toContain("**Ack outcome**");
     expect(block).toContain(`cockpit_gate_ack(gateId, outcome: "applied")`);
     const blockNormalized = block.replace(/\s+/g, " ");
-    // The runId threading rule immediately follows the operator-apply ack.
+    // Re-pin per #471: the ack ALSO passes runId (envelope symmetry rule
+    // from #469 survives — the payload carries runId), AND the runId is
+    // now READ from `openGates[event.gateId].runId` (NOT the run-wide
+    // loop-state runId — that pre-#471 wording is gone from this site).
     expect(blockNormalized).toMatch(
-      /under `runIdEnabled === true` this operator-answer-applied ack ALSO passes the run's pre-flight-derived `runId` verbatim/,
+      /under `runIdEnabled === true` this operator-answer-applied ack ALSO passes `runId` verbatim/,
+    );
+    expect(blockNormalized).toMatch(
+      /the `runId` value is READ from `openGates\[event\.gateId\]\.runId`/,
     );
     // The rationale — `runId` is accepted-and-ignored on the ack path;
     // `cockpit_gate_ack` targets an existing `gateId` and performs no key
@@ -4918,6 +4947,13 @@ describe("469 runId threading", () => {
     );
     expect(blockNormalized).toMatch(
       /`cockpit_gate_ack` targets an existing `gateId` and performs no key derivation \(per generacy `mcp\/gates\/schemas\.ts § GateAckInputSchema`/,
+    );
+    // Negative pin: the pre-#471 wording "the run's pre-flight-derived
+    // `runId` verbatim for envelope symmetry" is GONE from this ack site
+    // (replaced by the new READ-from-openGates rule). A future edit that
+    // reverts to the pre-#471 phrasing breaks this pin.
+    expect(blockNormalized).not.toMatch(
+      /this operator-answer-applied ack ALSO passes the run's pre-flight-derived `runId` verbatim for envelope symmetry with `cockpit_gate_open`/,
     );
   });
 
@@ -4938,7 +4974,7 @@ describe("469 runId threading", () => {
     );
   });
 
-  it("469-24 § D.12 gate-answer step 3 live-state supersession `cockpit_gate_ack(superseded, 'live state moved past …')` declares `runId` threading under `runIdEnabled === true`", () => {
+  it("469-24 § D.12 gate-answer step 3 live-state supersession `cockpit_gate_ack(superseded, 'live state moved past …')` declares `runId` threading under `runIdEnabled === true` (re-pinned per #471 to the new `openGates[gateId].runId` sourcing rule; envelope-symmetry rationale preserved from #469 — the two acks compose)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
     // Step 3 live-state ack literal is present.
@@ -4946,8 +4982,21 @@ describe("469 runId threading", () => {
       `cockpit_gate_ack(gateId, outcome: "superseded", detail: "live state moved past <transition-class>")`,
     );
     const blockNormalized = block.replace(/\s+/g, " ");
+    // Re-pin per #471: the ack ALSO passes runId (envelope symmetry rule
+    // from #469 survives), AND the runId is now READ from
+    // `openGates[gateId].runId` (NOT the run-wide loop-state runId — that
+    // pre-#471 wording is gone from this site).
     expect(blockNormalized).toMatch(
-      /under `runIdEnabled === true` this live-state-supersession ack ALSO passes the run's pre-flight-derived `runId` verbatim/,
+      /under `runIdEnabled === true` this live-state-supersession ack ALSO passes `runId` verbatim/,
+    );
+    expect(blockNormalized).toMatch(
+      /the `runId` value is READ from `openGates\[gateId\]\.runId`/,
+    );
+    // Negative pin: the pre-#471 wording "the run's pre-flight-derived
+    // `runId` verbatim" is GONE from this ack site (replaced by the new
+    // READ-from-openGates rule). A future edit that reverts breaks the pin.
+    expect(blockNormalized).not.toMatch(
+      /this live-state-supersession ack ALSO passes the run's pre-flight-derived `runId` verbatim \(per FR-005/,
     );
   });
 
@@ -5136,6 +5185,471 @@ describe("469 runId threading", () => {
         localBranchText,
         `${header} local-branch skip sentence must not name runId as a wire field`,
       ).not.toMatch(/cockpit_gate_\w+\([^)]*runId[^)]*\)/);
+    }
+  });
+});
+
+describe("471 startup-sweep adoption", () => {
+  // Shared helper: extract the § Adoption pass block from within step 3's body.
+  // The block begins at the "**Adoption pass (UI mode)" marker and runs until
+  // the next **bold-header** paragraph marker within step 3 (either the
+  // § Synthetic-event dispatch marker or the next sub-block). Returns the
+  // adoption-pass block text.
+  function extractAdoptionPassBlock(autoMd: string): string {
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    const startMarker = "**Adoption pass (UI mode)";
+    const startIdx = step3.indexOf(startMarker);
+    if (startIdx === -1) {
+      throw new Error(
+        "§ Adoption pass (UI mode) block not found in step 3 body",
+      );
+    }
+    // The next sub-block heading in step 3 after Adoption pass is
+    // "**Synthetic-event dispatch". End the block there.
+    const endMarker = "**Synthetic-event dispatch";
+    const endIdx = step3.indexOf(endMarker, startIdx);
+    if (endIdx === -1) {
+      throw new Error(
+        "§ Synthetic-event dispatch block not found after § Adoption pass",
+      );
+    }
+    return step3.slice(startIdx, endIdx);
+  }
+
+  it("471-1 § step 3 declares § Adoption pass (UI mode) block positioned AFTER § Answered-gate parked-forever escape hatch and BEFORE § Synthetic-event dispatch (per contracts/adoption-sweep.md § Ordering)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // The three sibling sub-block headings within step 3.
+    const escapeHatchIdx = step3.indexOf(
+      "**Answered-gate parked-forever escape hatch (UI mode only).**",
+    );
+    const adoptionIdx = step3.indexOf("**Adoption pass (UI mode)");
+    const syntheticIdx = step3.indexOf("**Synthetic-event dispatch");
+    expect(
+      escapeHatchIdx,
+      "§ Answered-gate parked-forever escape hatch must be present in step 3",
+    ).toBeGreaterThan(-1);
+    expect(
+      adoptionIdx,
+      "§ Adoption pass (UI mode) block must be present in step 3",
+    ).toBeGreaterThan(-1);
+    expect(
+      syntheticIdx,
+      "§ Synthetic-event dispatch block must be present in step 3",
+    ).toBeGreaterThan(-1);
+    // Ordering: escape hatch < adoption < synthetic.
+    expect(escapeHatchIdx).toBeLessThan(adoptionIdx);
+    expect(adoptionIdx).toBeLessThan(syntheticIdx);
+  });
+
+  it("471-2 § Adoption pass declares the call shape `cockpit_gate_list({ issueRef: <ref>, gateType: <omitted> })` verbatim and MUST NOT carry `runId` on the payload (FR-005 / V8)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    // Positive pin: the exact functional list call shape appears verbatim.
+    expect(adoption).toContain(
+      "cockpit_gate_list({ issueRef: <ref>, gateType: <omitted> })",
+    );
+    // Negative pin: NO `cockpit_gate_list(...runId...)` occurrence anywhere
+    // in the adoption-pass block. FR-005 forbids the field on the payload.
+    expect(
+      adoption,
+      "§ Adoption pass functional cockpit_gate_list call MUST NOT carry runId",
+    ).not.toMatch(/cockpit_gate_list\([^)]*runId[^)]*\)/);
+  });
+
+  it("471-3 § Adoption pass declares the N+1 count rule verbatim (one call per in-scope issue; tracking ref + every in-scope child)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // The literal "N+1" count phrase for an N-child epic.
+    expect(adoptionNormalized).toMatch(
+      /exactly ONE `cockpit_gate_list` call per in-scope issue/,
+    );
+    expect(adoptionNormalized).toMatch(
+      /tracking ref itself PLUS every in-scope child/,
+    );
+    // FR-001 / SC-008 pointer + N+1 arithmetic for N-child epics.
+    expect(adoptionNormalized).toMatch(
+      /For an epic with N in-scope children this is N\+1 calls/,
+    );
+    expect(adoptionNormalized).toMatch(/FR-001 \/ SC-008/);
+  });
+
+  it("471-4 § Adoption pass declares the broad-adoption rule (FR-009) — every non-terminal row for an in-scope issue is adopted, including rows whose (gateType, generation) does NOT match a natural gate", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // Broad adoption rule heading references FR-009.
+    expect(adoptionNormalized).toMatch(/Broad adoption rule \(per FR-009/);
+    // "adopt EVERY row" / "including rows whose (gateType, generation) does
+    // NOT match" verbatim.
+    expect(adoptionNormalized).toMatch(/adopt EVERY row into `openGates`/);
+    expect(adoptionNormalized).toMatch(
+      /including rows whose `\(gateType, generation\)` does NOT match/,
+    );
+    // dispatchClass mapping rule reused verbatim.
+    expect(adoptionNormalized).toMatch(
+      /Compute `dispatchClass` from `\(row\.gateType, row\.generation\)`/,
+    );
+    // The record carries per-entry `runId: row.runId` verbatim.
+    expect(adoptionNormalized).toMatch(/runId: row\.runId/);
+  });
+
+  it("471-5 § Adoption pass declares the FR-013 generation-drift branch verbatim (ack `superseded` targeting row's `runId`; four drift-enabled gateTypes; deferred draft)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // Drift-branch heading references FR-013 / contracts/adoption-drift.md.
+    expect(adoptionNormalized).toMatch(
+      /Generation-drift branch \(per FR-013/,
+    );
+    expect(adoptionNormalized).toMatch(/contracts\/adoption-drift\.md/);
+    // Four drift-enabled gateTypes named verbatim.
+    expect(adoptionNormalized).toMatch(
+      /row\.gateType ∈ \{clarification, artifact-review, implementation-review, manual-validation\}/,
+    );
+    // The ack call literal contains gateId: row.gateId, outcome:
+    // 'superseded', and runId: row.runId (targeting the row's originating
+    // runId per FR-003). Split into two assertions because the `detail:`
+    // string carries embedded commas and a single regex over the whole call
+    // would over-constrain the wording of the detail literal.
+    expect(adoptionNormalized).toMatch(
+      /cockpit_gate_ack\(\{\s*gateId: row\.gateId,\s*outcome: 'superseded'/,
+    );
+    expect(adoptionNormalized).toMatch(/runId: row\.runId/);
+    // Deferred-draft rule verbatim.
+    expect(adoptionNormalized).toMatch(/do NOT add the row to `openGates`/);
+    expect(adoptionNormalized).toMatch(/do NOT draft here/);
+    // Detail string sourced verbatim from the live-path drift branch.
+    expect(adoptionNormalized).toMatch(
+      /SAME string the live-path drift branch uses/,
+    );
+    expect(adoptionNormalized).toMatch(
+      /generation drift — content changed since original draft/,
+    );
+  });
+
+  it("471-6 § Adoption pass declares the `escalation` carve-out verbatim (FR-013 / V4 / SC-011) — `row.gateType === 'escalation'` DISABLES the drift branch; adopted at stale generation, left non-terminal", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // Carve-out heading references FR-013 / V4 / SC-011.
+    expect(adoptionNormalized).toMatch(
+      /`escalation` carve-out \(per FR-013 \/ V4 \/ SC-011\)/,
+    );
+    // Verbatim DISABLE rule for escalation gateType.
+    expect(adoptionNormalized).toMatch(
+      /`row\.gateType === 'escalation'` DISABLES the drift branch/,
+    );
+    // Prior-run escalation rows take broad-adopt at stale generation.
+    expect(adoptionNormalized).toMatch(
+      /Prior-run `escalation` rows with generation drift take the BROAD-adopt branch instead/,
+    );
+    expect(adoptionNormalized).toMatch(
+      /adopted at their stale generation, left non-terminal/,
+    );
+    // Rationale references generacy#1046.
+    expect(adoptionNormalized).toMatch(/generacy#1046/);
+  });
+
+  it("471-7 § Adoption pass declares adopted-`answered` counter initialisation: `answeredGateSweepCounter[row.gateId] = 1` at adopt time (FR-010 / SC-012 / V6)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // Counter init heading references FR-010 / SC-012.
+    expect(adoptionNormalized).toMatch(
+      /Adopted-`answered` counter initialisation \(per FR-010 \/ SC-012/,
+    );
+    // Verbatim initialisation to 1.
+    expect(adoption).toContain(
+      "`answeredGateSweepCounter[row.gateId] = 1`",
+    );
+    // Rationale references the recorded-sweep-is-1 semantic from #457.
+    expect(adoptionNormalized).toMatch(
+      /matches the reuse-answered branch semantics established by #457/,
+    );
+    // Load-bearing threshold `3` still applies; escape hatch fires at S+2.
+    expect(adoptionNormalized).toMatch(
+      /load-bearing threshold `3`/,
+    );
+  });
+
+  it("471-8 § Adoption pass declares the FR-014 defer-not-draft rule verbatim (ledger row shape; continue with other issues; do not abort)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // Defer heading references FR-014 / SC-013.
+    expect(adoptionNormalized).toMatch(
+      /Per-issue defer-on-error rule \(per FR-014 \/ SC-013/,
+    );
+    // Exclusive-or rule: skip BOTH adoption AND drafting for issue X.
+    expect(adoptionNormalized).toMatch(
+      /SKIP BOTH adoption AND drafting for issue X/,
+    );
+    // Verbatim ledger row shape.
+    expect(adoption).toContain(
+      "`startup · adoption-list-error · <issueRef> · <errorClass> · deferred-to-next-wake`",
+    );
+    // Continue-with-other-issues rule.
+    expect(adoptionNormalized).toMatch(/Continue with the next in-scope issue/);
+    // Do-not-abort rule.
+    expect(adoptionNormalized).toMatch(/do NOT abort the run/);
+    // Companion paragraph § Deferred-to-loop behavior on adoption-path
+    // cockpit_gate_list failure declares the mirror shape (T009 output).
+    // This assertion is not strictly the adoption-pass block, but the FR-014
+    // shape references its companion.
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    expect(step3).toMatch(
+      /Deferred-to-loop behavior on adoption-path `cockpit_gate_list` failure/,
+    );
+  });
+
+  it("471-9 § Adoption pass declares the FR-006 UI-mode-only guard verbatim (dead prose under `ResolvedGateMode === \"local\"`)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // UI-mode-only guard heading references FR-006 / V9.
+    expect(adoptionNormalized).toMatch(
+      /UI-mode-only guard \(per FR-006 \/ V9/,
+    );
+    // Verbatim dead-prose declaration under local.
+    expect(adoptionNormalized).toMatch(
+      /entire § Adoption pass block is dead prose under `ResolvedGateMode === "local"`/,
+    );
+    // No side-effects under local: no list calls, no openGates writes.
+    expect(adoptionNormalized).toMatch(
+      /No `cockpit_gate_list` calls, no `openGates` writes, no ledger rows/,
+    );
+  });
+
+  it("471-10 § Adoption pass declares the FR-005 no-`runId` invariant on the functional list call verbatim (MUST NOT be present on the payload)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // Verbatim "MUST NOT be present" clause on the payload.
+    expect(adoptionNormalized).toMatch(
+      /The `runId` field MUST NOT be present on the payload — omitted, not `null`, not `undefined`, not `""`/,
+    );
+    // References FR-005 / V8 / R4.
+    expect(adoptionNormalized).toMatch(/per FR-005 \/ V8 \/ R4/);
+    // Reinforcement of #469 FR-011 from the consumer end.
+    expect(adoptionNormalized).toMatch(
+      /reinforces #469 FR-011 from the consumer end/,
+    );
+    // The pre-flight probe remains the SOLE list call carrying runId.
+    expect(adoptionNormalized).toMatch(
+      /pre-flight capability probe.*remains the SOLE `cockpit_gate_list` call in the run that carries `runId`/,
+    );
+  });
+
+  it("471-11 § In-memory loop state additions declares `openGates` records carry per-entry `runId` (current-run entries carry current-run runId; adopted entries carry row's originating runId)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const section = extractSubheadingBlock(
+      autoMd,
+      "In-memory loop state additions (UI mode)",
+    );
+    const sectionNormalized = section.replace(/\s+/g, " ");
+    // Per-entry runId is declared MANDATORY.
+    expect(sectionNormalized).toMatch(
+      /Per-entry `runId: string` on `GateRecord` — MANDATORY \(per #471 \/ FR-003 \/ FR-004/,
+    );
+    // Current-run entries carry current-run runId (item a).
+    expect(sectionNormalized).toMatch(
+      /Current-run entries.*every entry added by the CURRENT run's sweep-time or live-path `cockpit_gate_open` success carries the current-run `runId`/,
+    );
+    // Adopted entries carry row's originating runId (item b).
+    expect(sectionNormalized).toMatch(
+      /Adopted entries.*carries the row's ORIGINATING `runId`, read verbatim from the `cockpit_gate_list` row/,
+    );
+    // Every downstream cockpit_gate_ack for an openGates entry reads the
+    // per-entry runId, NOT the run-wide loop-state runId.
+    expect(sectionNormalized).toMatch(
+      /Every downstream `cockpit_gate_ack` for an `openGates` entry MUST read `openGates\[gateId\]\.runId`, NOT the run-wide loop-state `runId`/,
+    );
+    // D.12 step 1 no-record ack is the SOLE ack path that continues to
+    // use the run-wide loop-state runId (the drop path where no openGates
+    // entry exists).
+    expect(sectionNormalized).toMatch(
+      /§ D\.12 step 1 no-record ack is the SOLE ack path that continues to use the run-wide loop-state `runId`/,
+    );
+  });
+
+  it("471-12 § step 3 § gateId idempotency paragraph names adoption as the ordering primitive that prevents sweep-time `cockpit_gate_open` from duplicating an adopted natural gate (SC-006)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    // Adoption is named as the ordering primitive in the gateId-idempotency
+    // paragraph.
+    expect(step3Normalized).toMatch(
+      /Adoption is the ordering primitive that prevents the sweep-time `cockpit_gate_open` from duplicating an adopted natural gate across runs/,
+    );
+    // References #471 / SC-006.
+    expect(step3Normalized).toMatch(/per #471 \/ SC-006/);
+    // Adoption runs BEFORE the synthetic-event dispatch pass.
+    expect(step3Normalized).toMatch(
+      /§ Adoption pass block above runs BEFORE this synthetic-event dispatch pass/,
+    );
+  });
+
+  it("471-13 § step 3 § step 4 sub-step 0 escape-hatch `cockpit_gate_ack(superseded)` sites BOTH read `runId` from `openGates[gateId].runId` (not the run-wide loop-state `runId`)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    const step4 = extractInstructionsSteps(autoMd).get(4)!;
+    // Step 3 escape-hatch ack site sources runId from openGates[gateId].runId.
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    expect(step3Normalized).toMatch(
+      /the `runId` value is READ from `openGates\[gateId\]\.runId` \(per #471 \/ FR-003 \/ § In-memory loop state additions above\), NOT the run-wide loop-state `runId`/,
+    );
+    // For adopted entries the two differ.
+    expect(step3Normalized).toMatch(
+      /for an adopted entry \(per § Adoption pass above\) they differ — `openGates\[gateId\]\.runId` carries the row's originating `runId`/,
+    );
+    // Step 4 sub-step 0 per-wake escape-hatch ack site also sources runId
+    // from openGates[gateId].runId.
+    const step4Normalized = step4.replace(/\s+/g, " ");
+    expect(step4Normalized).toMatch(
+      /the `runId` value is READ from `openGates\[gateId\]\.runId` \(per #471 \/ FR-003 \/ § In-memory loop state additions above\), NOT the run-wide loop-state `runId`/,
+    );
+    expect(step4Normalized).toMatch(
+      /for an adopted entry \(per § step 3 § Adoption pass above\) they differ — `openGates\[gateId\]\.runId` carries the row's originating `runId`/,
+    );
+  });
+
+  it("471-14 § D.12 gate-answer step 5 (operator-answer-applied) `cockpit_gate_ack(applied)` reads `runId` from `openGates[event.gateId].runId`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    const blockNormalized = block.replace(/\s+/g, " ");
+    // Ack literal is present unchanged.
+    expect(block).toContain(`cockpit_gate_ack(gateId, outcome: "applied")`);
+    // The runId is READ from openGates[event.gateId].runId, per #471.
+    expect(blockNormalized).toMatch(
+      /the `runId` value is READ from `openGates\[event\.gateId\]\.runId` \(per #471 \/ FR-003 \/ § In-memory loop state additions above\), NOT the run-wide loop-state `runId`/,
+    );
+    // For adopted entries the two differ — openGates[event.gateId].runId
+    // carries the row's originating runId.
+    expect(blockNormalized).toMatch(
+      /for an adopted entry \(per § step 3 § Adoption pass above\) they differ — `openGates\[event\.gateId\]\.runId` carries the row's originating `runId`/,
+    );
+  });
+
+  it("471-15 § D.12 gate-answer step 3 live-state supersession `cockpit_gate_ack(superseded, 'live state moved past …')` reads `runId` from `openGates[gateId].runId`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    const blockNormalized = block.replace(/\s+/g, " ");
+    // Live-state supersession ack literal is present unchanged.
+    expect(block).toContain(
+      `cockpit_gate_ack(gateId, outcome: "superseded", detail: "live state moved past <transition-class>")`,
+    );
+    // The runId is READ from openGates[gateId].runId, per #471.
+    expect(blockNormalized).toMatch(
+      /this live-state-supersession ack ALSO passes `runId` verbatim — the `runId` value is READ from `openGates\[gateId\]\.runId` \(per #471 \/ FR-003 \/ § In-memory loop state additions above\), NOT the run-wide loop-state `runId`/,
+    );
+  });
+
+  it("471-16 § D.12 gate-answer step 1 no-record ack CONTINUES to use the run-wide loop-state `runId` (drift-audit negative pin — asserts pre-#471 behaviour preserved on the drop path where no `openGates` entry exists)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    const blockNormalized = block.replace(/\s+/g, " ");
+    // The no-record ack literal is present unchanged (drop path — no matching
+    // openGates entry to source per-entry runId from).
+    expect(block).toContain(
+      `cockpit_gate_ack(gateId, outcome: "superseded", detail: "no matching open record — likely startup-race or duplicate delivery")`,
+    );
+    // Positive: the no-record ack MUST pass the run's pre-flight-derived
+    // runId (the run-wide loop-state runId).
+    expect(blockNormalized).toMatch(
+      /this call ALSO passes the run's pre-flight-derived `runId` verbatim/,
+    );
+    // Negative: the no-record ack MUST NOT read runId from an openGates
+    // entry — there is NO entry to source from on the drop path. Any
+    // future edit that adds `openGates[event.gateId].runId` to the no-record
+    // ack site is a bug and breaks this pin (per T014's preserve-shape
+    // requirement — pre-#471 behaviour is intentional on this drop path).
+    const noRecordMatch = block.match(
+      /Look up record[^]*?superseded \(no record\) · source: ui-gate/,
+    );
+    expect(
+      noRecordMatch,
+      "D.12 step 1 no-record ack section must be locatable",
+    ).not.toBeNull();
+    expect(
+      noRecordMatch![0],
+      "D.12 step 1 no-record ack MUST NOT source runId from openGates (there is no entry to source from)",
+    ).not.toMatch(/openGates\[event\.gateId\]\.runId|openGates\[gateId\]\.runId/);
+  });
+
+  it("471-17 § Adoption pass declares the adopted-`answered` structural limitation verbatim (answer preserved only if D.12 redelivery fires; otherwise escape hatch re-asks after 3 sweeps) — filed as a Follow-up rather than implied away", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // The structural limitation heading references FR-010 / spec § Follow-ups.
+    expect(adoptionNormalized).toMatch(
+      /Adopted-`answered` structural limitation \(per FR-010 \/ spec § Follow-ups\)/,
+    );
+    // NO MCP surface returns the answer document.
+    expect(adoptionNormalized).toMatch(
+      /NO MCP surface returns the operator's answer document/,
+    );
+    // The answer is preserved only if D.12 redelivery fires.
+    expect(adoptionNormalized).toMatch(
+      /adopted answer is preserved ONLY if D\.12 redelivery fires/,
+    );
+    // Escape hatch re-asks after 3 sweeps.
+    expect(adoptionNormalized).toMatch(
+      /escape hatch supersedes after 3 sweeps/,
+    );
+    // Answer-document surface is filed as a Follow-up (out of scope).
+    expect(adoptionNormalized).toMatch(
+      /answer-document surface would require a cloud-side schema change and is filed as a Follow-up/,
+    );
+  });
+
+  it("471-18 `--gates=local` byte-path invariance — zero adoption-path `cockpit_gate_list` occurrences under the `local` branch of § step 3 (complements 469-29)", () => {
+    // Under --gates=local the § Adoption pass block is dead prose. This pin
+    // asserts (a) the block's dead-prose guard sentence declares the fact
+    // verbatim (471-9 duplicates this from a different angle), AND (b) the
+    // adoption block does not attach ANY cockpit_gate_list call to a local
+    // branch. The complement of 469-29 (which pins zero runId under local
+    // Step 0 blocks). Together the two pins guarantee neither runId nor
+    // adoption-path list calls survive the --gates=local byte path.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    // The block's own dead-prose guard: no cockpit_gate_list under local.
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    expect(adoptionNormalized).toMatch(
+      /entire § Adoption pass block is dead prose under `ResolvedGateMode === "local"`/,
+    );
+    // Scan for any sentence that would attach a cockpit_gate_list call to
+    // a local-branch statement inside the adoption block. Adoption's ONLY
+    // list-call declaration is the functional-call shape pinned by 471-2,
+    // which is UI-mode-scoped by the block's outer guard. This pin is a
+    // structural audit: no cockpit_gate_list appears alongside `local`
+    // within the same sentence anywhere in the block.
+    const adoptionSentences = adoption
+      .split(/(?<=\.)\s+/)
+      .filter((s) => s.trim().length > 0);
+    for (const sentence of adoptionSentences) {
+      // A sentence that both mentions `local` (as ResolvedGateMode branch)
+      // AND `cockpit_gate_list(...)` would imply a list call on the local
+      // path. Two guards allow the sentence to co-mention `local` safely:
+      //   (i) it names `local` inside a "dead prose"/"MUST NOT"/"do not"
+      //       negation, OR
+      //   (ii) the sentence names `local` in a phrase like "Under `local`"
+      //       that scopes an EXPLICIT NEGATIVE statement.
+      // If neither guard is present but a functional cockpit_gate_list call
+      // appears, break out — that is the local-branch drift the pin catches.
+      const mentionsLocal = /\blocal\b/i.test(sentence);
+      const mentionsListCall = /cockpit_gate_list\(/.test(sentence);
+      if (mentionsLocal && mentionsListCall) {
+        // Allowed only if the sentence explicitly negates OR states the
+        // block is dead prose under local.
+        const isNegation =
+          /dead prose|MUST NOT|no `?cockpit_gate_list`?/i.test(sentence);
+        expect(
+          isNegation,
+          `§ Adoption pass local-branch sentence must not attach a cockpit_gate_list call: "${sentence}"`,
+        ).toBe(true);
+      }
     }
   });
 });
