@@ -152,9 +152,16 @@ export function serializeGateOpenParams(
 /**
  * `serializeGateAckParams` — attach `runId` to a `cockpit_gate_ack` payload
  * under `runIdEnabled === true`; OMIT the field entirely under
- * `runIdEnabled === false` (V6). The ack MUST target the SAME `runId` the
- * corresponding `cockpit_gate_open` used, so the ack derives the same
- * `gateId` and targets the same gate identity.
+ * `runIdEnabled === false` (V6). `runId` on the ack payload is
+ * accepted-and-ignored server-side — `cockpit_gate_ack` targets an existing
+ * `gateId` and performs no key derivation (per generacy
+ * `mcp/gates/schemas.ts § GateAckInputSchema`; `GateOutcomeWireSchema` has no
+ * `runId`, so the field is dropped before the wire). We still attach it under
+ * `runIdEnabled === true` for envelope symmetry with `cockpit_gate_open`
+ * (auto-loop callers pass the same envelope shape to both without tripping
+ * the tool's `.strict()`); the ack itself works regardless of which run
+ * opened the gate, which is what lets drift-branch and escape-hatch acks
+ * supersede a stale gate opened by an earlier run.
  */
 export function serializeGateAckParams(
   base: GateAckParams,

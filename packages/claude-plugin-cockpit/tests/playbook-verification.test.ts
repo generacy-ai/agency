@@ -4903,10 +4903,21 @@ describe("469 runId threading", () => {
     expect(blockNormalized).toMatch(
       /under `runIdEnabled === true` this operator-answer-applied ack ALSO passes the run's pre-flight-derived `runId` verbatim/,
     );
-    // The rationale — ack MUST target the SAME runId or the answer routes
-    // nowhere — is present.
+    // The rationale — `runId` is accepted-and-ignored on the ack path;
+    // `cockpit_gate_ack` targets an existing `gateId` and performs no key
+    // derivation (per GateAckInputSchema); the payload passes `runId` only
+    // for envelope symmetry with `cockpit_gate_open` — is present. Re-pinned
+    // from the prior (incorrect) "MUST target the SAME runId or the answer
+    // routes nowhere" wording, which described a derivation mechanism that
+    // does not exist on the ack path.
     expect(blockNormalized).toMatch(
-      /the ack MUST target the SAME `runId` the corresponding `cockpit_gate_open` used/,
+      /envelope symmetry with `cockpit_gate_open`/,
+    );
+    expect(blockNormalized).toMatch(
+      /`runId` is \*\*accepted-and-ignored\*\* on the ack path/,
+    );
+    expect(blockNormalized).toMatch(
+      /`cockpit_gate_ack` targets an existing `gateId` and performs no key derivation \(per generacy `mcp\/gates\/schemas\.ts § GateAckInputSchema`/,
     );
   });
 

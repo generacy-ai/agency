@@ -123,7 +123,7 @@ cockpit_gate_ack({ gateId, outcome, detail?, runId })
 
 **Call shape under `runIdEnabled === false`**: `runId` field omitted; rest unchanged.
 
-**Rationale**: The ack MUST target the SAME `gateId` the corresponding `cockpit_gate_open` created. If `cockpit_gate_open` used `runId` and `cockpit_gate_ack` did not, the ack derives a different 3-segment `gateId` and targets a different (non-existent) gate — the operator's answer routes nowhere. See FR-005 / R11 (dispatch-path enumeration).
+**Rationale**: `runId` on the ack payload is **accepted-and-ignored** — `cockpit_gate_ack` targets the existing `gateId` and performs NO key derivation (per generacy `mcp/gates/schemas.ts § GateAckInputSchema`; `GateOutcomeWireSchema` has no `runId` field, so the value is dropped before the wire and never reaches the cloud). We still pass `runId` under `runIdEnabled === true` for **envelope symmetry** with `cockpit_gate_open` — auto-loop callers can pass the same envelope shape to both verbs without tripping the tool's `.strict()`, and `runId` on the ack payload is safe by construction because the ack targets a `gateId` rather than deriving one. The asymmetry with `cockpit_gate_open` is deliberate: open **does** derive (`deriveGateKey` appends `:${runId}`); ack does not. This is what lets drift-branch acks in D.1/D.2/D.3/D.4 supersede a `staleGateId` discovered via a runId-agnostic `cockpit_gate_list` — the stale gate may have been opened by an earlier run whose `runId` differs from the current one, and the ack still lands. See FR-005 / R11 (dispatch-path enumeration).
 
 **Anchor**: FR-005 / R11.
 
