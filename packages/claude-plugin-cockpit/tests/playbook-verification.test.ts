@@ -24,6 +24,37 @@ import {
   type AddExistingIntent,
   type FileNewIntent,
 } from "../lib/intent-recognition.js";
+import {
+  classifyPreDraftCheck,
+  classifyGateQueryError,
+  driftBranchMaySupersede,
+  formatPreDraftCheckErrorLine,
+  formatGateQueryProbeErrorLine,
+  tickAnsweredSweepCounter,
+  selectEscapeHatchTargets,
+  ANSWERED_SWEEP_THRESHOLD,
+  ESCALATION_DISPATCH_ROWS,
+  ESCAPE_HATCH_ACK_DETAIL,
+  formatGenerationDriftDetail,
+  type GateStatusResult,
+  type GateListResult,
+  type GateQueryError,
+  type GateQueryErrorClass,
+  type AnsweredGateSweepCounter,
+} from "../lib/gate-status-check.js";
+import type { GateId, GateRecord, GateType } from "../lib/gate-wire-types.js";
+import {
+  parseTokens,
+  dispatchForm,
+  parseWorkspaceRepo,
+  resolveRefs,
+  formatTitle,
+  formatBody,
+  refSetEqual,
+  parseBodyRefs,
+  type QualifiedRef,
+  type WorkspaceRepo,
+} from "../lib/invocation-form-4.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = resolve(__dirname, "fixtures");
@@ -2557,6 +2588,3270 @@ describe("437 — auto.md enriched-line dispatch drops per-event cockpit_status 
         block,
         `positive pin (${header}): narration must state the retain-the-re-check obligation`,
       ).toMatch(/retain[s]?\s+the\s+per-event\s+`cockpit_status/);
+    }
+  });
+});
+
+describe("444 — /cockpit:auto Form 4 — token parsing, dispatch, and library contracts", () => {
+  const WORKSPACE: WorkspaceRepo = {
+    owner: "generacy-ai",
+    repo: "agency",
+    originUrl: "https://github.com/generacy-ai/agency.git",
+  };
+
+  it("444-lib-1 parseTokens: empty-token discard (Q5=A), trailing-comma tolerance, whitespace normalization", () => {
+    const singleBare = readFileSync(resolve(FIXTURES, "444-parse-tokens-single-bare.txt"), "utf-8");
+    const multiComma = readFileSync(resolve(FIXTURES, "444-parse-tokens-multi-comma.txt"), "utf-8");
+    const multiSpace = readFileSync(resolve(FIXTURES, "444-parse-tokens-multi-space.txt"), "utf-8");
+    const mixed = readFileSync(resolve(FIXTURES, "444-parse-tokens-mixed.txt"), "utf-8");
+    const trailing = readFileSync(resolve(FIXTURES, "444-parse-tokens-trailing-comma.txt"), "utf-8");
+    const unknownFlag = readFileSync(resolve(FIXTURES, "444-parse-tokens-unknown-flag.txt"), "utf-8");
+    const bothFlags = readFileSync(resolve(FIXTURES, "444-parse-tokens-both-flags.txt"), "utf-8");
+
+    expect(parseTokens(singleBare).tokens).toEqual(["512"]);
+    expect(parseTokens(singleBare).isEmpty).toBe(false);
+    expect(parseTokens(multiComma).tokens).toEqual(["512", "513", "514"]);
+    expect(parseTokens(multiSpace).tokens).toEqual(["512", "513", "514"]);
+    expect(parseTokens(mixed).tokens).toEqual(["512", "other/repo#41", "513"]);
+    expect(parseTokens(trailing).tokens).toEqual(["512", "513"]);
+    expect(parseTokens("").isEmpty).toBe(true);
+    expect(parseTokens("   ,, ,, ").isEmpty).toBe(true);
+
+    const uf = parseTokens(unknownFlag);
+    expect(uf.flags.unknown).toEqual(["--tracing"]);
+    expect(uf.tokens).toEqual(["512"]);
+
+    const bf = parseTokens(bothFlags);
+    expect(bf.flags.tracking).toBe(true);
+    expect(bf.flags.new).toBe(true);
+  });
+
+  it("444-lib-2 dispatchForm: seven-branch table from data-model.md § E3", () => {
+    // 1. Both flags.
+    expect(dispatchForm(parseTokens("--tracking foo/bar#1 --new title"))).toEqual({
+      form: "usage-error",
+      reason: "both-flags",
+    });
+    // 2. Unknown flag.
+    expect(dispatchForm(parseTokens("--tracing 512"))).toEqual({
+      form: "usage-error",
+      reason: "unknown-flag",
+    });
+    // 3. --tracking with correct shape → tracking-existing.
+    const trackingOk = dispatchForm(parseTokens("--tracking foo/bar#42"));
+    expect(trackingOk.form).toBe("tracking-existing");
+    if (trackingOk.form === "tracking-existing") {
+      expect(trackingOk.trackingRef.owner).toBe("foo");
+      expect(trackingOk.trackingRef.repo).toBe("bar");
+      expect(trackingOk.trackingRef.number).toBe(42);
+    }
+    // 3-bad: --tracking with wrong shape.
+    expect(dispatchForm(parseTokens("--tracking 42")).form).toBe("usage-error");
+    // 4. --new with title.
+    const newOk = dispatchForm(parseTokens('--new some-title'));
+    expect(newOk.form).toBe("tracking-new");
+    // 5. Single qualified ref → epic.
+    const epic = dispatchForm(parseTokens("foo/bar#99"));
+    expect(epic.form).toBe("epic");
+    if (epic.form === "epic") expect(epic.epicRef.number).toBe(99);
+    // 6a. Single bare number → tracking-list (Form 4).
+    expect(dispatchForm(parseTokens("512")).form).toBe("tracking-list");
+    // 6b. Multi-bare → tracking-list.
+    expect(dispatchForm(parseTokens("512 513 514")).form).toBe("tracking-list");
+    // 6c. Mixed bare + qualified (multiple) → tracking-list (not epic).
+    expect(dispatchForm(parseTokens("512 foo/bar#41")).form).toBe("tracking-list");
+    // 7. Empty invocation.
+    expect(dispatchForm(parseTokens(""))).toEqual({
+      form: "usage-error",
+      reason: "empty",
+    });
+  });
+
+  it("444-lib-3 parseWorkspaceRepo: HTTPS, SSH shorthand, SSH long form; non-GitHub returns null", () => {
+    const https = parseWorkspaceRepo("https://github.com/generacy-ai/agency.git");
+    expect(https).not.toBeNull();
+    expect(https!.owner).toBe("generacy-ai");
+    expect(https!.repo).toBe("agency");
+
+    const httpsNoDotGit = parseWorkspaceRepo("https://github.com/generacy-ai/agency");
+    expect(httpsNoDotGit!.owner).toBe("generacy-ai");
+    expect(httpsNoDotGit!.repo).toBe("agency");
+
+    const sshShort = parseWorkspaceRepo("git@github.com:generacy-ai/agency.git");
+    expect(sshShort!.owner).toBe("generacy-ai");
+    expect(sshShort!.repo).toBe("agency");
+
+    const sshLong = parseWorkspaceRepo("ssh://git@github.com/generacy-ai/agency.git");
+    expect(sshLong!.owner).toBe("generacy-ai");
+    expect(sshLong!.repo).toBe("agency");
+
+    expect(parseWorkspaceRepo("git@gitlab.example.com:owner/repo.git")).toBeNull();
+    expect(parseWorkspaceRepo("https://gitlab.com/owner/repo.git")).toBeNull();
+    expect(parseWorkspaceRepo("")).toBeNull();
+  });
+
+  it("444-lib-4 resolveRefs: bare/qualified dedup collapses to one; first-seen order preserved", () => {
+    const resolved = resolveRefs(["512", "generacy-ai/agency#512", "513"], WORKSPACE);
+    expect(resolved.refs).toHaveLength(2);
+    expect(resolved.refs[0]!.number).toBe(512);
+    expect(resolved.refs[0]!.supplied).toBe("bare");
+    expect(resolved.refs[1]!.number).toBe(513);
+
+    // First-seen order preserved: 513, 512 → order 513, 512.
+    const reversed = resolveRefs(["513", "512"], WORKSPACE);
+    expect(reversed.refs.map((r) => r.number)).toEqual([513, 512]);
+
+    // Mixed workspace + cross-repo.
+    const mixed = resolveRefs(["512", "other/repo#41", "513"], WORKSPACE);
+    expect(mixed.refs).toHaveLength(3);
+    expect(mixed.refs[1]!.owner).toBe("other");
+    expect(mixed.refs[1]!.repo).toBe("repo");
+    expect(mixed.refs[1]!.number).toBe(41);
+  });
+
+  it("444-lib-5 formatTitle: ≤5 refs inline, (+K more) for >5, short-form vs qualified rendering", () => {
+    const oneRef = resolveRefs(["512"], WORKSPACE);
+    expect(formatTitle(oneRef.refs, WORKSPACE, "2026-07-21")).toBe(
+      "Tracking: auto session 2026-07-21 — #512",
+    );
+
+    const fiveRefs = resolveRefs(["1", "2", "3", "4", "5"], WORKSPACE);
+    expect(formatTitle(fiveRefs.refs, WORKSPACE, "2026-07-21")).toBe(
+      "Tracking: auto session 2026-07-21 — #1 #2 #3 #4 #5",
+    );
+
+    const eightRefs = resolveRefs(["1", "2", "3", "4", "5", "6", "7", "8"], WORKSPACE);
+    expect(formatTitle(eightRefs.refs, WORKSPACE, "2026-07-21")).toBe(
+      "Tracking: auto session 2026-07-21 — #1 #2 #3 #4 #5 (+3 more)",
+    );
+
+    // Mixed: workspace-local short-form, cross-repo qualified.
+    const mixed = resolveRefs(["512", "other/repo#41"], WORKSPACE);
+    expect(formatTitle(mixed.refs, WORKSPACE, "2026-07-21")).toBe(
+      "Tracking: auto session 2026-07-21 — #512 other/repo#41",
+    );
+  });
+
+  it("444-lib-6 formatBody: every line fully-qualified regardless of workspace-locality", () => {
+    const refs = resolveRefs(["512", "other/repo#41", "513"], WORKSPACE);
+    expect(formatBody(refs.refs)).toBe(
+      "- [ ] generacy-ai/agency#512\n- [ ] other/repo#41\n- [ ] generacy-ai/agency#513",
+    );
+    expect(formatBody([])).toBe("");
+  });
+
+  it("444-lib-7 refSetEqual + parseBodyRefs: reuse HIT on identical, MISS on superset; malformed ignored", () => {
+    const hitBody = readFileSync(resolve(FIXTURES, "444-body-reuse-hit.md"), "utf-8");
+    const missBody = readFileSync(resolve(FIXTURES, "444-body-reuse-miss.md"), "utf-8");
+    const invocation = resolveRefs(["512", "513", "other/repo#41"], WORKSPACE);
+
+    const hitRefs = parseBodyRefs(hitBody);
+    expect(hitRefs).toHaveLength(3);
+    expect(refSetEqual(invocation.refs, hitRefs)).toBe(true);
+
+    const missRefs = parseBodyRefs(missBody);
+    expect(missRefs).toHaveLength(4);
+    expect(refSetEqual(invocation.refs, missRefs)).toBe(false);
+
+    // Order-agnostic + dedup-agnostic set equality.
+    const a: QualifiedRef[] = [
+      { owner: "o", repo: "r", number: 1, supplied: "bare" },
+      { owner: "o", repo: "r", number: 2, supplied: "qualified" },
+    ];
+    const b: QualifiedRef[] = [
+      { owner: "o", repo: "r", number: 2, supplied: "bare" },
+      { owner: "o", repo: "r", number: 1, supplied: "qualified" },
+      { owner: "o", repo: "r", number: 1, supplied: "bare" }, // duplicate
+    ];
+    expect(refSetEqual(a, b)).toBe(true);
+
+    // Malformed body lines: parseBodyRefs ignores non-matching bullets.
+    const malformed = "- [ ] not-a-ref\n- some prose\n* [ ] o/r#5\n- [ ] o/r#7\n";
+    expect(parseBodyRefs(malformed).map((r) => r.number)).toEqual([7]);
+  });
+
+  it("444-1 form-list pin: step 1 lists exactly four Form bullets in order (epic, tracking-existing, tracking-new, tracking-list)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1);
+    expect(step1, "step 1 must exist in auto.md § Instructions").toBeDefined();
+
+    // Four form bullets must appear in order.
+    const idxForm1 = step1!.indexOf("**Form 1 (epic mode)**");
+    const idxForm2 = step1!.indexOf("**Form 2 (epic-less: existing tracking)**");
+    const idxForm3 = step1!.indexOf("**Form 3 (epic-less: new tracking)**");
+    const idxForm4 = step1!.indexOf("**Form 4 (epic-less: issue-number list)**");
+
+    expect(idxForm1, "Form 1 bullet must appear in step 1").toBeGreaterThanOrEqual(0);
+    expect(idxForm2, "Form 2 bullet must appear in step 1").toBeGreaterThan(idxForm1);
+    expect(idxForm3, "Form 3 bullet must appear in step 1").toBeGreaterThan(idxForm2);
+    expect(idxForm4, "Form 4 bullet must appear in step 1").toBeGreaterThan(idxForm3);
+
+    // Each form's usage-string fragment must appear exactly once in step 1.
+    const fragments = [
+      "/cockpit:auto <epic-ref>",
+      "/cockpit:auto --tracking <issue-ref>",
+      '/cockpit:auto --new "<title>"',
+      "/cockpit:auto <issue-list>",
+    ];
+    for (const frag of fragments) {
+      const count = step1!.split(frag).length - 1;
+      expect(count, `fragment '${frag}' must appear at least once in step 1`).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it("444-2 usage-string pin: step 1 contains the literal extended usage line", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    expect(step1).toContain(
+      'Usage: /cockpit:auto <epic-ref> | --tracking <issue-ref> | --new "<title>" | <issue-list>',
+    );
+  });
+
+  it("444-3 cockpit:tracking label prose pin: literal appears in auto.md step 1 Form 4 branch AND in tracking-issue-body contract", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    expect(step1, "auto.md step 1 must reference the cockpit:tracking label (Form 4 branch)").toContain(
+      "cockpit:tracking",
+    );
+
+    const contractPath = resolve(
+      __dirname,
+      "..",
+      "..",
+      "..",
+      "specs",
+      "444-summary-cockpit-auto-accept",
+      "contracts",
+      "tracking-issue-body.md",
+    );
+    const contract = readFileSync(contractPath, "utf-8");
+    expect(contract, "tracking-issue-body.md must reference the cockpit:tracking label").toContain(
+      "cockpit:tracking",
+    );
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 449 UI-mode gates — Cockpit Remote Gates (skill-side rework)
+//
+// Pins the wire-contract-driven contract additions to auto.md:
+//   - `--gates=ui|local|auto` step-1 flag (V1 parse; auto resolution; ui hard-fail)
+//   - § UI-mode gate mapping section with a 10-row table (G.1, G.2, G.3, G.4a,
+//     G.4b, G.4c, G.4d, G.5, G.6, G.7 — G.4e explicitly excluded)
+//   - Dispatch class D.12 (`gate-answer`) row + subsection
+//   - § UI-mode fallback on `cockpit_gate_open` call error subsection
+//   - `· source: ui-gate` / `· source: ui-gate-fallback` ledger suffix rules
+//   - Q2=B extended startup-sweep trigger set
+//
+// These are drift audits — if a heading rename, row-count change, or contract-
+// rule edit breaks a pin, re-pin to the NEW contract in the same PR. Do NOT
+// weaken or delete an assertion to make the test pass (CLAUDE.md § Cockpit
+// playbook pins).
+// ────────────────────────────────────────────────────────────────────────────
+describe("449 UI-mode gates", () => {
+  it("449-1 usage string extended with --gates flag (literal, two-line block)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Verbatim extension per contracts/gates-flag-parse.md § Usage-string extension
+    // (research.md § R1). Two-line usage block; second line's `[` aligns with the
+    // `/` of `/cockpit:auto` (7 spaces of alignment). The whole block sits inside
+    // step 1's numbered-list body (3 extra spaces of list indent), so the second
+    // line carries 10 spaces total in the raw file.
+    expect(step1).toContain(
+      "Usage: /cockpit:auto <epic-ref> | --tracking <issue-ref> | --new \"<title>\" | <issue-list>\n          [--gates=ui|local|auto]  (default: auto)",
+    );
+  });
+
+  it("449-2 step 1 declares the `--gates` orthogonal flag with values ui|local|auto and default auto", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Flag parse presence + value set + default (V1)
+    expect(step1).toContain("--gates=<value>");
+    expect(step1).toContain("`ui` / `local` / `auto`");
+    expect(step1).toContain("Default when absent: `auto`");
+  });
+
+  it("449-3 step 1 ambiguity table has `gates-value-invalid` and `gates-duplicate` reasons", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Two new ambiguity-table rows (V1)
+    expect(step1).toContain("gates-value-invalid (<observed>)");
+    expect(step1).toContain("gates-duplicate");
+  });
+
+  it("449-4 step 1 verbatim `--gates=ui` pre-flight absence hard-fail error string (Q3=A; extended by #459 to cover the two gate-query tools)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Verbatim error per contracts/gates-flag-parse.md § Pre-flight absence —
+    // that file is the SOURCE OF TRUTH for this string. Any change must move
+    // three artifacts together: the contract, auto.md § step 1, and this pin.
+    // (Round-3 note: the contract silently kept the old narrow string for three
+    // review rounds precisely because this pointer had been removed. Keep it.)
+    //
+    // Re-pinned per PR #460 review: the absence check now covers all three
+    // UI-mode tools (cockpit_gate_open + cockpit_gate_status + cockpit_gate_list)
+    // so a partial-deployment cluster with only cockpit_gate_open bound cannot
+    // slip through and hit an unbound cockpit_gate_list at the pre-flight probe.
+    // Exact spacing, exact wording — this is the load-bearing operator-facing
+    // string; drift here changes the operator-visible failure mode.
+    expect(step1).toContain(
+      "--gates=ui specified but one or more of cockpit_gate_open / cockpit_gate_status / cockpit_gate_list is not available in this session; re-invoke with --gates=local or --gates=auto",
+    );
+  });
+
+  it("449-5 step 1 declares the `--gates=auto` THREE-part resolution rule (tool binding + cluster cloud-activated + pre-flight functional probe) with the short-circuit rule verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Re-pinned from the OLD two-part contract to the NEW three-part contract
+    // per specs/459-epic-cockpit-remote-gates/contracts/auto-resolution-fold-in.md.
+    // Do NOT weaken — this is the load-bearing invariant that a broken
+    // gate-query surface short-circuits `auto` to `local` instead of stalling in
+    // `ui`.
+    expect(step1).toContain("cockpit_gate_open");
+    expect(step1).toContain("cluster cloud-activated");
+    // Re-pinned per PR #460 review round 2: prose was updated to "decided ONCE
+    // per run" (parse-time items 1–2 vs post-header item 3 are decided at
+    // different phases, so a single "at pre-flight" no longer captures the
+    // contract) and "does not flip mid-loop" (was mid-run; loop is the
+    // narrower, correct scope now that TENTATIVE spans header write). Match
+    // either half so a future edit that reverts either half still passes the
+    // other half — the OR keeps the pin working under prose reflow.
+    expect(step1).toMatch(/decided ONCE per run|does not flip mid-loop/i);
+    expect(step1).toContain("ResolvedGateMode");
+    // NEW three-part contract wording (header + item 3 body).
+    expect(step1).toContain("three-part check, decided ONCE");
+    expect(step1).toContain("Pre-flight functional probe");
+    // Short-circuit rule pinned verbatim (whitespace-tolerant to survive
+    // markdown reflow).
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toContain(
+      "issue item 3 ONLY when items 1 AND 2 both pass; otherwise resolve to `local` with NO probe call and NO probe ledger row",
+    );
+  });
+
+  it("449-6 step 1 `Auto run starting …` line format includes gates + source AND enumerates all THREE `<resolution reason>` values (probe-failed added by 459)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Two illustrative examples per quickstart.md § Expected output
+    expect(step1).toContain("Auto run starting · gates: ui (source: --gates=ui)");
+    expect(step1).toContain(
+      "Auto run starting · gates: local (source: --gates=auto → ui-mode tools unbound)",
+    );
+    // Re-pinned from the OLD two-value enumeration to the NEW three-value
+    // enumeration per specs/459-epic-cockpit-remote-gates/contracts/auto-resolution-fold-in.md
+    // § The `Auto run starting` line — `probe-failed` value. Do NOT delete the
+    // existing two enumerations; extend.
+    //
+    // Item-1 token re-pinned per PR #460 round-4 review from the tool-specific
+    // `cockpit_gate_open unbound` to the tool-agnostic `ui-mode tools unbound`:
+    // item 1 now requires all three UI-mode tools, so the old token asserted a
+    // specific tool was unbound when a DIFFERENT one was missing — precisely
+    // the partial-deployment case the widening exists to catch. Source of truth
+    // for the enumerated set: contracts/gates-flag-parse.md § Test pins.
+    expect(step1).toContain("ui-mode tools unbound");
+    expect(step1).toContain("cluster not cloud-activated");
+    expect(step1).toContain("probe-failed");
+  });
+
+  it("449-7 § UI-mode gate mapping section exists with the pinned heading", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Top-level section heading is pinned; row-count assertion in 449-8 depends
+    // on this section being present.
+    expect(autoMd).toMatch(/^## UI-mode gate mapping \(G\.1–G\.7\)$/m);
+  });
+
+  it("449-8 UI-mode gate mapping table has EXACTLY 10 body rows in the pinned order (G.4e absent)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Locate the UI-mode section body (from its heading to the next ## H2).
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.7)");
+    expect(sectionStart, "UI-mode gate mapping section must exist").toBeGreaterThan(-1);
+    const rest = autoMd.slice(sectionStart + 1);
+    const nextH2 = rest.indexOf("\n## ", 1);
+    const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+
+    // Extract the main mapping table — the one whose header row starts with
+    // "| Gate | transitionClass | title |" per contracts/ui-gate-mapping.md.
+    const headerRe = /^\| Gate \| transitionClass \| title \|.*$/m;
+    const headerMatch = headerRe.exec(section);
+    expect(headerMatch, "mapping table header row must be present").not.toBeNull();
+    const headerIdx = headerMatch!.index;
+    const afterHeader = section.slice(headerIdx);
+    const lines = afterHeader.split("\n");
+    // Line 0 is the header, line 1 is the alignment divider (|---|), lines 2+
+    // are body rows. Collect body rows until we hit the first non-table line
+    // (blank or non-pipe-leading).
+    const bodyRows: string[] = [];
+    for (let i = 2; i < lines.length; i++) {
+      const line = lines[i]!;
+      if (!line.startsWith("| ")) break;
+      bodyRows.push(line);
+    }
+    // Exact row count is 10 per Q1=C.
+    expect(bodyRows.length, "mapping table row count must be exactly 10 (G.1..G.7)").toBe(10);
+
+    // Rows begin with the pinned gate identifiers in order.
+    const expectedGates = ["G.1", "G.2", "G.3", "G.4a", "G.4b", "G.4c", "G.4d", "G.5", "G.6", "G.7"];
+    const actualGates = bodyRows.map((row) => {
+      const cellMatch = /^\| ([^|]+?) \|/.exec(row);
+      return cellMatch ? cellMatch[1]!.trim() : "";
+    });
+    expect(actualGates).toEqual(expectedGates);
+
+    // G.4e MUST NOT appear as the first column of any row (never a mapping-
+    // table row — per contracts/ui-gate-mapping.md § G.4(e) exclusion).
+    const g4eRow = bodyRows.find((row) => /^\| G\.4e /.test(row));
+    expect(g4eRow, "G.4e must NOT appear as a mapping-table row").toBeUndefined();
+  });
+
+  it("449-9 G.4(e) exclusion note is present in the UI-mode gate mapping section", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.7)");
+    const rest = autoMd.slice(sectionStart + 1);
+    const nextH2 = rest.indexOf("\n## ", 1);
+    const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+    expect(section).toContain("G.4(e) exclusion note");
+    expect(section).toMatch(/in-memory cursor-mechanism fault|per-epic in-memory cursor-fault/i);
+  });
+
+  it("449-10 G.7 row declares `required-if` free-text affordance for `add-more-work` (Q4=A)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.7)");
+    const rest = autoMd.slice(sectionStart + 1);
+    const nextH2 = rest.indexOf("\n## ", 1);
+    const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+    // Q4=A single-answer collapse: G.7 add-more-work carries required freeText
+    // in the same submission.
+    expect(section).toContain('"required-if"');
+    expect(section).toContain('ifOptionId: "add-more-work"');
+  });
+
+  it("449-11 G.2 row declares `optional` free-text affordance for reviewer comment", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.7)");
+    const rest = autoMd.slice(sectionStart + 1);
+    const nextH2 = rest.indexOf("\n## ", 1);
+    const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+    // Matches the local drafter's comment-body affordance for D.2/D.3 review.
+    expect(section).toContain("reviewer comment (optional");
+  });
+
+  it("449-12 § Dispatch table contains a D.12 row naming `gate-answer` as the event kind", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Locate the § Dispatch section's dispatch table (rows after "| # | Event |").
+    const dispatchStart = autoMd.indexOf("\n## Dispatch\n");
+    expect(dispatchStart, "§ Dispatch heading must exist").toBeGreaterThan(-1);
+    const rest = autoMd.slice(dispatchStart);
+    // Extract the table's body rows (up to the first "### " heading).
+    const nextH3 = rest.indexOf("\n### ");
+    const dispatchSection = nextH3 === -1 ? rest : rest.slice(0, nextH3);
+    // D.12 row must be present and name gate-answer as the event kind.
+    const d12Row = dispatchSection
+      .split("\n")
+      .find((line) => /^\| D\.12 \|/.test(line));
+    expect(d12Row, "dispatch table must contain a D.12 row").toBeDefined();
+    expect(d12Row!).toContain("gate-answer");
+    expect(d12Row!).toContain("cockpit_gate_ack");
+  });
+
+  it("449-13 `### D.12 — \\`gate-answer\\`` subsection exists and covers V3/V4 supersession + ack outcomes", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Subsection heading is `### D.12 — \`gate-answer\``; use the shared helper
+    // (extractSubheadingBlock) so the pin travels alongside D.1..D.11's pins.
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    // All three supersession outcomes are named verbatim.
+    expect(block).toContain("no matching open record");
+    expect(block).toContain("stale generation");
+    expect(block).toContain("live state moved past");
+    // Fires only under UI mode.
+    expect(block).toMatch(/ResolvedGateMode === "ui"/);
+    // The load-bearing "same downstream handling" invariant is stated: the
+    // D.12 handler performs the SAME tool call(s) / subagent spawn(s) / state
+    // mutation(s) the local `AskUserQuestion` path performs today. Phrase may
+    // vary; require at least one of the canonical wordings.
+    expect(block).toMatch(
+      /SAME (tool call|downstream handling|handling)|the same (tool call|downstream handling|handling)/,
+    );
+    // Ack outcomes appear literally.
+    expect(block).toContain('outcome: "applied"');
+    expect(block).toContain('outcome: "superseded"');
+    expect(block).toContain('outcome: "failed"');
+  });
+
+  it("449-14 D.12 subsection includes the revised-draft re-open path (make-changes → recompute discriminator, new gateId)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    expect(block).toContain("Revised-draft re-open path");
+    // Frozen model: re-open RECOMPUTES a durable generation discriminator (new
+    // gateId) — NOT a session-local integer bump; the MCP tool derives the id.
+    expect(block).toMatch(/recompute the generation discriminator/i);
+    expect(block).not.toMatch(/nextGeneration = record\.generation \+ 1|generation \+= 1/);
+    // Prior gate superseded by gateId IDENTITY (down-path answer carries no generation).
+    expect(block).toContain("mark the ORIGINAL record `superseded`");
+    expect(block).toContain("superseded (stale generation)");
+    expect(block).toMatch(/gateId identity/);
+  });
+
+  it("449-15 § UI-mode fallback subsection distinguishes call-time error from Q3=A pre-flight absence", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(
+      autoMd,
+      "UI-mode fallback on `cockpit_gate_open` call error",
+    );
+    // Explicit distinction from pre-flight absence hard-fail.
+    expect(block).toMatch(/Distinct from Q3=A pre-flight absence/i);
+    // ui-gate-fallback suffix is the fallback resolution provenance marker.
+    expect(block).toContain("· source: ui-gate-fallback");
+    // First-failure ledger note verbatim shape.
+    expect(block).toContain(
+      "falling back to local AskUserQuestion for this gate (repeated failures suppressed)",
+    );
+  });
+
+  it("449-16 § UI-mode fallback declares the verbatim one-pointer-line format (FR-005)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(
+      autoMd,
+      "UI-mode fallback on `cockpit_gate_open` call error",
+    );
+    // FR-005 pointer line — the only operator-visible affordance on gate-open.
+    expect(block).toContain(
+      "gate open: <title> → answer in the generacy.ai inbox (<inboxUrl>)",
+    );
+    expect(block).toMatch(/NOT appended to the persistent ledger file|not a ledger row/i);
+  });
+
+  it("449-17 § Ledger UI-mode extensions codify the three-way source suffix precedence (Q5=B)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Find the § Ledger section.
+    const ledgerStart = autoMd.indexOf("\n## Ledger\n");
+    expect(ledgerStart, "§ Ledger heading must exist").toBeGreaterThan(-1);
+    const rest = autoMd.slice(ledgerStart);
+    const nextH2 = rest.indexOf("\n## ", 1);
+    const ledger = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+
+    // Q5=B rules — three literal-match suffix strings, gate-open is print-only,
+    // D.12 writes exactly one row per resolved gate.
+    expect(ledger).toContain("· source: ui-gate");
+    expect(ledger).toContain("· source: ui-gate-fallback");
+    expect(ledger).toContain("· source: enriched-line");
+    expect(ledger).toMatch(/gate-open is print-only|print-only.*per FR-005/i);
+    expect(ledger).toMatch(/D\.12 writes exactly one ledger line per resolved gate/);
+
+    // Post-#449 grep recipes — the `$` distinguishes ui-gate from
+    // ui-gate-fallback.
+    expect(ledger).toContain("grep 'source: ui-gate$' <ledger>");
+    expect(ledger).toContain("grep 'source: ui-gate-fallback' <ledger>");
+  });
+
+  it("449-18 § step-3 startup sweep declares the Q2=B extended trigger set (5 non-waiting-for triggers)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // UI-mode callout heading (Q2=B extension).
+    expect(step3).toMatch(/UI-mode extended trigger set \(Q2=B\)/);
+    // All five persistent non-waiting-for triggers listed (spec § Startup sweep
+    // trigger states; research.md § R5).
+    expect(step3).toContain("agent:error");
+    expect(step3).toMatch(/failed:<subtype>|failed:\*/);
+    expect(step3).toContain("completed:validate` with red checks");
+    expect(step3).toContain("phase-complete");
+    expect(step3).toContain("blocked:stuck-merge-conflicts");
+    // G.4(e) exclusion is explicit.
+    expect(step3).toContain("G.4(e) exclusion");
+    // Idempotency and deferred-to-loop behavior are named.
+    expect(step3).toContain("gateId idempotency");
+    expect(step3).toContain("Deferred-to-loop behavior");
+  });
+
+  it("fresh-epic bootstrap: step-3 sweep queues P1 via G.5/cockpit_gate_open, never a local AskUserQuestion under ui", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // Step-3 declares the fresh-epic bootstrap clause and its synthetic event.
+    expect(step3).toContain("Fresh-epic bootstrap");
+    expect(step3).toContain("phase-bootstrap");
+    expect(step3).toContain("first incomplete phase");
+    // The synthetic event dispatches through the existing D.8 / G.5 machinery,
+    // so under UI mode it opens in the inbox — never a local prompt.
+    expect(step3).toContain("D.8 / § Gate contract G.5");
+    expect(step3).toContain("NEVER a local `AskUserQuestion` under UI mode");
+
+    // D.8 trigger and G.5 gate both acknowledge the phase-bootstrap synthetic.
+    expect(autoMd).toContain(
+      "Also fires on the synthetic **`phase-bootstrap`** event",
+    );
+    expect(autoMd).toContain("**Bootstrap variant**");
+    expect(autoMd).toContain(
+      "No phase in flight on <epic-ref> — bootstrapping the first phase.",
+    );
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 457 sweep-time gate reuse — pre-draft gate-status check + FR-009 escape hatch
+//
+// Pins the load-bearing prose additions to auto.md described by
+// specs/457-part-cockpit-remote-gates/{plan.md,contracts/*.md}:
+//   - § step 3 startup sweep: nine-tool presence check, sweep gateId now uses
+//     content-derived generation (no more literal `generation=1`), answered-gate
+//     parked-forever escape-hatch block with N=3 threshold.
+//   - § Dispatch D.1/D.2/D.3/D.4/D.7/D.11: new `Step 0 — pre-draft gate-status
+//     check` heading with the three-branch rule (same-gateId reuse /
+//     generation-drift supersede-and-redraft / absent-no-op).
+//   - § Dispatch D.11: defense-in-depth ordering (step 0 pre-draft check ABOVE
+//     step 1 in-memory dispatched-issues dedup — both retained).
+//   - § In-memory loop state additions: `answeredGateSweepCounter` map declared.
+//   - § D.12 gate-answer step 6: renamed to `Remove from openGates and reset
+//     sweep counter`; both `openGates.delete` and `answeredGateSweepCounter
+//     .delete` present.
+//   - § UI-mode gate mapping generation-discriminator table unchanged (drift
+//     audit — sweep and live paths MUST reference the same function).
+//
+// These are drift audits — if a heading rename, contract-rule edit, or literal
+// substitution breaks a pin, re-pin to the NEW contract in the same PR. Do NOT
+// weaken or delete an assertion to make the test pass (CLAUDE.md § Cockpit
+// playbook pins).
+// ────────────────────────────────────────────────────────────────────────────
+describe("457 sweep-time gate reuse", () => {
+  it("457-1 § step 3 tool-presence check is CONDITIONAL: seven baseline tools always, the two gate-query tools only under ResolvedGateMode === 'ui'", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // All nine tools are still named somewhere in the check.
+    const BASELINE_SEVEN = [
+      "cockpit_status",
+      "cockpit_context",
+      "cockpit_queue",
+      "cockpit_advance",
+      "cockpit_resume",
+      "cockpit_merge",
+      "cockpit_await_events",
+    ];
+    const UI_ONLY_TWO = ["cockpit_gate_status", "cockpit_gate_list"];
+    for (const tool of [...BASELINE_SEVEN, ...UI_ONLY_TWO]) {
+      expect(step3, `step 3 tool-presence check must name ${tool}`).toContain(tool);
+    }
+
+    // Isolate the presence-check paragraph block (from its verbatim heading to
+    // the escape-hatch heading that follows it) so the assertions below cannot
+    // be satisfied by unrelated step-3 prose.
+    const checkStart = step3.indexOf(
+      "**Tool-presence check (fail-loud on missing cockpit MCP tools).**",
+    );
+    expect(checkStart, "step 3 must retain the tool-presence-check heading").toBeGreaterThan(-1);
+    const checkEnd = step3.indexOf(
+      "**Answered-gate parked-forever escape hatch (UI mode only).**",
+    );
+    expect(checkEnd).toBeGreaterThan(checkStart);
+    const check = step3.slice(checkStart, checkEnd);
+
+    // The requirement is stated as CONDITIONAL on the resolved gate mode —
+    // an unconditional nine-tool requirement hard-aborts every --gates=local
+    // run on a cluster predating generacy#1038 (and `auto` defaults to local).
+    expect(check).toMatch(/conditional on \*\*`ResolvedGateMode`\*\*|conditional on `ResolvedGateMode`/i);
+    expect(check).toMatch(/Always required[^\n]*seven baseline tools/);
+    expect(check).toMatch(/Required ONLY when `ResolvedGateMode === "ui"`/);
+    expect(check).toMatch(/seven tools under `local` and nine under `ui`/);
+    // The two gate-query tools are explicitly NOT required under local.
+    expect(check).toMatch(
+      /Under `ResolvedGateMode === "local"` these two are \*\*NOT\*\* required/,
+    );
+    // The load-bearing rationale survives: local preserves today's byte path.
+    expect(check).toContain("preserves today's byte-path exactly");
+    // Negative pin: the old unconditional phrasing must not come back.
+    expect(check).not.toMatch(/verify that the nine `cockpit_\*` MCP tools are present/);
+    expect(check).not.toMatch(/If any of the nine is absent/);
+  });
+
+  it("457-1a auto.md carries NO stale 'seven cockpit tools' cross-reference — every mention of the presence check reflects the conditional rule", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // The pre-#457 shorthand names a fixed seven-tool check; after the
+    // conditional rule landed, every cross-reference must say so instead.
+    expect(autoMd).not.toContain("seven-cockpit-tools");
+    expect(autoMd).not.toMatch(/the seven `cockpit_\*` MCP tools/);
+    expect(autoMd).not.toMatch(/verifies the seven `cockpit_\*` MCP tools/);
+    // The surviving cross-references name the conditional rule.
+    expect(autoMd).toMatch(
+      /the `cockpit_\*` tool-presence check \(step 3 startup sweep — seven baseline tools always, plus `cockpit_gate_status` \/ `cockpit_gate_list` only under `ResolvedGateMode === "ui"`\)/,
+    );
+    expect(autoMd).toMatch(
+      /same shape as the `cockpit_\*` tool-presence check at step 3 below/,
+    );
+    expect(autoMd).toMatch(
+      /matching the step-3 `cockpit_\*` tool-presence check's `Print \+ exit` precedent/,
+    );
+    // § Examples walkthrough names the required set for its resolved mode.
+    expect(autoMd).toMatch(
+      /the parent verifies the required `cockpit_\*` MCP tools are present/,
+    );
+  });
+
+  it("457-2 § step 3 sweep NO LONGER contains the literal `generation=1`; new prose names `hash(issueRef, gateType, generation[, runId])` (re-pinned per #469 to the extended 4-input-under-runIdEnabled contract; CLAUDE.md § Cockpit playbook pins — do NOT weaken)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // Negative: the pre-#457 hard-coded default is gone.
+    expect(step3).not.toContain("generation=1");
+    // Positive: the replacement prose names the content-derived hash with the
+    // #469 optional `runId` fourth input (under `runIdEnabled === true`) + the
+    // pre-draft check reference (per contracts/sweep-generation-fix.md §
+    // Verbatim removal, extended by contracts/runid-threading.md § auto.md:283
+    // prose update).
+    expect(step3).toContain("hash(issueRef, gateType, generation[, runId])");
+    expect(step3).toContain("§ Dispatch step 0");
+    expect(step3).toMatch(/Generation discriminator \(UI mode\)/);
+    // The 4-input shape MUST also be named in the pre-draft `cockpit_gate_status`
+    // reference (re-pinned per #469 / FR-010 — the load-bearing "same N inputs"
+    // clause names FOUR under runIdEnabled === true, three under false).
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    expect(step3Normalized).toContain(
+      "pre-draft `cockpit_gate_status({issueRef, gateType, generation, runId})` check",
+    );
+    expect(step3Normalized).toMatch(
+      /names the same FOUR inputs under `runIdEnabled === true` \(three under `runIdEnabled === false`/,
+    );
+    // Negative pin: the pre-#469 "same three inputs" prose is gone from the
+    // gateId-idempotency paragraph (stale prose is worse than no prose per
+    // plan.md § Approach; leaving it would be trusted).
+    expect(step3Normalized).not.toMatch(
+      /pre-draft `cockpit_gate_status\(\{issueRef, gateType, generation\}\) check[^.]*names the same three inputs/,
+    );
+  });
+
+  it("457-3 § step 3 escape-hatch block: verbatim heading + N=3 literal + exact ack detail string", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // Verbatim heading (pinned literally per contracts/answered-escape-hatch.md).
+    expect(step3).toContain(
+      "**Answered-gate parked-forever escape hatch (UI mode only).**",
+    );
+    // N=3 threshold pinned literally in the phrase `count >= 3`.
+    expect(step3).toContain("count >= 3");
+    // Ack detail string pinned literally (post-mortem grep target).
+    expect(step3).toContain(
+      "'answered-not-consumed — presumed stuck at cloud delivered/applied'",
+    );
+    // Escape hatch reads `openGates` for `status: 'answered'` entries and
+    // increments the sweep counter.
+    expect(step3).toContain("answeredGateSweepCounter.set");
+    expect(step3).toContain("openGates.delete(gateId)");
+    expect(step3).toContain("answeredGateSweepCounter.delete(gateId)");
+    // Under `local` the block is dead prose.
+    expect(step3).toMatch(/ResolvedGateMode === "local"[^]*dead prose/);
+  });
+
+  it("457-3a § step 3 escape hatch ACTIVELY re-derives (cockpit_status + synthesized dispatch) — never defers to the next drain", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // The re-derivation rule exists under its own verbatim heading.
+    expect(step3).toContain("**§ Escape-hatch re-derivation (load-bearing).**");
+    // It re-reads live state via cockpit_status and synthesizes a dispatch —
+    // the same mechanism the startup sweep uses for synthetic events.
+    expect(step3).toContain("cockpit_status(issue=<issueRef>, json=true)");
+    expect(step3).toMatch(/[Ss]ynthesize an event from the returned labels/);
+    // The "wait for the drain" behaviour is explicitly forbidden, with the
+    // reason: the hatch changes no label and the drain returns only NEW
+    // transitions, so no batch would ever carry the re-derived event.
+    expect(step3).toMatch(/Do NOT leave re-derivation to the next .*drain|Do NOT leave re-derivation to the next `cockpit_await_events` drain/);
+    expect(step3).toMatch(/returns only NEW transitions/);
+    expect(step3).toMatch(/parked it forever|parked forever/);
+    // Negative pin: the round-2 "rely on the next drain" wording is gone from
+    // the startup-sweep site.
+    expect(step3).not.toMatch(/rely on the next drain to re-derive/);
+    // The startup-sweep de-duplication carve-out is scoped to this site only.
+    expect(step3).toMatch(/De-duplication at the § step-3 startup-sweep tick site ONLY/);
+  });
+
+  it("457-3b § step 4 sub-step 0 escape-hatch tick ALSO actively re-derives (the site with no following synthetic pass)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step4 = extractInstructionsSteps(autoMd).get(4)!;
+    // Round-2's broken wording must be gone from the per-wake site — this is
+    // the site where deferring to the drain parks the issue permanently.
+    expect(step4).not.toMatch(/rely on the next drain to re-derive/);
+    // Active re-derivation, in the same pass, before the drain.
+    expect(step4).toMatch(/actively re-derive/i);
+    expect(step4).toContain("cockpit_status(issue=<issueRef>, json=true)");
+    expect(step4).toMatch(/in this same pass, before the drain/);
+    // Names why the drain cannot produce it.
+    expect(step4).toMatch(/returns only NEW transitions/);
+    expect(step4).toMatch(/SOLE path that reaches the issue/);
+  });
+
+  it("457-3c § step 3 states the counter semantics the literal 3 is measured in, and all six D.n Step 0 branches agree", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // Semantics are stated explicitly next to the load-bearing literal.
+    expect(step3).toMatch(/\*\*Counter semantics the literal `3` is measured in/);
+    // The chosen semantics: record-time increment IS the recording sweep's count.
+    expect(step3).toMatch(
+      /record-time increment IS that entry's count for the sweep in which it was added|increment performed by a D\.n Step 0 `reuse-answered` branch IS that entry's count/,
+    );
+    expect(step3).toMatch(/reaches `3` at sweep S\+2/);
+    // Negative pin: the contradictory round-2 wording is gone.
+    expect(step3).not.toMatch(
+      /included in the NEXT sweep's tick, not the sweep during which it was added/,
+    );
+    // No double-count claim is stated with its reason (ticks run before dispatch).
+    expect(step3).toMatch(/No double-count is possible/);
+
+    // All six D.n Step 0 `answered` branches reference the same semantics.
+    const D_HEADERS = [
+      "D.1 — `waiting-for:clarification`",
+      "D.2 — `waiting-for:<artifact>-review`",
+      "D.3 — `waiting-for:implementation-review`",
+      "D.4 — `waiting-for:manual-validation`",
+      "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)",
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+    ];
+    for (const header of D_HEADERS) {
+      const block = extractSubheadingBlock(autoMd, header);
+      expect(
+        block,
+        `${header} must reference the single counter-semantics definition`,
+      ).toMatch(/per § step 3 \*\*Counter semantics\*\*/);
+      expect(block).toMatch(
+        /this record-time increment IS the entry's count for the sweep in which it was added/,
+      );
+    }
+  });
+
+  // 457-4 through 457-9: each drafting D.n row contains the pre-draft Step 0.
+  //
+  // The rows split into two contract shapes:
+  //   * 1:1 rows (D.1–D.4) — gateType ⇒ dispatch row, so the generation-drift
+  //     branch is PERMITTED and the drift-ack literal must be present.
+  //   * escalation rows (D.7, D.11) — four rows share `gateType: 'escalation'`
+  //     and the wire carries no subtype discriminator, so the drift branch is
+  //     DISABLED and the drift-ack literal must be ABSENT.
+  const ALL_STEP0_HEADERS: ReadonlyArray<string> = [
+    "D.1 — `waiting-for:clarification`",
+    "D.2 — `waiting-for:<artifact>-review`",
+    "D.3 — `waiting-for:implementation-review`",
+    "D.4 — `waiting-for:manual-validation`",
+    "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)",
+    "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+  ];
+
+  const ONE_TO_ONE_HEADERS: ReadonlyArray<[string, string]> = [
+    ["457-4 D.1", ALL_STEP0_HEADERS[0]!],
+    ["457-5 D.2", ALL_STEP0_HEADERS[1]!],
+    ["457-6 D.3", ALL_STEP0_HEADERS[2]!],
+    ["457-7 D.4", ALL_STEP0_HEADERS[3]!],
+  ];
+  const ESCALATION_HEADERS: ReadonlyArray<[string, string]> = [
+    ["457-8 D.7", ALL_STEP0_HEADERS[4]!],
+    ["457-9 D.11", ALL_STEP0_HEADERS[5]!],
+  ];
+
+  // Shape common to every Step 0 block regardless of gateType.
+  function assertCommonStep0Shape(block: string): void {
+    // Verbatim Step 0 heading (pinned literally per contracts/pre-draft-check.md).
+    expect(block).toContain(
+      "**Step 0 — pre-draft gate-status check (UI mode only).**",
+    );
+    // Three-branch rule — status: 'open', 'answered', 'absent'.
+    expect(block).toContain("`{ status: 'open' }`");
+    expect(block).toContain("`{ status: 'answered' }`");
+    expect(block).toContain("`{ status: 'absent' }`");
+    // On 'answered', increment the sweep counter (couples the pre-draft
+    // check to the FR-009 escape hatch).
+    expect(block).toContain("increment `answeredGateSweepCounter[gateId]`");
+    // The check uses the SAME per-gateType generation function the live path
+    // uses (V1 in data-model.md).
+    expect(block).toMatch(/SAME per-gateType generation function the live path uses/);
+    // Skips entirely under local mode.
+    expect(block).toMatch(/Skip Step 0 entirely under `ResolvedGateMode === "local"`/);
+    // gate-status is called with the frozen {issueRef, gateType, generation,
+    // runId} schema (per #458 review comment 1 — the tool's .strict() input
+    // schema rejects a hand-built {gateId} payload). Re-pinned per #469 /
+    // FR-009: the optional `runId` fourth field is passed under `runIdEnabled
+    // === true`, OMITTED under `runIdEnabled === false` (V6). Phase B
+    // (generacy#1067 commit `82077f1a`) extended CockpitGateStatusInputSchema
+    // with the optional `runId` field; the plugin now supplies the value.
+    // Do NOT weaken the pin to accept the pre-#469 3-input shape (CLAUDE.md
+    // § Cockpit playbook pins).
+    expect(block).toContain(
+      "cockpit_gate_status({ issueRef, gateType, generation, runId })",
+    );
+    // The V6 omission rule is stated at every Step 0 site so a subagent /
+    // executor reading only this row knows the field is OMITTED (not null,
+    // not undefined) on a pre-#1067 cluster.
+    expect(block).toContain(
+      "the `runId` field is OMITTED under `runIdEnabled === false` (V6)",
+    );
+    // The reuse record carries the mandatory dispatchClass — D.12 step 3/4
+    // key on it; without it an answer to a reused gate resolves no handler.
+    expect(block).toMatch(/status: 'open', transitionClass, dispatchClass\}/);
+    expect(block).toMatch(/`dispatchClass` is THIS row's `D\.n` identifier/);
+    // Error taxonomy: all four reachable classes are named and NONE of them
+    // may be read as `absent` or fall through to drafting.
+    for (const cls of ["query-unreachable", "invalid-args", "internal", "transport"]) {
+      expect(block, `Step 0 must name the ${cls} error class`).toContain(cls);
+    }
+    expect(block).toMatch(/MUST NOT\*\* collapse ANY error class/);
+    expect(block).toMatch(
+      /MUST NOT fall through to the draft-then-open flow on any of them/,
+    );
+    // Negative pin: the round-2 claim that a non-query-unreachable error is a
+    // benign race to be treated as "no existing gate" is gone.
+    expect(block).not.toMatch(/rare error-race window/);
+    expect(block).not.toMatch(
+      /treat (the return |)as "no existing gate" and fall through to the draft-then-open flow/,
+    );
+  }
+
+  for (const [pinLabel, header] of ONE_TO_ONE_HEADERS) {
+    it(`${pinLabel}: § Dispatch ${header.split(" —")[0]} Step 0 — 1:1 gateType, drift branch PERMITTED (drift-ack literal + list-return shape)`, () => {
+      const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+      const block = extractSubheadingBlock(autoMd, header);
+      assertCommonStep0Shape(block);
+      // This row's gateType maps 1:1 onto the row, so the guard is satisfied.
+      expect(block).toMatch(
+        /This row's `gateType` maps 1:1 onto this dispatch row, so the § Pre-draft check — shared rules \*\*generation-drift branch guard\*\* is satisfied and the drift branch MAY fire/,
+      );
+      // Generation-drift branch names both the ack call and the drift detail
+      // literal (V3).
+      expect(block).toContain(
+        "cockpit_gate_ack(staleGateId, outcome: 'superseded', detail: 'generation drift — content changed since original draft (was g<old>, now g<new>)')",
+      );
+      // gate-list return shape is the {gates, truncated?} object (per #458
+      // review comment 7 — NOT a bare array).
+      expect(block).toMatch(/cockpit_gate_list\(\{ issueRef, gateType \}\)/);
+      expect(block).toMatch(/result\.gates|iterate `result\.gates`/);
+      // truncated: true with no visible drift entry is NOT draft-fresh.
+      expect(block).toMatch(/result\.truncated === true/);
+    });
+  }
+
+  for (const [pinLabel, header] of ESCALATION_HEADERS) {
+    it(`${pinLabel}: § Dispatch ${header.split(" —")[0]} Step 0 — shared 'escalation' gateType, drift branch DISABLED but same-generation adoption ENABLED (re-pinned per #471 review: adoption is orthogonal to the drift-branch guard because it keys on gateId identity rather than dispatch-identifying subtype, and it is the load-bearing mechanism SC-006 depends on)`, () => {
+      const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+      const block = extractSubheadingBlock(autoMd, header);
+      assertCommonStep0Shape(block);
+      // The guard fires: the drift branch is disabled for this row.
+      expect(block).toContain(
+        "**The generation-drift branch is DISABLED for this row",
+      );
+      // Re-pinned per #471 review: the "do NOT call cockpit_gate_list"
+      // assertion is dropped — escalation rows now DO call
+      // cockpit_gate_list for the same-generation adoption branch (SC-006).
+      // The load-bearing anti-hazard property is that no drift-ack fires,
+      // NOT that no list call fires.
+      expect(block).toMatch(/fall (straight |)through to the draft-then-open flow/);
+      // NEGATIVE PIN (the F1 defect, preserved): no drift-ack may appear in
+      // an escalation row's Step 0 — that ack destroys a sibling row's live
+      // operator gate.
+      expect(
+        block,
+        "an escalation row's Step 0 must NOT contain a generation-drift ack",
+      ).not.toContain("cockpit_gate_ack(staleGateId");
+      expect(block).not.toContain(
+        "generation drift — content changed since original draft",
+      );
+      // The residual limitation is documented and points at the upstream issue.
+      expect(block).toMatch(/\*\*Residual limitation\*\*/);
+      expect(block).toContain("generacy-ai/generacy#1046");
+      // The generation string must not be parsed to recover the subtype.
+      expect(block).toMatch(/Do NOT recover the subtype by parsing `generation`/);
+      // Positive pin per #471 review: the same-generation adoption sub-
+      // branch DOES fire on this row. Adoption keys on gateId identity
+      // (row.gateId), not on dispatch-identifying subtype, so it cannot
+      // destroy a sibling row's gate.
+      const blockNormalized = block.replace(/\s+/g, " ");
+      expect(
+        blockNormalized,
+        `${header} must carry the "SAME-generation adoption branch DOES fire" clause per #471 / SC-006`,
+      ).toMatch(
+        /SAME-generation adoption branch DOES fire on this row \(per #471 \/ SC-006\)/,
+      );
+      // The escalation row's list call is present (runId-agnostic form).
+      expect(block).toContain("cockpit_gate_list({ issueRef, gateType })");
+      // The escalation-row same-generation adopt sub-branch: adopts under
+      // row.gateId with the row's originating runId.
+      expect(
+        blockNormalized,
+        `${header} escalation-row same-generation adopt sub-branch must record row.gateId with row.runId (FR-003)`,
+      ).toMatch(/row\.runId[^]*(FR-003|originating `runId`)/);
+    });
+  }
+
+  it("457-9a § Pre-draft check — shared rules defines the drift guard for all four escalation rows + the four-class error taxonomy", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const shared = extractSubheadingBlock(
+      autoMd,
+      "Pre-draft check — shared rules (UI mode)",
+    );
+    // Guard subsection with the two-part precondition.
+    expect(shared).toContain(
+      "#### Generation-drift branch guard (dispatch-identity precondition)",
+    );
+    expect(shared).toMatch(
+      /may be superseded only when BOTH hold|A listed entry may be superseded only when BOTH hold/,
+    );
+    expect(shared).toMatch(
+      /When the discriminator is NOT recoverable from the list entry, the drift branch MUST NOT supersede/,
+    );
+    // All four escalation rows are named — the guard is NOT scoped to D.11.
+    for (const row of ESCALATION_DISPATCH_ROWS) {
+      expect(shared, `guard must name escalation row ${row}`).toContain(row);
+    }
+    expect(shared).toMatch(/drift branch is DISABLED for `gateType: 'escalation'`/);
+    // The four 1:1 gateTypes are enumerated as guard-satisfying.
+    for (const gt of [
+      "clarification",
+      "artifact-review",
+      "implementation-review",
+      "manual-validation",
+    ]) {
+      expect(shared, `guard table must name gateType ${gt}`).toContain(gt);
+    }
+    // Residual limitation + upstream tracking issue.
+    expect(shared).toMatch(/Residual limitation \(NOT fixed here/);
+    expect(shared).toContain("generacy-ai/generacy#1046");
+    expect(shared).toMatch(/MUST NOT recover the subtype by parsing the `generation` string/);
+
+    // Error-taxonomy subsection: all four classes with explicit actions.
+    expect(shared).toContain("#### Gate-query error taxonomy");
+    for (const cls of ["query-unreachable", "invalid-args", "internal", "transport"]) {
+      expect(shared, `taxonomy must name ${cls}`).toContain(cls);
+    }
+    expect(shared).toMatch(
+      /Only a literal `\{ status: 'absent' \}` ok-return means "no existing gate"/,
+    );
+    // invalid-args / internal are named as deterministic bugs, not races.
+    expect(shared).toMatch(/deterministic \*\*caller bug\*\*|deterministic caller bug/i);
+    expect(shared).toMatch(/populated \*\*exclusively\*\* by deterministic caller\/server bugs/);
+    // The visible operator-facing error line is pinned verbatim, and matches
+    // the reference formatter.
+    expect(shared).toContain(
+      "pre-draft gate check failed for <issue-ref> (<class>): <detail> — not drafting; see the run ledger",
+    );
+    expect(
+      formatPreDraftCheckErrorLine("<issue-ref>", {
+        class: "invalid-args",
+        message: "<detail>",
+      }).replace("(invalid-args)", "(<class>)"),
+    ).toBe(
+      "pre-draft gate check failed for <issue-ref> (<class>): <detail> — not drafting; see the run ledger",
+    );
+  });
+
+  it("457-9b § D.6 and § D.10 (escalation rows without a Step 0) are explicitly bound by the drift guard", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    for (const header of [
+      "D.6 — `completed:validate` (red) / merge red → bounded fixer subagent",
+      "D.10 — Unrecognized / ambiguous state → escalation gate (Skip / Stop only)",
+    ]) {
+      const block = extractSubheadingBlock(autoMd, header);
+      expect(block, `${header} must carry the escalation-gateType note`).toContain(
+        "**Escalation-gateType note (UI mode).**",
+      );
+      expect(block).toContain("`gateType: 'escalation'`");
+      expect(block).toMatch(
+        /covered by the § Pre-draft check — shared rules \*\*generation-drift branch guard\*\*/,
+      );
+      expect(block).toContain("generacy-ai/generacy#1046");
+    }
+  });
+
+  it("457-14 D.2 Step 0 names gateType = 'artifact-review' verbatim (per #458 review comment 6 — spec-review/clarification-review/plan-review/tasks-review are NOT in the frozen enum)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(
+      autoMd,
+      "D.2 — `waiting-for:<artifact>-review`",
+    );
+    expect(block).toContain("`gateType = artifact-review`");
+    // The invalid literals MUST NOT appear as gateType values in the Step 0
+    // block — the artifact kind is folded into `generation`, not `gateType`.
+    expect(block).not.toMatch(/gateType\s*=\s*['`]?spec-review/);
+    expect(block).not.toMatch(/gateType\s*=\s*['`]?clarification-review/);
+    expect(block).not.toMatch(/gateType\s*=\s*['`]?plan-review/);
+    expect(block).not.toMatch(/gateType\s*=\s*['`]?tasks-review/);
+  });
+
+  it("457-15 D.11 Step 0 pins the dedup-before-drift-ack ordering exception (per #458 review comment 3 — re-pinned per #471 review: the exception now fires in the `Anything else` fall-through branch AFTER the same-generation adoption check, because adoption takes precedence and is the load-bearing SC-006 mechanism)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(
+      autoMd,
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+    );
+    // The exception heading is present verbatim.
+    expect(block).toContain("**D.11 ordering exception (Q5=A / FR-010).**");
+    // The rationale names the sibling-label / different-gateId hazard.
+    expect(block).toMatch(/sibling|label-pair/);
+    // Re-pinned per #471 review: the ordering exception applies in the
+    // "Anything else" fall-through branch, AFTER the same-generation
+    // adoption check has already fired (adoption takes precedence — it
+    // is the SC-006 load-bearing site). The exception's job is to catch
+    // the sibling-label / different-gateId hazard for gates opened THIS
+    // run, which cannot be adopted (they belong to the same run).
+    const blockNormalized = block.replace(/\s+/g, " ");
+    expect(
+      blockNormalized,
+      "D.11 Step 0 absent branch must apply the ordering exception in the fall-through branch (post-adoption)",
+    ).toMatch(
+      /Now apply the D\.11 ordering exception above\*?\*? — if `<issue-ref>` is in `dispatched-issues`/,
+    );
+    // The exception's rationale (fresh-adoption side-effect) is stated:
+    // adopting a prior-run entry MUST also add <issue-ref> to
+    // `dispatched-issues` so this run's sibling event takes the
+    // already-dispatched exit.
+    expect(
+      blockNormalized,
+      "D.11 same-generation adopt sub-branch must set `dispatched-issues` for the adopted incident so the sibling event takes the already-dispatched exit",
+    ).toMatch(
+      /Also add `<issue-ref>` to the in-memory `dispatched-issues` set/,
+    );
+  });
+
+  it("457-16 § step 4 main loop declares the per-wake escape-hatch tick (per #458 review comment 2 — reachability requires per-wake site, not just startup)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step4 = extractInstructionsSteps(autoMd).get(4)!;
+    // Sub-step 0 declares the tick.
+    expect(step4).toContain(
+      "**Answered-gate parked-forever escape hatch tick (UI mode only).**",
+    );
+    // Names the load-bearing reachability rationale for the per-wake site.
+    expect(step4).toMatch(/per-wake tick|load-bearing per-wake tick/);
+    expect(step4).toMatch(/reachable|reachability/);
+  });
+
+  it("457-17 § In-memory loop state additions declares the openGates key using `hash(issueRef, gateType, generation)` (per #458 review comment 8 — dispatchClass is NOT part of the key)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const section = extractSubheadingBlock(
+      autoMd,
+      "In-memory loop state additions (UI mode)",
+    );
+    // Correct derivation input names — gateType, NOT dispatchClass.
+    expect(section).toMatch(/hash\(issueRef,\s*gateType,\s*generation\)/);
+    // Legacy `dispatchClass, generation` form does NOT survive in this bullet.
+    expect(section).not.toMatch(/hash\(issueRef,\s*dispatchClass,\s*generation\)/);
+  });
+
+  it("457-10 § Dispatch D.11 contains BOTH step 0 (pre-draft check) AND step 1 (dispatched-issues dedup) in that order — defense-in-depth pin", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(
+      autoMd,
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+    );
+    // Step 0 heading present.
+    const step0Idx = block.indexOf(
+      "**Step 0 — pre-draft gate-status check (UI mode only).**",
+    );
+    expect(step0Idx, "D.11 must contain the Step 0 heading").toBeGreaterThan(-1);
+    // Step 1 `Dedup check.` heading present.
+    const step1Idx = block.indexOf("**Dedup check.**");
+    expect(step1Idx, "D.11 must retain the existing step 1 `Dedup check.`").toBeGreaterThan(-1);
+    // Order: Step 0 above Step 1.
+    expect(step0Idx).toBeLessThan(step1Idx);
+    // Existing step 1's in-memory `dispatched-issues set` reference survives.
+    expect(block).toContain("dispatched-issues set");
+    // Defense-in-depth is stated as a positive obligation (per FR-010 / Q5=A).
+    expect(block).toMatch(/Defense-in-depth|defense in depth|complementary, not redundant/i);
+  });
+
+  it("457-11 § In-memory loop state additions (UI mode) declares `answeredGateSweepCounter: Map<GateId, number>` verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Locate the block by its subheading via the shared helper (skips the H3
+    // itself; returns the body up to the next H3).
+    const section = extractSubheadingBlock(
+      autoMd,
+      "In-memory loop state additions (UI mode)",
+    );
+    // Verbatim declaration.
+    expect(section).toContain("`answeredGateSweepCounter: Map<GateId, number>`");
+    // Lifecycle description names the seed / tick / reset / threshold-trigger.
+    // Re-pinned for #458 F5: the counter is SEEDED at 1 by the Step 0
+    // reuse-answered branch (that increment is the recording sweep's count),
+    // then ticked on every subsequent sweep — the two sites must not both
+    // count the same sweep.
+    expect(section).toMatch(/Seeded at `1` by the D\.n Step 0 `reuse-answered` branch/);
+    expect(section).toMatch(/ticked at the top of every subsequent sweep/);
+    expect(section).toMatch(/no sweep is counted twice for the same entry/);
+    expect(section).toMatch(/reset by every D\.12 handler/);
+    expect(section).toContain("count >= 3");
+    // The escape hatch actively re-derives; it must not defer to the drain.
+    expect(section).toMatch(/actively re-derive/i);
+    expect(section).toContain("cockpit_status(issue=<issueRef>, json=true)");
+    expect(section).toMatch(/MUST NOT be deferred to the next drain/);
+    // Escape-hatch detail literal appears in the description.
+    expect(section).toContain(
+      "answered-not-consumed — presumed stuck at cloud delivered/applied",
+    );
+    // Unused under local.
+    expect(section).toMatch(/Under `local` the map is unused/);
+  });
+
+  it("457-12 § D.12 step 6 heading is `Remove from openGates and reset sweep counter` and contains BOTH delete calls", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    // New heading (renamed per contracts/answered-escape-hatch.md § D.12 counter reset).
+    expect(block).toContain(
+      "**Remove from openGates and reset sweep counter**",
+    );
+    // Both delete calls fire on `applied` / `superseded` / `failed`.
+    expect(block).toContain("`openGates.delete(event.gateId)`");
+    expect(block).toContain("`answeredGateSweepCounter.delete(event.gateId)`");
+    // Revised-draft re-open case: counter deleted on the original gateId even
+    // when the record is retained flagged `superseded`.
+    expect(block).toMatch(/counter for the original `gateId` is deleted/);
+  });
+
+  it("457-13 § UI-mode gate mapping generation-discriminator table is UNCHANGED (drift audit — sweep + live paths reference the same function)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Locate the discriminator subsection. Search for the H4 heading and
+    // return everything up to the next H3 or H2 (H4 is a child of the H2
+    // `## UI-mode gate mapping (G.1–G.7)`; the next H3 sibling terminates it).
+    const marker = "\n#### Generation discriminator (UI mode)\n";
+    const sectionStart = autoMd.indexOf(marker);
+    expect(sectionStart, "generation-discriminator subsection must exist").toBeGreaterThan(-1);
+    const rest = autoMd.slice(sectionStart + marker.length);
+    // The next H2 or H3 marks the end of this H4 subsection.
+    const nextH3 = rest.search(/^### /m);
+    const nextH2 = rest.search(/^## /m);
+    const nextBoundaries = [nextH3, nextH2].filter((n) => n !== -1);
+    const nextBoundary = nextBoundaries.length > 0 ? Math.min(...nextBoundaries) : -1;
+    const section = nextBoundary === -1 ? rest : rest.slice(0, nextBoundary);
+
+    // The eight-row gateType table body is unchanged — pin the exact discriminators.
+    const EXPECTED_ROWS: ReadonlyArray<[string, string]> = [
+      [
+        "`clarification`",
+        "content hash of the open question / answer set at open time",
+      ],
+      ["`artifact-review`", "artifact kind + review-branch head SHA"],
+      ["`implementation-review`", "PR head SHA"],
+      ["`manual-validation`", "PR head SHA"],
+      [
+        "`escalation`",
+        "subtype + triggering label/state + occurrence counter",
+      ],
+      ["`phase-queue`", "phase number (`P<next>`)"],
+      ["`filing`", "draft hash over `{title, body, labels}`"],
+      ["`scope-drained`", "tracking ref + drain counter"],
+    ];
+    for (const [gateType, discriminator] of EXPECTED_ROWS) {
+      expect(
+        section,
+        `generation-discriminator row for ${gateType} must be present verbatim`,
+      ).toContain(gateType);
+      expect(
+        section,
+        `generation-discriminator row for ${gateType} must name '${discriminator}'`,
+      ).toContain(discriminator);
+    }
+    // The frozen gateKey / gateId derivation prose is present (V1 in data-model.md).
+    expect(section).toContain(
+      "gateId = sha256(gateKey)[:24]",
+    );
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // 457-lib — reference-module contracts backing the escape-hatch prose.
+  // Machine-checks that the three-branch classifier, the sweep-counter tick,
+  // and the N=3 escape-hatch selector match the prose contract exactly.
+  // ────────────────────────────────────────────────────────────────────────
+
+  const FAKE_GATE_ID: GateId = "abc123def4567890abc12345";
+  const OTHER_GATE_ID: GateId = "9999111122223333aaaabbbb";
+
+  const EMPTY_LIST: GateListResult = { gates: [] };
+
+  // A COMPLETE `GateRecord` — no `as` cast, no ad-hoc
+  // `GateRecord & { status?: ... }` intersection. `status` is a required field
+  // on the canonical type (lib/gate-wire-types.ts § GateRecord); if it were
+  // dropped back to optional, this literal would stop type-checking and the
+  // source pin in 457-lib-9 would go red.
+  function makeGateRecord(
+    gateId: GateId,
+    status: "open" | "answered",
+    overrides: Partial<GateRecord> = {},
+  ): GateRecord {
+    return {
+      gateId,
+      gateKey: `owner/repo#1:clarification:gen-A`,
+      gateType: "clarification",
+      generation: "gen-A",
+      issueRef: "owner/repo#1",
+      transitionClass: "waiting-for:clarification",
+      dispatchClass: "D.1",
+      status,
+      askedAt: "2026-07-24T00:00:00.000Z",
+      inboxUrl: "https://generacy.ai/inbox/abc123def4567890abc12345",
+      originalDraft: {
+        title: "Approve clarification answers for owner/repo#1",
+        body: "…",
+        options: [],
+        freeTextAffordance: { kind: "none" },
+      },
+      ...overrides,
+    };
+  }
+
+  it("457-lib-1 classifyPreDraftCheck: `open` → reuse-open with the returned gateId", () => {
+    const status: GateStatusResult = { gateId: FAKE_GATE_ID, status: "open" };
+    const outcome = classifyPreDraftCheck(status, EMPTY_LIST, "gen-A", "clarification");
+    expect(outcome).toEqual({ kind: "reuse-open", gateId: FAKE_GATE_ID });
+  });
+
+  it("457-lib-2 classifyPreDraftCheck: `answered` → reuse-answered (triggers sweep-counter tick upstream)", () => {
+    const status: GateStatusResult = { gateId: FAKE_GATE_ID, status: "answered" };
+    const outcome = classifyPreDraftCheck(status, EMPTY_LIST, "gen-A", "clarification");
+    expect(outcome).toEqual({ kind: "reuse-answered", gateId: FAKE_GATE_ID });
+  });
+
+  it("457-lib-3 classifyPreDraftCheck: `absent` + list has drift → supersede-and-redraft with stale/fresh generations", () => {
+    const status: GateStatusResult = { gateId: null, status: "absent" };
+    const list: GateListResult = {
+      gates: [
+        { gateId: OTHER_GATE_ID, gateType: "clarification", generation: "gen-OLD", status: "open" },
+      ],
+    };
+    const outcome = classifyPreDraftCheck(status, list, "gen-NEW", "clarification");
+    expect(outcome).toEqual({
+      kind: "supersede-and-redraft",
+      staleGateId: OTHER_GATE_ID,
+      staleGeneration: "gen-OLD",
+      freshGeneration: "gen-NEW",
+    });
+  });
+
+  it("457-lib-4 classifyPreDraftCheck: `absent` + empty list → draft-fresh", () => {
+    const status: GateStatusResult = { gateId: null, status: "absent" };
+    const outcome = classifyPreDraftCheck(status, EMPTY_LIST, "gen-A", "clarification");
+    expect(outcome).toEqual({ kind: "draft-fresh" });
+  });
+
+  it("457-lib-4b classifyPreDraftCheck: `absent` + truncated list with no drift entry → abort-query-unreachable (do NOT collapse to draft-fresh)", () => {
+    const status: GateStatusResult = { gateId: null, status: "absent" };
+    const list: GateListResult = { gates: [], truncated: true };
+    const outcome = classifyPreDraftCheck(status, list, "gen-A", "clarification");
+    expect(outcome.kind).toBe("abort-query-unreachable");
+    if (outcome.kind === "abort-query-unreachable") {
+      expect(outcome.error.class).toBe("query-unreachable");
+    }
+  });
+
+  it("457-lib-4c classifyPreDraftCheck: `absent` + truncated list WITH drift entry → supersede-and-redraft (drift wins over truncation)", () => {
+    const status: GateStatusResult = { gateId: null, status: "absent" };
+    const list: GateListResult = {
+      gates: [
+        { gateId: OTHER_GATE_ID, gateType: "clarification", generation: "gen-OLD", status: "open" },
+      ],
+      truncated: true,
+    };
+    const outcome = classifyPreDraftCheck(status, list, "gen-NEW", "clarification");
+    expect(outcome).toEqual({
+      kind: "supersede-and-redraft",
+      staleGateId: OTHER_GATE_ID,
+      staleGeneration: "gen-OLD",
+      freshGeneration: "gen-NEW",
+    });
+  });
+
+  it("457-lib-5 tickAnsweredSweepCounter: only `answered` entries increment; `open` entries do not", () => {
+    // Map<GateId, GateRecord> — no ad-hoc `& { status?: ... }` intersection and
+    // no cast; `status` is a required field on the canonical GateRecord.
+    const openGates = new Map<GateId, GateRecord>();
+    openGates.set(FAKE_GATE_ID, makeGateRecord(FAKE_GATE_ID, "answered"));
+    openGates.set(OTHER_GATE_ID, makeGateRecord(OTHER_GATE_ID, "open"));
+    const counter: AnsweredGateSweepCounter = new Map();
+    tickAnsweredSweepCounter(openGates, counter);
+    tickAnsweredSweepCounter(openGates, counter);
+    expect(counter.get(FAKE_GATE_ID)).toBe(2);
+    expect(counter.has(OTHER_GATE_ID)).toBe(false);
+  });
+
+  it("457-lib-6 selectEscapeHatchTargets: fires at threshold N=3 exactly (V6 load-bearing literal)", () => {
+    const counter: AnsweredGateSweepCounter = new Map();
+    counter.set(FAKE_GATE_ID, 1);
+    expect(selectEscapeHatchTargets(counter)).toEqual([]);
+    counter.set(FAKE_GATE_ID, 2);
+    expect(selectEscapeHatchTargets(counter)).toEqual([]);
+    counter.set(FAKE_GATE_ID, 3);
+    expect(selectEscapeHatchTargets(counter)).toEqual([FAKE_GATE_ID]);
+    // N=3 is the pinned threshold constant.
+    expect(ANSWERED_SWEEP_THRESHOLD).toBe(3);
+  });
+
+  it("457-lib-7 formatGenerationDriftDetail: matches the canonical ack detail template (V3)", () => {
+    expect(formatGenerationDriftDetail("1", "2")).toBe(
+      "generation drift — content changed since original draft (was g1, now g2)",
+    );
+  });
+
+  // ── F1 guard: the drift branch must never supersede a gate it did not open ──
+
+  it("457-lib-3b classifyPreDraftCheck: `absent` + drift entry under gateType 'escalation' → draft-fresh, NOT supersede-and-redraft", () => {
+    const status: GateStatusResult = { gateId: null, status: "absent" };
+    // A live sibling-row escalation gate (e.g. D.11 merge-conflicts) at a
+    // different generation. D.7 must NOT ack it superseded: four dispatch rows
+    // share `gateType: 'escalation'` and the wire carries no subtype
+    // discriminator, so this entry may belong to another row entirely.
+    const list: GateListResult = {
+      gates: [
+        {
+          gateId: OTHER_GATE_ID,
+          gateType: "escalation",
+          generation: "merge-conflicts:waiting-for:merge-conflicts:1",
+          status: "open",
+        },
+      ],
+    };
+    const outcome = classifyPreDraftCheck(
+      status,
+      list,
+      "agent-error:agent:error:1",
+      "escalation",
+    );
+    expect(outcome).toEqual({ kind: "draft-fresh" });
+  });
+
+  it("457-lib-3c classifyPreDraftCheck: `absent` + truncated escalation list → draft-fresh (the guard short-circuits before the truncation rule)", () => {
+    const status: GateStatusResult = { gateId: null, status: "absent" };
+    const outcome = classifyPreDraftCheck(
+      status,
+      { gates: [], truncated: true },
+      "agent-error:agent:error:1",
+      "escalation",
+    );
+    // The drift branch never runs for escalation, so there is no hidden drift
+    // entry to worry about and no reason to abort.
+    expect(outcome).toEqual({ kind: "draft-fresh" });
+  });
+
+  it("457-lib-3d classifyPreDraftCheck: escalation with listResult=null (caller skipped the query) → draft-fresh", () => {
+    const status: GateStatusResult = { gateId: null, status: "absent" };
+    expect(
+      classifyPreDraftCheck(status, null, "agent-error:agent:error:1", "escalation"),
+    ).toEqual({ kind: "draft-fresh" });
+  });
+
+  it("457-lib-3e driftBranchMaySupersede: false for 'escalation' only; true for every 1:1 gateType", () => {
+    expect(driftBranchMaySupersede("escalation")).toBe(false);
+    const ONE_TO_ONE: ReadonlyArray<GateType> = [
+      "clarification",
+      "artifact-review",
+      "implementation-review",
+      "manual-validation",
+      "phase-queue",
+      "filing",
+      "scope-drained",
+    ];
+    for (const gt of ONE_TO_ONE) {
+      expect(driftBranchMaySupersede(gt), `${gt} maps 1:1 to a dispatch row`).toBe(true);
+    }
+    // The four rows the escalation enum value collides across.
+    expect([...ESCALATION_DISPATCH_ROWS]).toEqual(["D.6", "D.7", "D.10", "D.11"]);
+  });
+
+  // ── F4: the real four-class error taxonomy — no class means "absent" ──
+
+  it("457-lib-8a classifyGateQueryError: every reachable class aborts; NONE resolves to draft-fresh", () => {
+    const CLASSES: ReadonlyArray<GateQueryErrorClass> = [
+      "query-unreachable",
+      "invalid-args",
+      "internal",
+      "transport",
+    ];
+    for (const cls of CLASSES) {
+      const error: GateQueryError = { class: cls, message: "boom" };
+      const outcome = classifyGateQueryError(error);
+      expect(
+        outcome.kind,
+        `${cls} must NOT be treated as "no existing gate"`,
+      ).not.toBe("draft-fresh");
+      expect(outcome.kind).toMatch(/^abort-/);
+    }
+    // Retry-later vs deterministic-bug routing.
+    expect(classifyGateQueryError({ class: "query-unreachable", message: "x" }).kind).toBe(
+      "abort-query-unreachable",
+    );
+    expect(classifyGateQueryError({ class: "transport", message: "x" }).kind).toBe(
+      "abort-query-unreachable",
+    );
+    // invalid-args / internal are deterministic caller/server bugs — surfaced
+    // loudly, never silently drafted around (round-1 finding 1).
+    expect(classifyGateQueryError({ class: "invalid-args", message: "x" }).kind).toBe(
+      "abort-gate-query-bug",
+    );
+    expect(classifyGateQueryError({ class: "internal", message: "x" }).kind).toBe(
+      "abort-gate-query-bug",
+    );
+  });
+
+  it("457-lib-8b classifyGateQueryError: an unknown class from a newer tool build still aborts (never draft-fresh)", () => {
+    const outcome = classifyGateQueryError({
+      class: "some-future-class" as GateQueryErrorClass,
+      message: "x",
+    });
+    expect(outcome.kind).toBe("abort-gate-query-bug");
+  });
+
+  it("457-lib-8c GateQueryErrorClass pins the four classes the shipped tools actually return (not the 'transient' placeholder)", () => {
+    const src = readFileSync(
+      resolve(__dirname, "..", "lib", "gate-status-check.ts"),
+      "utf-8",
+    );
+    const decl = src.slice(
+      src.indexOf("export type GateQueryErrorClass"),
+      src.indexOf("export interface GateQueryError"),
+    );
+    expect(decl).toContain('"query-unreachable"');
+    expect(decl).toContain('"invalid-args"');
+    expect(decl).toContain('"internal"');
+    expect(decl).toContain('"transport"');
+    // Negative pin: the incomplete round-2 taxonomy is gone.
+    expect(decl).not.toContain('"transient"');
+  });
+
+  // ── F7: `status` is a required field on the canonical GateRecord ──
+
+  it("457-lib-9 GateRecord declares `status` (required) and gate-status-check no longer patches it in via an intersection", () => {
+    const wireTypes = readFileSync(
+      resolve(__dirname, "..", "lib", "gate-wire-types.ts"),
+      "utf-8",
+    );
+    const recordDecl = wireTypes.slice(
+      wireTypes.indexOf("export interface GateRecord {"),
+      wireTypes.indexOf("export type OpenGatesMap"),
+    );
+    // Required (no `?`), matching data-model.md § GateRecord.
+    expect(recordDecl).toMatch(/^\s*status: "open" \| "answered";/m);
+    expect(recordDecl).not.toMatch(/status\?:/);
+
+    const check = readFileSync(
+      resolve(__dirname, "..", "lib", "gate-status-check.ts"),
+      "utf-8",
+    );
+    // The ad-hoc intersection that papered over the missing field is gone.
+    expect(check).not.toMatch(/GateRecord & \{ status\?/);
+    expect(check).toContain("openGates: Map<GateId, GateRecord>");
+  });
+
+  it("457-lib-8 ESCAPE_HATCH_ACK_DETAIL matches the exact detail-string literal pinned by 457-3", () => {
+    expect(ESCAPE_HATCH_ACK_DETAIL).toBe(
+      "answered-not-consumed — presumed stuck at cloud delivered/applied",
+    );
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // 457-integration (SC-005) — simulate a gate stuck at cloud `delivered`.
+  // Seed openGates with a `status: 'answered'` entry, drive three sweep
+  // ticks with no D.12 event, assert the escape hatch fires with the correct
+  // ack params and clears both maps.
+  // ────────────────────────────────────────────────────────────────────────
+
+  it("457-int-1 (SC-005): three sweeps with no D.12 event → ack `superseded` with exact detail + both maps cleared", () => {
+    const openGates = new Map<GateId, GateRecord>();
+    openGates.set(FAKE_GATE_ID, makeGateRecord(FAKE_GATE_ID, "answered"));
+    const counter: AnsweredGateSweepCounter = new Map();
+
+    // Sweep tick 1.
+    tickAnsweredSweepCounter(openGates, counter);
+    expect(selectEscapeHatchTargets(counter)).toEqual([]);
+    // Sweep tick 2.
+    tickAnsweredSweepCounter(openGates, counter);
+    expect(selectEscapeHatchTargets(counter)).toEqual([]);
+    // Sweep tick 3 — escape hatch fires.
+    tickAnsweredSweepCounter(openGates, counter);
+    const targets = selectEscapeHatchTargets(counter);
+    expect(targets).toEqual([FAKE_GATE_ID]);
+
+    // Simulate the ack + cleanup the escape-hatch prose describes.
+    const ackCalls: Array<{
+      gateId: GateId;
+      outcome: string;
+      detail: string;
+    }> = [];
+    for (const gateId of targets) {
+      ackCalls.push({
+        gateId,
+        outcome: "superseded",
+        detail: ESCAPE_HATCH_ACK_DETAIL,
+      });
+      openGates.delete(gateId);
+      counter.delete(gateId);
+    }
+    expect(ackCalls).toEqual([
+      {
+        gateId: FAKE_GATE_ID,
+        outcome: "superseded",
+        detail:
+          "answered-not-consumed — presumed stuck at cloud delivered/applied",
+      },
+    ]);
+    // Both maps are cleared.
+    expect(openGates.has(FAKE_GATE_ID)).toBe(false);
+    expect(counter.has(FAKE_GATE_ID)).toBe(false);
+    // The hatch ACTIVELY re-derives in the same pass (it does NOT wait for a
+    // drain — the ack changed no label, so no drain would ever carry the
+    // event). Simulate the re-derivation's own pre-draft check: the just-acked
+    // gate is terminal, so `cockpit_gate_status` returns `absent` and drafting
+    // proceeds.
+    const followupStatus: GateStatusResult = { gateId: null, status: "absent" };
+    const followupOutcome = classifyPreDraftCheck(
+      followupStatus,
+      { gates: [] },
+      "gen-A",
+      "clarification",
+    );
+    expect(followupOutcome).toEqual({ kind: "draft-fresh" });
+  });
+
+  it("457-int-2: D.12 delivery within N=3 sweeps resets the counter — escape hatch does NOT fire", () => {
+    const openGates = new Map<GateId, GateRecord>();
+    openGates.set(FAKE_GATE_ID, makeGateRecord(FAKE_GATE_ID, "answered"));
+    const counter: AnsweredGateSweepCounter = new Map();
+
+    tickAnsweredSweepCounter(openGates, counter);
+    tickAnsweredSweepCounter(openGates, counter);
+    expect(counter.get(FAKE_GATE_ID)).toBe(2);
+
+    // D.12 handler fires — deletes both.
+    openGates.delete(FAKE_GATE_ID);
+    counter.delete(FAKE_GATE_ID);
+
+    // Even if the map were mistakenly re-populated later, the counter is fresh.
+    expect(selectEscapeHatchTargets(counter)).toEqual([]);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 459 pre-flight functional probe — one-shot cockpit_gate_list call at
+// pre-flight so a broken gate-query surface aborts non-zero under --gates=ui
+// and short-circuits --gates=auto to `local` (never a stalled `ui` run).
+//
+// Pins the load-bearing prose additions to auto.md described by
+// specs/459-epic-cockpit-remote-gates/{plan.md,contracts/*.md}:
+//   - § step 1 --gates=auto: two-item check extended to a THREE-item list with
+//     the probe as item 3; short-circuit rule ("issue item 3 ONLY when items
+//     1 AND 2 both pass") pinned verbatim.
+//   - § step 1 explicit --gates=ui: probe as a post-tool-presence,
+//     post-identity-ref pre-flight step; hard-fail on ANY error.
+//   - § step 1 Auto run starting line: `probe-failed` added as an enumerated
+//     <resolution reason> value alongside `cockpit_gate_open unbound` and
+//     `cluster not cloud-activated`.
+//   - § step 1 Form 4 sequencing: probe fires AFTER F4.6/F4.4 has bound
+//     `trackingRef`, NOT alongside items 1–2.
+//   - § step 1 pass/fail ledger row shapes pinned verbatim.
+//   - § step 1 FR-013 operator-facing template line pinned verbatim.
+//   - § step 1 no-probe-under-local invariant (explicit AND short-circuit).
+//   - § Ledger: narrow amendment (probe rows earn a ledger row despite the
+//     general "pre-flight failures do not earn a row" clause); `preflight` as
+//     a new transition class, `ui-gate-probe` as a new source token.
+//   - § Gate-query error taxonomy (added by #457): unchanged, gains a
+//     cross-reference to the pre-flight probe step.
+//   - lib/gate-status-check.ts § formatGateQueryProbeErrorLine returns the
+//     exact same template as the prose line (fixture-equality per class).
+//
+// These are drift audits — if a heading rename, contract-rule edit, or literal
+// substitution breaks a pin, re-pin to the NEW contract in the same PR. Do NOT
+// weaken or delete an assertion to make the test pass (CLAUDE.md § Cockpit
+// playbook pins).
+// ────────────────────────────────────────────────────────────────────────────
+describe("459 pre-flight functional probe", () => {
+  it("459-1 § step 1 `--gates=auto` declares a three-item list with the probe as item 3 AND states the short-circuit rule verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The three-part header replaced the OLD two-part header.
+    expect(step1).toContain("three-part check, decided ONCE");
+    // Item 3 wording — the probe as a NEW third condition.
+    expect(step1).toContain("Pre-flight functional probe");
+    expect(step1).toContain(
+      "cockpit_gate_list({ issueRef: <identity-ref>, gateType: <omitted> })",
+    );
+    // Short-circuit rule pinned verbatim (whitespace-tolerant across reflow).
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toContain(
+      "issue item 3 ONLY when items 1 AND 2 both pass; otherwise resolve to `local` with NO probe call and NO probe ledger row",
+    );
+    // The two-part contract MUST be gone (drift audit — a future edit that
+    // reverts to the OLD contract breaks this). Re-pinned per PR #460 review:
+    // the previous literal `"two-part check, decided ONCE"` was unreachable
+    // (the stale prose that had to be removed read `"two-part check below"`),
+    // so the audit could not catch the drift class it was written for.
+    // Assert against ANY case-insensitive occurrence of `two-part check` in
+    // step 1 — any rewording of the stale sentence still trips this pin.
+    expect(step1).not.toMatch(/two-part check/i);
+  });
+
+  it("459-2 § step 1 explicit `--gates=ui` block declares the probe as a post-tool-presence, post-identity-ref, post-header-write pre-flight step that hard-fails on any error", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // Re-pinned per PR #460 review: the probe block was extended from
+    // (post-tool-binding, post-identity-ref) to (…, post-header-write) so the
+    // probe's pass/fail ledger row can be safely appended after the header
+    // exists as the first line of the ledger file (per auto.md line 199 and
+    // § Ledger `Narrow amendment`).
+    expect(step1).toContain(
+      "`--gates=ui` pre-flight functional probe (post-tool-binding, post-identity-ref, post-header-write)",
+    );
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toContain(
+      "Hard-fail on ANY probe error",
+    );
+    // Explicit `ui` MUST NOT silently fall back to `local` — the FR-004
+    // invariant that motivated this feature.
+    expect(step1Normalized).toMatch(/Do NOT fall back to `local`|Do NOT fall back to local/);
+  });
+
+  it("459-3 § step 1 `Auto run starting` line's `<resolution reason>` suffix enumerates `probe-failed` as a possible value under `--gates=auto`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The three enumerated <resolution reason> values MUST all be present in
+    // the `Auto run starting` line documentation block. This pin partially
+    // overlaps re-pinned 449-6; both are retained per tasks.md (459-3 owns the
+    // `probe-failed` value; 449-6 owns the format-pin).
+    // Item-1 token re-pinned per PR #460 round-4 review — tool-agnostic now
+    // that item 1 requires all three UI-mode tools. See contracts/
+    // gates-flag-parse.md § Test pins for the enumerated set.
+    expect(step1).toContain("ui-mode tools unbound");
+    expect(step1).toContain("cluster not cloud-activated");
+    expect(step1).toContain("probe-failed");
+  });
+
+  it("459-4 § step 1 states the Form 4 sequencing rule — probe fires AFTER F4.6/F4.4 has bound `trackingRef` (extended by PR #460 review with a post-F4.7 header-write requirement), NOT alongside items 1–2", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The Form 4 sequencing header AND the post-F4.6/F4.4 ordering are both
+    // load-bearing — the identity ref is a required probe input, and before
+    // F4.6/F4.4 completes there is no valid target under Form 4.
+    // Re-pinned per PR #460 review: the rule now ALSO requires F4.7's ledger
+    // header write to complete before the probe fires, so the probe's pass/fail
+    // ledger row can be safely appended.
+    expect(step1).toContain("Form 4 sequencing rule");
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toMatch(
+      /probe fires AFTER F4\.6\/F4\.4 has bound `trackingRef` AND AFTER F4\.7 has written the ledger header, NOT alongside items 1[–-]2/,
+    );
+  });
+
+  it("459-5 probe pass ledger row shape pinned verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    expect(autoMd).toContain(
+      "<identity-ref> · preflight · gate-query-probe · ok · source: ui-gate-probe",
+    );
+  });
+
+  it("459-6 probe fail ledger row shape pinned verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    expect(autoMd).toContain(
+      "<identity-ref> · preflight · gate-query-probe · error: <class> — <detail> · source: ui-gate-probe",
+    );
+  });
+
+  it("459-7 FR-013 operator-facing template line pinned verbatim in auto.md", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Single frozen template with <class> / <detail> placeholders, shared by
+    // ALL four error classes. Any change to the wording requires re-pinning
+    // both this assertion AND the 459-7a fixture equalities below.
+    expect(autoMd).toContain(
+      "gate-query surface unavailable (class: <class>): <detail> — re-run with --gates=local, or fix the cluster/cloud gate-query deployment",
+    );
+  });
+
+  describe("formatGateQueryProbeErrorLine", () => {
+    it("459-7a formats query-unreachable class verbatim", () => {
+      expect(
+        formatGateQueryProbeErrorLine({
+          class: "query-unreachable",
+          message: "gate-query-service: connect ETIMEDOUT",
+        }),
+      ).toBe(
+        "gate-query surface unavailable (class: query-unreachable): gate-query-service: connect ETIMEDOUT — re-run with --gates=local, or fix the cluster/cloud gate-query deployment",
+      );
+    });
+
+    it("459-7a formats invalid-args class verbatim", () => {
+      expect(
+        formatGateQueryProbeErrorLine({
+          class: "invalid-args",
+          message: "unrecognized key issueId (expected: issueRef)",
+        }),
+      ).toBe(
+        "gate-query surface unavailable (class: invalid-args): unrecognized key issueId (expected: issueRef) — re-run with --gates=local, or fix the cluster/cloud gate-query deployment",
+      );
+    });
+
+    it("459-7a formats internal class verbatim (the incident class — cluster snappoll-local-2, 2026-07-25)", () => {
+      expect(
+        formatGateQueryProbeErrorLine({
+          class: "internal",
+          message: "cluster query endpoint returned 404",
+        }),
+      ).toBe(
+        "gate-query surface unavailable (class: internal): cluster query endpoint returned 404 — re-run with --gates=local, or fix the cluster/cloud gate-query deployment",
+      );
+    });
+
+    it("459-7a formats transport class verbatim", () => {
+      expect(
+        formatGateQueryProbeErrorLine({
+          class: "transport",
+          message: "cockpit process exited with code 1 before responding",
+        }),
+      ).toBe(
+        "gate-query surface unavailable (class: transport): cockpit process exited with code 1 before responding — re-run with --gates=local, or fix the cluster/cloud gate-query deployment",
+      );
+    });
+  });
+
+  it("459-8 § Ledger declares the narrow amendment — probe rows earn a ledger row despite the general `pre-flight failures do not earn a row` clause", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const ledgerBlock = extractLedgerSection(autoMd);
+    // The general exclusion clause MUST still be present (unchanged).
+    expect(ledgerBlock).toContain(
+      "pre-flight failures (before the loop begins)",
+    );
+    // The narrow amendment header MUST be present.
+    expect(ledgerBlock).toContain(
+      "Narrow amendment — pre-flight probe rows DO earn a ledger row",
+    );
+    // The § step-1 hard-fail paths (missing any of the three UI-mode tools;
+    // usage errors; F4.6 gh issue create failure) MUST remain ledger-free.
+    // Re-pinned per PR #460 review: the amendment now names the path(s) in the
+    // plural (extended per Comment 2 to cover all three UI-mode tools), and
+    // adds a companion carve-out for the probe's own --gates=ui fail path,
+    // which is DIFFERENT because it fires post-header and does write a row.
+    const ledgerNormalized = ledgerBlock.replace(/\s+/g, " ");
+    expect(ledgerNormalized).toMatch(
+      /step-1 hard-fail path[s]?.*remain[s]? ledger-free/,
+    );
+  });
+
+  it("459-9 § Ledger declares `preflight` as a transition class AND `ui-gate-probe` as a source token", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const ledgerBlock = extractLedgerSection(autoMd);
+    // preflight transition class — sibling of startup / heartbeat /
+    // cursor-recovery / epic-complete.
+    expect(ledgerBlock).toContain("`preflight`");
+    expect(ledgerBlock).toMatch(/sibling of.*`startup`.*`heartbeat`.*`cursor-recovery`.*`epic-complete`/s);
+    // ui-gate-probe source token — sibling of ui-gate / ui-gate-fallback /
+    // enriched-line.
+    expect(ledgerBlock).toContain("`ui-gate-probe`");
+    expect(ledgerBlock).toMatch(/sibling of.*`ui-gate`.*`ui-gate-fallback`.*`enriched-line`/s);
+  });
+
+  it("459-10 § step 1 declares that under `--gates=local` (explicit OR `--gates=auto` short-circuited) NO probe is issued AND NO probe ledger row is written", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The no-probe-under-local invariant MUST be stated explicitly, and MUST
+    // cover BOTH the explicit-local path AND the auto-short-circuit-to-local
+    // path (the byte-identity contract vs explicit --gates=local depends on
+    // this).
+    expect(step1).toContain("No probe under `--gates=local`");
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toMatch(
+      /Under `--gates=local` \(explicit\) OR `--gates=auto` short-circuited to `local`/,
+    );
+    expect(step1Normalized).toMatch(/NO probe is issued AND NO probe ledger row is written/);
+  });
+
+  it("459-11 on probe failure, `--gates=ui` exits non-zero (no fallback to `local`) AND `--gates=auto` resolves to `local` (with the probe's fail ledger row written)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    // Explicit --gates=ui probe failure → exit non-zero, no fallback.
+    expect(step1Normalized).toMatch(
+      /Under explicit `--gates=ui`.*exit non-zero.*Do NOT start the loop.*Do NOT fall back to `local`/,
+    );
+    // --gates=auto probe failure → resolve to local with probe-failed reason
+    // and the fail ledger row written.
+    expect(step1Normalized).toMatch(
+      /Under `--gates=auto`.*resolve to `local`.*<resolution reason> = probe-failed/,
+    );
+  });
+
+  it("459-12 probe is issued AT MOST ONCE per run (drift audit — per-event re-probing breaks this pin, per FR-010)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Load-bearing "at most once per run" wording MUST appear in the
+    // Pre-flight probe (UI mode) subsection. A future edit that adds
+    // per-event re-probing must also update this pin — the intent is a drift
+    // audit, so the assertion re-pins to the NEW contract explicitly.
+    expect(autoMd).toContain(
+      "The probe is issued AT MOST ONCE per run",
+    );
+    // Load-bearing single-call-site rule: the probe is defined to fire from
+    // "exactly ONE call site" in the playbook. A per-event re-probing site
+    // would break this wording.
+    const autoMdNormalized = autoMd.replace(/\s+/g, " ");
+    expect(autoMdNormalized).toMatch(
+      /Fires from exactly ONE call site/,
+    );
+    // Explicit FR-010 rationale: distinct from the per-event pre-draft check
+    // (which is a separate concern that consumes the same tools). A future
+    // edit that folds the probe into the per-event site erases this
+    // distinction.
+    expect(autoMdNormalized).toMatch(
+      /no per-event re-probing \(FR-010\).*per-event pre-draft gate-status check.*is a distinct concern/,
+    );
+  });
+
+  it("459-13 § Gate-query error taxonomy (added by #457) is unchanged AND acquires a new cross-reference to the pre-flight probe step, pinned verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // The four-class taxonomy heading MUST still exist (drift audit — a
+    // divergence between per-event and pre-flight classification silently
+    // breaks the consistency contract).
+    expect(autoMd).toContain("#### Gate-query error taxonomy");
+    // All four class tokens still enumerated as row headers in the taxonomy
+    // table (unchanged by #459).
+    expect(autoMd).toContain("| `query-unreachable` |");
+    expect(autoMd).toContain("| `invalid-args` |");
+    expect(autoMd).toContain("| `internal` |");
+    expect(autoMd).toContain("| `transport`");
+    // NEW cross-reference from the taxonomy to the pre-flight probe step.
+    expect(autoMd).toContain(
+      "Cross-reference — pre-flight functional probe",
+    );
+    const autoMdNormalized = autoMd.replace(/\s+/g, " ");
+    expect(autoMdNormalized).toMatch(
+      /No new class is introduced.*divergence.*silently break the consistency contract/,
+    );
+  });
+
+  it("459-14 § TENTATIVE window gate-presentation rule (added by PR #460 review round 2, re-pinned by round 3) pins the Form-3 remote-gate-consumed hard-fail path, the new `probe-failed-after-remote-gate-consumed` resolution reason, and the augmented probe Fail row's outcome slot (fold-in shape — no separate `gate-mode-resolution` row)", () => {
+    // Drift audit — the review flagged that the F1 fix (weakening the
+    // invariant from "does not flip mid-run" to "does not flip mid-loop"
+    // combined with the deferred probe) made this scenario reachable under
+    // Form 3 with default `--gates=auto`: G.6 fires immediately at step 1
+    // BEFORE the header exists and BEFORE the probe can be issued, so a
+    // TENTATIVE UI window opens; G.6 opens remotely per § UI-mode gate
+    // mapping row 9; if the probe subsequently fails, downgrading to `local`
+    // produces the ambiguous partial-UI / partial-local ledger the same
+    // paragraph claims to prevent. Round-3 re-pin: the R2 aborted-row shape
+    // (`gate-mode-resolution · aborted · reason: …`) was flagged as
+    // unregistered vocabulary that violates § Ledger's four-column grammar
+    // AND its "at most one probe row per run" invariant. Option (b) from the
+    // reviewer folds the aborted-reason marker into the existing probe Fail
+    // row's outcome slot in-place, keeping the registered `gate-query-probe`
+    // action + `ui-gate-probe` source vocabulary AND the single-row
+    // invariant. Any future edit that (a) weakens the hard-fail back to a
+    // downgrade, (b) drops the new resolution reason, (c) reintroduces a
+    // second row for the aborted resolution, or (d) uses unregistered
+    // vocabulary breaks this pin — re-pin to the NEW contract; do NOT
+    // weaken.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The subsection heading is present in step 1 (the rule lives in the
+    // step-1 --gates resolution block, per plan).
+    expect(step1).toContain("TENTATIVE window gate-presentation rule");
+    // Only Form 3's G.6 fires in the window (Forms 1/2 have the ref at
+    // parse time; Form 4 has no gate before F4.7). If a future edit adds a
+    // second gate in the window, that pin has to re-declare the enumeration.
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toMatch(
+      /ONLY Form 3'?s G\.6 filing gate.*fires in this window/,
+    );
+    // Hard-fail — do NOT downgrade — new resolution reason.
+    expect(step1).toContain("probe-failed-after-remote-gate-consumed");
+    expect(step1Normalized).toMatch(
+      /do \*?\*?NOT\*?\*? downgrade|does NOT downgrade/,
+    );
+    // The augmented probe Fail row shape is pinned verbatim — this is the
+    // sole observable audit record of the aborted partial-UI run (since
+    // `Auto run starting` is NOT emitted on this path) and the sole surface
+    // the resolution reason string appears on. Fold-in preserves the "at
+    // most one probe row per run" invariant AND reuses the registered
+    // `gate-query-probe` action + `ui-gate-probe` source vocabulary.
+    expect(autoMd).toContain(
+      "<identity-ref> · preflight · gate-query-probe · error: <class> — <detail> (aborted: probe-failed-after-remote-gate-consumed) · source: ui-gate-probe",
+    );
+    // Belt-and-suspenders: the RETIRED R2 row shape (with the unregistered
+    // `gate-mode-resolution` action + a `reason:` field the four-column
+    // grammar does not carry) MUST NOT reappear as a ledger row shape.
+    // A future edit that reintroduces the aborted row — either verbatim or
+    // as a differently spelled second row for the same resolution — would
+    // restore the § Ledger conformance failure this fix removed. (The
+    // prose may still MENTION `gate-mode-resolution` explanatorily — the
+    // check is on the row shape, not the token.)
+    expect(autoMd).not.toContain("gate-mode-resolution · aborted");
+    expect(autoMd).not.toMatch(
+      /· preflight · gate-mode-resolution ·/,
+    );
+    // The "at most one probe row per run" invariant MUST be preserved
+    // (a second row for the aborted resolution would break it). The
+    // § Ledger `Pre-flight probe row shapes` block now explicitly
+    // acknowledges the fold-in as preserving this invariant.
+    expect(autoMd).toContain(
+      "At most one probe row is written per run",
+    );
+    // The `Auto run starting …` line documentation MUST enumerate the new
+    // hard-fail alongside the two existing hard-fail exceptions (absence,
+    // explicit --gates=ui probe fail) so future readers know the line is
+    // silently skipped on this path.
+    expect(step1).toContain(
+      "Form-3 `probe-failed-after-remote-gate-consumed` hard-fail",
+    );
+    // The `probe-failed-after-remote-gate-consumed` reason MUST be
+    // explicitly noted as absent from the `Auto run starting` line's
+    // enumerated `<resolution reason>` values (grep recipes rely on the
+    // plain `probe-failed` never widening to include this reason).
+    expect(step1Normalized).toMatch(
+      /Form-3 hard-fail reason `probe-failed-after-remote-gate-consumed` .* does NOT appear in this line/,
+    );
+  });
+
+  it("459-15 line 28 `--gates=ui` AND `--gates=auto` summary clauses BOTH name all three UI-mode tools, matching the normative blocks at items 1 (three-tool `--gates=auto` check) and the widened `--gates=ui` pre-flight absence hard-fail (PR #460 review round 3)", () => {
+    // Drift audit — the review flagged that the R2 fix widened both the
+    // `--gates=auto` item 1 (three-tool bind check) and the `--gates=ui`
+    // pre-flight absence hard-fail to require all three UI-mode tools
+    // (`cockpit_gate_open`, `cockpit_gate_status`, `cockpit_gate_list`),
+    // but the R2 fix only rewrote the `--gates=auto` clause of the line-28
+    // summary — the `--gates=ui` clause on the same line still named just
+    // `cockpit_gate_open`. The summary drifted from its own normative
+    // block. Round-3 re-pin: both clauses on that line MUST now name all
+    // three tools so an executor reading the summary first cannot miss
+    // the widened check and skip the hard-fail on a partial-deployment
+    // cluster mid-upgrade to generacy#1038.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    // The `--gates=ui` summary clause MUST name all three UI-mode tools
+    // (not just `cockpit_gate_open`). The exact wording is
+    // whitespace-tolerant to survive markdown reflow, but the three tool
+    // names MUST appear together in the `--gates=ui forces UI mode`
+    // summary sentence's `hard-fails at pre-flight if …` clause.
+    expect(step1Normalized).toMatch(
+      /`--gates=ui` forces UI mode.*hard-fails at pre-flight if any of `cockpit_gate_open` \/ `cockpit_gate_status` \/ `cockpit_gate_list` is absent/,
+    );
+    // The `--gates=auto` summary clause MUST also name all three UI-mode
+    // tools (the R2 fix only widened this one to say `cockpit_gate_open`
+    // bound; the R3 fix widens it to ALL three bound so it matches item 1
+    // of the three-part check verbatim).
+    expect(step1Normalized).toMatch(
+      /`--gates=auto` resolves per the three-part check below \(`cockpit_gate_open` AND `cockpit_gate_status` AND `cockpit_gate_list` ALL bound AND cluster cloud-activated AND pre-flight functional probe pass/,
+    );
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// 469 — Thread run-scoped `runId` from `/cockpit:auto` into gate open/ack calls.
+//
+// Pins:
+//   - § step 1 Pre-flight `runId` derivation (compute-once + no-`:` invariant).
+//   - § step 1 § Pre-flight probe (UI mode) extended call shape with `runId` +
+//     `invalid-args` graceful-degradation branch + startup warning verbatim.
+//   - § In-memory loop state additions declares `runId` + `runIdEnabled`.
+//   - § step 3 startup sweep `gateId idempotency` names FOUR inputs under
+//     `runIdEnabled === true`; every sweep-time `cockpit_gate_open` passes
+//     `runId`; the § step 3 / § step 4 sub-step 0 answered-gate escape-hatch
+//     `cockpit_gate_ack(superseded)` passes `runId`.
+//   - Each of § Dispatch step 0 (D.1, D.2, D.3, D.4, D.7, D.11) declares the
+//     extended `cockpit_gate_status({issueRef, gateType, generation, runId})`
+//     call shape.
+//   - Each of § Dispatch step 0 (D.1, D.2, D.3, D.4) generation-drift branch
+//     declares the extended `cockpit_gate_ack(staleGateId, …, runId)` call
+//     shape (D.7 / D.11 NOT pinned — drift branch disabled per escalation
+//     guard).
+//   - Each of § Dispatch step 0 (D.1, D.2, D.3, D.4) `absent`-branch
+//     drift-detection `cockpit_gate_list({issueRef, gateType})` MUST NOT
+//     carry `runId` (FR-011 / R4).
+//   - § D.12 gate-answer: step 5 (operator apply), step 1 (no record), step 3
+//     (live-state supersession) `cockpit_gate_ack` calls each declare `runId`
+//     threading.
+//   - Enumerated live-path `cockpit_gate_open` `runId` threading across every
+//     drafting D.n (FR-016 / Batch 2 Q7 — sampling one call site is
+//     INSUFFICIENT).
+//   - Subagent dispatch prompts declare the explicit-literal `runId` rule
+//     (FR-015).
+//   - § step 3 sweep prose update names FOUR inputs under `runIdEnabled ===
+//     true` (FR-010).
+//   - § Pre-draft check — shared rules names `runId` as the fourth input under
+//     `runIdEnabled === true`.
+//   - `--gates=local` byte-path invariance: zero `runId` occurrences under
+//     `local`-branch prose.
+//
+// These are drift audits — if a heading rename, contract-rule edit, or literal
+// substitution breaks a pin, re-pin to the NEW contract in the same PR. Do NOT
+// weaken or delete an assertion to make the test pass (CLAUDE.md § Cockpit
+// playbook pins).
+// ────────────────────────────────────────────────────────────────────────────
+describe("469 runId threading", () => {
+  const RUN_ID_DERIVATION_LITERAL = "runId := <tracking-ref-slug>-<timestamp>";
+  const STATUS_CALL_LITERAL =
+    "cockpit_gate_status({ issueRef, gateType, generation, runId })";
+  const PROBE_CALL_LITERAL =
+    "cockpit_gate_list({ issueRef: <identity-ref>, gateType: <omitted>, runId: <runId> })";
+  const STARTUP_WARNING_VERBATIM =
+    "runId threading disabled for this session — cluster's cockpit MCP server does not accept runId on cockpit_gate_list (pre-generacy#1067). Run continues under today's 3-input gate identity; generacy#1053 (re-run terminal gates) will not be fixed for this session. Upgrade the cluster's generacy build to ≥ commit 82077f1a to enable runId threading.";
+
+  const SIX_STEP0_HEADERS: ReadonlyArray<string> = [
+    "D.1 — `waiting-for:clarification`",
+    "D.2 — `waiting-for:<artifact>-review`",
+    "D.3 — `waiting-for:implementation-review`",
+    "D.4 — `waiting-for:manual-validation`",
+    "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)",
+    "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+  ];
+  const ONE_TO_ONE_STEP0_HEADERS: ReadonlyArray<string> = SIX_STEP0_HEADERS.slice(0, 4);
+
+  it("469-1 § step 1 declares the runId derivation `runId := <tracking-ref-slug>-<timestamp>` immediately after ledger filename computation", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The derivation heading + verbatim expression must appear inside step 1.
+    expect(step1).toContain("Pre-flight `runId` derivation");
+    expect(step1).toContain(RUN_ID_DERIVATION_LITERAL);
+    // The derivation block explicitly names its placement relative to the
+    // ledger filename computation (per contracts/runid-derivation.md § Site:
+    // "IMMEDIATELY AFTER the ledger filename computation currently at
+    // `auto.md:209`"). The load-bearing narrative "Immediately after the
+    // ledger filename is computed above" pins the ordering rule at the
+    // derivation site itself — the pre-flight probe subsection (earlier in
+    // step 1 but later in the interpretive flow) references it but does
+    // NOT redeclare it.
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toMatch(
+      /\*\*Pre-flight `runId` derivation \(load-bearing, per #469 \/ FR-001\)\.\*\* Immediately after the ledger filename is computed above/,
+    );
+    // The derivation MUST run before any gate verb — pinned in the same
+    // sentence so an edit that folds it into a post-probe or post-sweep
+    // position trips this pin.
+    expect(step1Normalized).toMatch(
+      /This step MUST run before any gate verb fires — before the § Pre-flight probe \(UI mode\) below, before the § step 3 startup sweep opens any gate, and before any drafting D\.n dispatch/,
+    );
+  });
+
+  it("469-2 § step 1 declares the compute-once invariant (single derivation site; no consumer re-derives — V2 / FR-014)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    // The compute-once heading must appear.
+    expect(step1).toContain("Compute-once invariant (V2 / FR-014)");
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    // Every downstream consumer receives the pre-computed value as an
+    // EXPLICIT LITERAL.
+    expect(step1Normalized).toMatch(/explicit\s+literal/i);
+    expect(step1Normalized).toMatch(/NO consumer re-derives/i);
+    // FR-015 — the rule binds subagents too.
+    expect(step1Normalized).toMatch(
+      /rule binds subagents too \(per FR-015\)/,
+    );
+  });
+
+  it("469-3 § step 1 declares the no-`:` invariant on runId verbatim (V1 / FR-013)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step1 = extractInstructionsSteps(autoMd).get(1)!;
+    expect(step1).toContain("No-`:` invariant (V1 / FR-013)");
+    // The runtime assertion is named at the derivation site.
+    expect(step1).toContain("runId.indexOf(':') === -1");
+    // The rationale — a colon-bearing runId ambiguates key parsing — is
+    // pinned so a future ledger-format change cannot silently introduce one.
+    const step1Normalized = step1.replace(/\s+/g, " ");
+    expect(step1Normalized).toMatch(
+      /trailing composite-key segment.*generation.*may already contain colons/,
+    );
+  });
+
+  it("469-4 § step 1 § Pre-flight probe (UI mode) declares the extended probe call shape `cockpit_gate_list({issueRef, gateType: <omitted>, runId})` verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Verbatim probe call shape appears in the probe subsection.
+    expect(autoMd).toContain(PROBE_CALL_LITERAL);
+    // FR-011 — the probe is the SOLE cockpit_gate_list call carrying runId.
+    const autoMdNormalized = autoMd.replace(/\s+/g, " ");
+    expect(autoMdNormalized).toMatch(
+      /SOLE `cockpit_gate_list` call in the run that carries `runId`/,
+    );
+    // FR-011 — functional list calls never carry runId.
+    expect(autoMdNormalized).toMatch(
+      /functional `cockpit_gate_list` calls never carry it/,
+    );
+  });
+
+  it("469-5 § step 1 § Pre-flight probe (UI mode) declares the `invalid-args` graceful-degradation branch with the verbatim startup warning", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // The graceful-degrade routing text is present.
+    const autoMdNormalized = autoMd.replace(/\s+/g, " ");
+    expect(autoMdNormalized).toMatch(
+      /`\{ status: 'error', class: 'invalid-args', … \}`.*runIdEnabled := false.*graceful degradation, NOT a probe failure/,
+    );
+    // The startup warning is pinned verbatim (no normalization — the exact
+    // wording is load-bearing for the operator-visible degradation notice).
+    expect(autoMd).toContain(STARTUP_WARNING_VERBATIM);
+  });
+
+  it("469-6 § step 1 § Pre-flight probe (UI mode) declares runIdEnabled is decided ONCE at this site AND MUST NOT flip mid-run (V5 / FR-012)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // The decide-once, whole-session, MUST NOT flip mid-run heading.
+    expect(autoMd).toContain("`runId` capability outcome — `runIdEnabled` decided ONCE here, whole-session, MUST NOT flip mid-run (V5 / FR-012)");
+    // The rationale for forbidding a mid-run flip — mixed-identity run
+    // (startup sweep opens gates before any Step-0 check runs; reverting
+    // the read side would orphan sweep-opened 4-segment gates).
+    const autoMdNormalized = autoMd.replace(/\s+/g, " ");
+    expect(autoMdNormalized).toMatch(
+      /mixed-identity run.*orphan sweep-opened 4-segment gates/,
+    );
+  });
+
+  it("469-7 § In-memory loop state additions declares `runId: string | null` and `runIdEnabled: boolean` verbatim", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const section = extractSubheadingBlock(
+      autoMd,
+      "In-memory loop state additions (UI mode)",
+    );
+    // Verbatim declarations.
+    expect(section).toContain("`runId: string | null`");
+    expect(section).toContain("`runIdEnabled: boolean`");
+    // Under --gates=local runId is null and runIdEnabled is false.
+    const sectionNormalized = section.replace(/\s+/g, " ");
+    expect(sectionNormalized).toMatch(
+      /Under `--gates=local`.*`runIdEnabled` is `false` unconditionally/,
+    );
+    expect(sectionNormalized).toMatch(
+      /`runId` is `null` for symmetry with the UI-mode branch/,
+    );
+    // V6 — OMITTED under runIdEnabled === false (not null, not undefined).
+    expect(sectionNormalized).toMatch(
+      /not passed as `null`, not passed as `undefined`, not passed as an empty string/,
+    );
+    // MUST NOT flip mid-run (V5).
+    expect(sectionNormalized).toMatch(/mid-run flip is FORBIDDEN/);
+  });
+
+  it("469-8 § step 3 startup sweep declares every `cockpit_gate_open` call passes `runId` under `runIdEnabled === true` (per FR-004 / R11)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // The runId-on-open heading appears in step 3.
+    expect(step3).toContain(
+      "`runId` on every sweep-time `cockpit_gate_open` (per #469 / FR-004 / R11)",
+    );
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    // Every extended-trigger cockpit_gate_open in the sweep carries runId.
+    expect(step3Normalized).toMatch(
+      /every `cockpit_gate_open` call in the extended trigger set above.*passes the run's pre-flight-derived `runId`/,
+    );
+    // V6 omission rule.
+    expect(step3Normalized).toMatch(
+      /Under `runIdEnabled === false` the `runId` field is OMITTED from every sweep-time open call \(V6\)/,
+    );
+  });
+
+  it("469-9 § step 3 answered-gate escape-hatch AND § step 4 sub-step 0 per-wake escape-hatch declare `cockpit_gate_ack(superseded)` passes `runId` under `runIdEnabled === true` (re-pinned per #471 to the new `openGates[gateId].runId` sourcing rule; runId envelope-symmetry preserved from #469 — the two acks compose)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    const step4 = extractInstructionsSteps(autoMd).get(4)!;
+    // Step 3 escape hatch ack passes runId (statement present alongside the
+    // 'answered-not-consumed — presumed stuck at cloud delivered/applied'
+    // detail literal). Case-insensitive on the leading "Under" — my/lowercase
+    // "under" and title-case "Under" both satisfy the pin; the load-bearing
+    // content is the runId threading rule, not the capitalization.
+    //
+    // Re-pin per #471: the ack ALSO passes runId (envelope symmetry rule
+    // from #469 survives), AND the runId is now READ from
+    // `openGates[gateId].runId` (NOT the run-wide loop-state runId — that
+    // pre-#471 wording is gone from this site because adopted entries carry
+    // a different runId than the current run).
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    expect(step3Normalized).toMatch(
+      /[Uu]nder `runIdEnabled === true` this call ALSO passes `runId`/,
+    );
+    expect(step3Normalized).toMatch(
+      /the `runId` value is READ from `openGates\[gateId\]\.runId`/,
+    );
+    expect(step3Normalized).toMatch(
+      /[Uu]nder `runIdEnabled === false` the `runId` field is OMITTED \(V6\)/,
+    );
+    // Step 4 sub-step 0 per-wake escape hatch ack passes runId, same
+    // re-pinned rule (READ from openGates[gateId].runId).
+    const step4Normalized = step4.replace(/\s+/g, " ");
+    expect(step4Normalized).toMatch(
+      /[Uu]nder `runIdEnabled === true` this per-wake `cockpit_gate_ack` ALSO passes `runId` verbatim/,
+    );
+    expect(step4Normalized).toMatch(
+      /the `runId` value is READ from `openGates\[gateId\]\.runId`/,
+    );
+    expect(step4Normalized).toMatch(
+      /[Uu]nder `runIdEnabled === false` the `runId` field is OMITTED — V6/,
+    );
+    // Negative pin: the pre-#471 wording "the run's pre-flight-derived
+    // `runId` verbatim for envelope symmetry" is GONE from both sites (its
+    // replacement is the new READ-from-openGates rule). A future edit that
+    // reverts either site to the pre-#471 phrasing breaks this pin.
+    expect(step3Normalized).not.toMatch(
+      /this call ALSO passes the run's pre-flight-derived `runId` for envelope symmetry with `cockpit_gate_open`/,
+    );
+    expect(step4Normalized).not.toMatch(
+      /this per-wake `cockpit_gate_ack` ALSO passes the run's pre-flight-derived `runId` verbatim for envelope symmetry with `cockpit_gate_open`/,
+    );
+  });
+
+  it("469-10 § step 3 sweep `gateId idempotency` paragraph declares FOUR inputs under `runIdEnabled === true` (three under `runIdEnabled === false` — FR-010)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // The gateId idempotency paragraph must name the 4-input hash under
+    // runIdEnabled === true.
+    expect(step3).toContain(
+      "hash(issueRef, gateType, generation[, runId])",
+    );
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    // The pre-draft check names four inputs under runIdEnabled === true
+    // (three under runIdEnabled === false).
+    expect(step3Normalized).toMatch(
+      /names the same FOUR inputs under `runIdEnabled === true` \(three under `runIdEnabled === false`/,
+    );
+    // Pointer to the behaviour-change appendix in the spec.
+    expect(step3Normalized).toMatch(
+      /Two runs against the same tracking ref intentionally derive DIFFERENT `gateId`s/,
+    );
+    expect(step3Normalized).toMatch(
+      /specs\/469-problem-cockpit-auto-only\/spec\.md/,
+    );
+  });
+
+  it.each(SIX_STEP0_HEADERS)(
+    "469-11..16 § Dispatch %s Step 0 declares the extended cockpit_gate_status call shape `{issueRef, gateType, generation, runId}` verbatim",
+    (header) => {
+      const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+      const block = extractSubheadingBlock(autoMd, header);
+      expect(block).toContain(STATUS_CALL_LITERAL);
+      // Under runIdEnabled === false the runId field is OMITTED (V6).
+      expect(block).toContain(
+        "the `runId` field is OMITTED under `runIdEnabled === false` (V6)",
+      );
+      // The plugin reads runId verbatim from loop state — no re-derivation.
+      const blockNormalized = block.replace(/\s+/g, " ");
+      expect(blockNormalized).toMatch(
+        /`runId` is read verbatim from loop state; NO consumer re-derives \(V2 \/ FR-014\)/,
+      );
+    },
+  );
+
+  it.each(ONE_TO_ONE_STEP0_HEADERS)(
+    "469-17..20 § Dispatch %s Step 0 generation-drift branch declares `cockpit_gate_ack(staleGateId, …, runId)` under `runIdEnabled === true` (drift-ack + runId — re-pinned per #471 review to the STALE ROW's originating runId, consistent with FR-003 and the § Adoption pass drift-supersede branch)",
+    (header) => {
+      const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+      const block = extractSubheadingBlock(autoMd, header);
+      // The drift-branch ack literal is still present (unchanged from #457).
+      expect(block).toContain(
+        "cockpit_gate_ack(staleGateId, outcome: 'superseded', detail: 'generation drift — content changed since original draft (was g<old>, now g<new>)')",
+      );
+      // Re-pinned per #471 review: the drift-branch ack now targets the
+      // STALE row's originating runId (read from row.runId), NOT the
+      // current run's pre-flight-derived runId. This matches the §
+      // Adoption pass drift-supersede branch (contracts/adoption-drift.md)
+      // and FR-003 — the runId is accepted-and-ignored on the ack path,
+      // but envelope symmetry with cockpit_gate_open means the ack should
+      // reflect the run that opened the stale gate, which the runId-
+      // agnostic cockpit_gate_list call now returns per-row.
+      const blockNormalized = block.replace(/\s+/g, " ");
+      expect(blockNormalized).toMatch(
+        /under `runIdEnabled === true` this drift-branch ack ALSO passes the STALE row's originating `runId` verbatim \(read from `row\.runId`, per FR-003/,
+      );
+      expect(blockNormalized).toMatch(
+        /under `runIdEnabled === false` the `runId` field is OMITTED \(V6\)/,
+      );
+    },
+  );
+
+  it("469-21 § Dispatch step 0 `absent`-branch drift-detection `cockpit_gate_list({issueRef, gateType})` MUST NOT carry `runId` (FR-011 / R4) — asserted on every 1:1 Step 0 row (D.1, D.2, D.3, D.4)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    for (const header of ONE_TO_ONE_STEP0_HEADERS) {
+      const block = extractSubheadingBlock(autoMd, header);
+      // Positive pin: the runId-agnostic drift-detection call shape survives.
+      expect(block, `${header} must retain the runId-agnostic drift list call`).toContain(
+        "cockpit_gate_list({ issueRef, gateType })",
+      );
+      // Negative pin: no functional cockpit_gate_list call in this block
+      // carries runId. `cockpit_gate_list({...runId...})` on a functional
+      // (i.e. non-probe) call site would break this pin.
+      expect(
+        block,
+        `${header} absent-branch drift-detection cockpit_gate_list MUST NOT carry runId`,
+      ).not.toMatch(/cockpit_gate_list\(\{[^)]*runId[^)]*\}\)/);
+      // The FR-011 rationale is explicitly reproduced in the block: this
+      // drift-detection call is runId-agnostic; the sole runId-bearing list
+      // call in the run is the pre-flight capability probe.
+      const blockNormalized = block.replace(/\s+/g, " ");
+      expect(blockNormalized).toMatch(
+        /this drift-detection call MUST NOT carry `runId` \(per FR-011 \/ R4/,
+      );
+      expect(blockNormalized).toMatch(
+        /the sole `runId`-bearing list call in the run is the § step 1 § Pre-flight probe/,
+      );
+    }
+  });
+
+  it("469-22 § D.12 gate-answer step 5 (operator answer applied) `cockpit_gate_ack(applied)` declares `runId` threading verbatim under `runIdEnabled === true` (re-pinned per #471 to the new `openGates[event.gateId].runId` sourcing rule; envelope-symmetry rationale preserved from #469 — the two acks compose)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    // Step 5 heading and cockpit_gate_ack call literal are present.
+    expect(block).toContain("**Ack outcome**");
+    expect(block).toContain(`cockpit_gate_ack(gateId, outcome: "applied")`);
+    const blockNormalized = block.replace(/\s+/g, " ");
+    // Re-pin per #471: the ack ALSO passes runId (envelope symmetry rule
+    // from #469 survives — the payload carries runId), AND the runId is
+    // now READ from `openGates[event.gateId].runId` (NOT the run-wide
+    // loop-state runId — that pre-#471 wording is gone from this site).
+    expect(blockNormalized).toMatch(
+      /under `runIdEnabled === true` this operator-answer-applied ack ALSO passes `runId` verbatim/,
+    );
+    expect(blockNormalized).toMatch(
+      /the `runId` value is READ from `openGates\[event\.gateId\]\.runId`/,
+    );
+    // The rationale — `runId` is accepted-and-ignored on the ack path;
+    // `cockpit_gate_ack` targets an existing `gateId` and performs no key
+    // derivation (per GateAckInputSchema); the payload passes `runId` only
+    // for envelope symmetry with `cockpit_gate_open` — is present. Re-pinned
+    // from the prior (incorrect) "MUST target the SAME runId or the answer
+    // routes nowhere" wording, which described a derivation mechanism that
+    // does not exist on the ack path.
+    expect(blockNormalized).toMatch(
+      /envelope symmetry with `cockpit_gate_open`/,
+    );
+    expect(blockNormalized).toMatch(
+      /`runId` is \*\*accepted-and-ignored\*\* on the ack path/,
+    );
+    expect(blockNormalized).toMatch(
+      /`cockpit_gate_ack` targets an existing `gateId` and performs no key derivation \(per generacy `mcp\/gates\/schemas\.ts § GateAckInputSchema`/,
+    );
+    // Negative pin: the pre-#471 wording "the run's pre-flight-derived
+    // `runId` verbatim for envelope symmetry" is GONE from this ack site
+    // (replaced by the new READ-from-openGates rule). A future edit that
+    // reverts to the pre-#471 phrasing breaks this pin.
+    expect(blockNormalized).not.toMatch(
+      /this operator-answer-applied ack ALSO passes the run's pre-flight-derived `runId` verbatim for envelope symmetry with `cockpit_gate_open`/,
+    );
+  });
+
+  it("469-23 § D.12 gate-answer step 1 no-record `cockpit_gate_ack(superseded, 'no matching open record …')` declares `runId` threading under `runIdEnabled === true`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    // Step 1 no-record ack literal is present.
+    expect(block).toContain(
+      `cockpit_gate_ack(gateId, outcome: "superseded", detail: "no matching open record — likely startup-race or duplicate delivery")`,
+    );
+    const blockNormalized = block.replace(/\s+/g, " ");
+    // The runId threading rule appears immediately after the no-record ack
+    // (co-located in the same step-1 "Look up record" bullet). Pin the
+    // co-occurrence: the ack literal AND the runId threading sentence AND
+    // the V6 omission rule appear together in step 1.
+    expect(blockNormalized).toMatch(
+      /\*\*Look up record\*\*.*cockpit_gate_ack\(gateId, outcome: "superseded", detail: "no matching open record — likely startup-race or duplicate delivery"\).*[Uu]nder `runIdEnabled === true` this call ALSO passes the run's pre-flight-derived `runId` verbatim.*[Uu]nder `runIdEnabled === false` the `runId` field is OMITTED \(V6\)/s,
+    );
+  });
+
+  it("469-24 § D.12 gate-answer step 3 live-state supersession `cockpit_gate_ack(superseded, 'live state moved past …')` declares `runId` threading under `runIdEnabled === true` (re-pinned per #471 to the new `openGates[gateId].runId` sourcing rule; envelope-symmetry rationale preserved from #469 — the two acks compose)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    // Step 3 live-state ack literal is present.
+    expect(block).toContain(
+      `cockpit_gate_ack(gateId, outcome: "superseded", detail: "live state moved past <transition-class>")`,
+    );
+    const blockNormalized = block.replace(/\s+/g, " ");
+    // Re-pin per #471: the ack ALSO passes runId (envelope symmetry rule
+    // from #469 survives), AND the runId is now READ from
+    // `openGates[gateId].runId` (NOT the run-wide loop-state runId — that
+    // pre-#471 wording is gone from this site).
+    expect(blockNormalized).toMatch(
+      /under `runIdEnabled === true` this live-state-supersession ack ALSO passes `runId` verbatim/,
+    );
+    expect(blockNormalized).toMatch(
+      /the `runId` value is READ from `openGates\[gateId\]\.runId`/,
+    );
+    // Negative pin: the pre-#471 wording "the run's pre-flight-derived
+    // `runId` verbatim" is GONE from this ack site (replaced by the new
+    // READ-from-openGates rule). A future edit that reverts breaks the pin.
+    expect(blockNormalized).not.toMatch(
+      /this live-state-supersession ack ALSO passes the run's pre-flight-derived `runId` verbatim \(per FR-005/,
+    );
+  });
+
+  it("469-25 enumerated live-path `cockpit_gate_open` `runId` threading across every drafting D.n (D.1, D.2, D.3, D.4, D.6 G.4a, D.7 G.4b, D.8 G.5, D.10 G.4c, D.11 G.4d) — FR-016 / Batch 2 Q7 (sampling one call site is INSUFFICIENT)", () => {
+    // Enumerated by design (FR-016 / R11): every drafting D.n row must be
+    // named in the § UI-mode gate mapping header note so a future edit that
+    // adds a new drafting row cannot slip past the runId invariant.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const enumeratedNoteStart = autoMd.indexOf(
+      "**`runId` — compute-once, threaded as an explicit literal, propagated to gate-verb-issuing subagents",
+    );
+    expect(
+      enumeratedNoteStart,
+      "§ UI-mode gate mapping header must declare the enumerated-runId-threading note",
+    ).toBeGreaterThan(-1);
+    // Every named row (D.1 clarification through D.11 escalation) must appear
+    // in the enumerated list — sampling is INSUFFICIENT per FR-016.
+    const noteEnd = autoMd.indexOf("\n\n", enumeratedNoteStart);
+    const note = autoMd.slice(enumeratedNoteStart, noteEnd);
+    for (const enumeration of [
+      "D.1 clarification",
+      "D.2 artifact-review",
+      "D.3 implementation-review",
+      "D.4 manual-validation",
+      "D.6 G.4a escalation",
+      "D.7 G.4b escalation",
+      "D.8 G.5 phase-queue",
+      "D.10 G.4c escalation",
+      "D.11 G.4d escalation",
+    ]) {
+      expect(
+        note,
+        `enumerated drafting-D.n runId note must name ${enumeration}`,
+      ).toContain(enumeration);
+    }
+    // Under runIdEnabled === true the payload carries runId; under false it
+    // is OMITTED.
+    const noteNormalized = note.replace(/\s+/g, " ");
+    expect(noteNormalized).toMatch(
+      /passes the run's pre-flight-derived `runId`.*VERBATIM on the payload/,
+    );
+    expect(noteNormalized).toMatch(
+      /Under `runIdEnabled === false` the `runId` field is OMITTED from every payload \(V6\)/,
+    );
+    // No per-gateType runId column is added to the mapping table — runId is
+    // per-run, not per-gateType.
+    expect(noteNormalized).toMatch(
+      /No `runId` column is added to the mapping-table rows below because `runId` is per-run, NOT per-gateType/,
+    );
+  });
+
+  it("469-26 subagent dispatch prompts declare `runId` is passed as an EXPLICIT LITERAL (FR-015) — enumerated across every gate-verb-issuing subagent", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // The subagent dispatch prompt template addition heading exists.
+    expect(autoMd).toContain(
+      "**Subagent dispatch prompt template addition (per FR-015 / R8).**",
+    );
+    // The explicit-literal template line is pinned verbatim.
+    expect(autoMd).toContain(`runId: "<runId-literal>"`);
+    // The enumeration names every gate-verb-issuing subagent (D.1, D.2, D.3,
+    // D.4, D.7, D.11 drafting/analyzer/diagnosis subagents).
+    const templateStart = autoMd.indexOf(
+      "**Subagent dispatch prompt template addition",
+    );
+    const templateEnd = autoMd.indexOf(
+      "\n\n",
+      autoMd.indexOf("Rationale:", templateStart),
+    );
+    const template = autoMd.slice(templateStart, templateEnd);
+    for (const enumeration of [
+      "D.1 clarification-drafter",
+      "D.2 review-verdict analyzer",
+      "D.3 review-verdict analyzer",
+      "D.4 manual-validation summarizer",
+      "D.7 diagnosis subagent",
+      "D.11 merge-conflicts diagnosis subagent",
+    ]) {
+      expect(
+        template,
+        `subagent dispatch prompt template must name ${enumeration}`,
+      ).toContain(enumeration);
+    }
+    // Subagents MUST NOT re-derive runId from any other source (V2 / FR-014).
+    const templateNormalized = template.replace(/\s+/g, " ");
+    expect(templateNormalized).toMatch(
+      /Subagents MUST NOT re-derive `runId`/,
+    );
+    // Under runIdEnabled === false the runId: line is OMITTED from the
+    // prompt entirely.
+    expect(templateNormalized).toMatch(
+      /Under `runIdEnabled === false` the `runId:` line is OMITTED from the prompt entirely/,
+    );
+  });
+
+  it("469-27 § step 3 sweep prose update names FOUR inputs under `runIdEnabled === true` AND points at spec § Assumptions for the behaviour change (FR-010)", () => {
+    // Prose update to the load-bearing gateId-idempotency paragraph
+    // (previously auto.md:283) — the paragraph MUST name FOUR inputs under
+    // runIdEnabled === true (three under runIdEnabled === false) so the
+    // sweep-time and pre-draft-check gateId derivations coalesce.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    // Four inputs under runIdEnabled === true — matches the pre-draft check
+    // call shape declared in every Step 0 block (per 469-11..16).
+    expect(step3Normalized).toMatch(
+      /names the same FOUR inputs under `runIdEnabled === true`/,
+    );
+    // The pre-#469 3-input identity is preserved under runIdEnabled === false.
+    expect(step3Normalized).toMatch(
+      /three under `runIdEnabled === false`, matching the pre-#469 3-input identity/,
+    );
+    // Pointer to the behaviour-change appendix in the spec (§ Assumptions).
+    expect(step3Normalized).toMatch(
+      /specs\/469-problem-cockpit-auto-only\/spec\.md/,
+    );
+    expect(step3Normalized).toMatch(/behaviour change/);
+    // The negative pin: the pre-#469 "three inputs" language is GONE from the
+    // paragraph. (A future edit that reverts the prose to "the same three
+    // inputs" breaks this pin — the stale prose is worse than no prose per
+    // plan.md § Approach.)
+    expect(step3Normalized).not.toMatch(
+      /pre-draft `cockpit_gate_status\(\{issueRef, gateType, generation\}\) check[^.]*names the same three inputs/,
+    );
+  });
+
+  it("469-28 § Pre-draft check — shared rules names `runId` as the fourth input under `runIdEnabled === true`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const shared = extractSubheadingBlock(
+      autoMd,
+      "Pre-draft check — shared rules (UI mode)",
+    );
+    // The runId bullet must appear in the shared-rules section.
+    expect(shared).toContain(
+      "**`runId` (fourth input under `runIdEnabled === true`) — per #469 / FR-010 / FR-014.**",
+    );
+    const sharedNormalized = shared.replace(/\s+/g, " ");
+    // The runId is threaded as an explicit literal (V2 / FR-014).
+    expect(sharedNormalized).toMatch(
+      /threaded on the `cockpit_gate_status` payload as an explicit literal.*NEVER re-derived by the Step 0 site/,
+    );
+    // Under runIdEnabled === false the field is OMITTED and the pre-#469
+    // 3-input identity applies (V6).
+    expect(sharedNormalized).toMatch(
+      /Under `runIdEnabled === false` the field is OMITTED from the wire payload \(V6\) and the pre-#469 3-input identity applies/,
+    );
+    // Points at the compute-once + explicit-literal invariant in § UI-mode
+    // gate mapping for subagents (FR-015).
+    expect(sharedNormalized).toMatch(
+      /Subagent dispatch prompt template addition/,
+    );
+  });
+
+  it("469-29 `--gates=local` byte-path invariance — zero `runId` field appearances under `local`-branch prose in the six Step 0 blocks (SC-005 / US4 / FR-007)", () => {
+    // Under --gates=local Step 0 is skipped entirely — every Step 0 block
+    // starts with "Skip Step 0 entirely under `ResolvedGateMode === 'local'`".
+    // The 469 test pins runId onto Step 0's cockpit_gate_status call, but
+    // that call fires ONLY under UI. A local-branch mention of runId inside
+    // any Step 0 block would break the byte-path invariance the FR-007
+    // guarantee is written to preserve. This pin is a grep-style audit:
+    // it scans every Step 0 block for any co-occurrence of `local` and
+    // `runId` that could imply the field appears on a local-mode wire.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    for (const header of SIX_STEP0_HEADERS) {
+      const block = extractSubheadingBlock(autoMd, header);
+      // Extract the "Skip Step 0 entirely under local" sentence and its
+      // immediate context (5 words). Assert `runId` does not appear inside
+      // any explicit local-mode branch statement in this block. The rule is
+      // narrower than "block has no runId AT ALL" (the block DOES mention
+      // runId — that is the whole point of 469-11..16) — the audit ensures
+      // no local-branch sentence mentions runId as a wire field.
+      const localSkipSentence = block.match(
+        /Skip Step 0 entirely under `ResolvedGateMode === "local"`[^.]*\./,
+      );
+      expect(
+        localSkipSentence,
+        `${header} must retain the "Skip Step 0 entirely under local" sentence`,
+      ).not.toBeNull();
+      // Positive assertion: the local-branch skip sentence itself never
+      // names runId. (A future edit that inlines "and MUST NOT pass runId
+      // under local" here is fine — that is a NEGATIVE runId reference —
+      // so the pin is on POSITIVE wire-field references only, i.e. no
+      // `cockpit_gate_(open|ack|status|list)(\{...runId...\})` under the
+      // local branch.)
+      const localBranchText = localSkipSentence![0];
+      expect(
+        localBranchText,
+        `${header} local-branch skip sentence must not name runId as a wire field`,
+      ).not.toMatch(/cockpit_gate_\w+\([^)]*runId[^)]*\)/);
+    }
+  });
+});
+
+describe("471 startup-sweep adoption", () => {
+  // Shared helper: extract the § Adoption pass block from within step 3's body.
+  // The block begins at the "**Adoption pass (UI mode)" marker and runs until
+  // the next **bold-header** paragraph marker within step 3 (either the
+  // § Synthetic-event dispatch marker or the next sub-block). Returns the
+  // adoption-pass block text.
+  function extractAdoptionPassBlock(autoMd: string): string {
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    const startMarker = "**Adoption pass (UI mode)";
+    const startIdx = step3.indexOf(startMarker);
+    if (startIdx === -1) {
+      throw new Error(
+        "§ Adoption pass (UI mode) block not found in step 3 body",
+      );
+    }
+    // The next sub-block heading in step 3 after Adoption pass is
+    // "**Synthetic-event dispatch". End the block there.
+    const endMarker = "**Synthetic-event dispatch";
+    const endIdx = step3.indexOf(endMarker, startIdx);
+    if (endIdx === -1) {
+      throw new Error(
+        "§ Synthetic-event dispatch block not found after § Adoption pass",
+      );
+    }
+    return step3.slice(startIdx, endIdx);
+  }
+
+  it("471-1 § step 3 declares § Adoption pass (UI mode) block positioned AFTER § Answered-gate parked-forever escape hatch and BEFORE § Synthetic-event dispatch (per contracts/adoption-sweep.md § Ordering)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    // The three sibling sub-block headings within step 3.
+    const escapeHatchIdx = step3.indexOf(
+      "**Answered-gate parked-forever escape hatch (UI mode only).**",
+    );
+    const adoptionIdx = step3.indexOf("**Adoption pass (UI mode)");
+    const syntheticIdx = step3.indexOf("**Synthetic-event dispatch");
+    expect(
+      escapeHatchIdx,
+      "§ Answered-gate parked-forever escape hatch must be present in step 3",
+    ).toBeGreaterThan(-1);
+    expect(
+      adoptionIdx,
+      "§ Adoption pass (UI mode) block must be present in step 3",
+    ).toBeGreaterThan(-1);
+    expect(
+      syntheticIdx,
+      "§ Synthetic-event dispatch block must be present in step 3",
+    ).toBeGreaterThan(-1);
+    // Ordering: escape hatch < adoption < synthetic.
+    expect(escapeHatchIdx).toBeLessThan(adoptionIdx);
+    expect(adoptionIdx).toBeLessThan(syntheticIdx);
+  });
+
+  it("471-2 § Adoption pass declares the call shape `cockpit_gate_list({ issueRef: <ref>, gateType: <omitted> })` verbatim and MUST NOT carry `runId` on the payload (FR-005 / V8)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    // Positive pin: the exact functional list call shape appears verbatim.
+    expect(adoption).toContain(
+      "cockpit_gate_list({ issueRef: <ref>, gateType: <omitted> })",
+    );
+    // Negative pin: NO `cockpit_gate_list(...runId...)` occurrence anywhere
+    // in the adoption-pass block. FR-005 forbids the field on the payload.
+    expect(
+      adoption,
+      "§ Adoption pass functional cockpit_gate_list call MUST NOT carry runId",
+    ).not.toMatch(/cockpit_gate_list\([^)]*runId[^)]*\)/);
+  });
+
+  it("471-3 § Adoption pass declares the N+1 count rule verbatim (one call per in-scope issue; tracking ref + every in-scope child)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // The literal "N+1" count phrase for an N-child epic.
+    expect(adoptionNormalized).toMatch(
+      /exactly ONE `cockpit_gate_list` call per in-scope issue/,
+    );
+    expect(adoptionNormalized).toMatch(
+      /tracking ref itself PLUS every in-scope child/,
+    );
+    // FR-001 / SC-008 pointer + N+1 arithmetic for N-child epics.
+    expect(adoptionNormalized).toMatch(
+      /For an epic with N in-scope children this is N\+1 calls/,
+    );
+    expect(adoptionNormalized).toMatch(/FR-001 \/ SC-008/);
+  });
+
+  it("471-4 § Adoption pass declares the broad-adoption rule (FR-009) — every non-terminal row for an in-scope issue is adopted, including rows whose (gateType, generation) does NOT match a natural gate", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // Broad adoption rule heading references FR-009.
+    expect(adoptionNormalized).toMatch(/Broad adoption rule \(per FR-009/);
+    // "adopt EVERY row" / "including rows whose (gateType, generation) does
+    // NOT match" verbatim.
+    expect(adoptionNormalized).toMatch(/adopt EVERY row into `openGates`/);
+    expect(adoptionNormalized).toMatch(
+      /including rows whose `\(gateType, generation\)` does NOT match/,
+    );
+    // dispatchClass mapping rule reused verbatim.
+    expect(adoptionNormalized).toMatch(
+      /Compute `dispatchClass` from `\(row\.gateType, row\.generation\)`/,
+    );
+    // The record carries per-entry `runId: row.runId` verbatim.
+    expect(adoptionNormalized).toMatch(/runId: row\.runId/);
+  });
+
+  it("471-5 § Adoption pass declares the FR-013 generation-drift branch verbatim (ack `superseded` targeting row's `runId`; four drift-enabled gateTypes; deferred draft)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // Drift-branch heading references FR-013 / contracts/adoption-drift.md.
+    expect(adoptionNormalized).toMatch(
+      /Generation-drift branch \(per FR-013/,
+    );
+    expect(adoptionNormalized).toMatch(/contracts\/adoption-drift\.md/);
+    // Four drift-enabled gateTypes named verbatim.
+    expect(adoptionNormalized).toMatch(
+      /row\.gateType ∈ \{clarification, artifact-review, implementation-review, manual-validation\}/,
+    );
+    // The ack call literal contains gateId: row.gateId, outcome:
+    // 'superseded', and runId: row.runId (targeting the row's originating
+    // runId per FR-003). Split into two assertions because the `detail:`
+    // string carries embedded commas and a single regex over the whole call
+    // would over-constrain the wording of the detail literal.
+    expect(adoptionNormalized).toMatch(
+      /cockpit_gate_ack\(\{\s*gateId: row\.gateId,\s*outcome: 'superseded'/,
+    );
+    expect(adoptionNormalized).toMatch(/runId: row\.runId/);
+    // Deferred-draft rule verbatim.
+    expect(adoptionNormalized).toMatch(/do NOT add the row to `openGates`/);
+    expect(adoptionNormalized).toMatch(/do NOT draft here/);
+    // Detail string sourced verbatim from the live-path drift branch.
+    expect(adoptionNormalized).toMatch(
+      /SAME string the live-path drift branch uses/,
+    );
+    expect(adoptionNormalized).toMatch(
+      /generation drift — content changed since original draft/,
+    );
+  });
+
+  it("471-6 § Adoption pass declares the `escalation` carve-out verbatim (FR-013 / V4 / SC-011) — `row.gateType === 'escalation'` DISABLES the drift branch; adopted at stale generation, left non-terminal", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // Carve-out heading references FR-013 / V4 / SC-011.
+    expect(adoptionNormalized).toMatch(
+      /`escalation` carve-out \(per FR-013 \/ V4 \/ SC-011\)/,
+    );
+    // Verbatim DISABLE rule for escalation gateType.
+    expect(adoptionNormalized).toMatch(
+      /`row\.gateType === 'escalation'` DISABLES the drift branch/,
+    );
+    // Prior-run escalation rows take broad-adopt at stale generation.
+    expect(adoptionNormalized).toMatch(
+      /Prior-run `escalation` rows with generation drift take the BROAD-adopt branch instead/,
+    );
+    expect(adoptionNormalized).toMatch(
+      /adopted at their stale generation, left non-terminal/,
+    );
+    // Rationale references generacy#1046.
+    expect(adoptionNormalized).toMatch(/generacy#1046/);
+  });
+
+  it("471-7 § Adoption pass declares adopted-`answered` counter initialisation: `answeredGateSweepCounter[row.gateId] = 1` at adopt time (FR-010 / SC-012 / V6)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // Counter init heading references FR-010 / SC-012.
+    expect(adoptionNormalized).toMatch(
+      /Adopted-`answered` counter initialisation \(per FR-010 \/ SC-012/,
+    );
+    // Verbatim initialisation to 1.
+    expect(adoption).toContain(
+      "`answeredGateSweepCounter[row.gateId] = 1`",
+    );
+    // Rationale references the recorded-sweep-is-1 semantic from #457.
+    expect(adoptionNormalized).toMatch(
+      /matches the reuse-answered branch semantics established by #457/,
+    );
+    // Load-bearing threshold `3` still applies; escape hatch fires at S+2.
+    expect(adoptionNormalized).toMatch(
+      /load-bearing threshold `3`/,
+    );
+  });
+
+  it("471-8 § Adoption pass declares the FR-014 defer-not-draft rule verbatim (ledger row shape; continue with other issues; do not abort)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // Defer heading references FR-014 / SC-013.
+    expect(adoptionNormalized).toMatch(
+      /Per-issue defer-on-error rule \(per FR-014 \/ SC-013/,
+    );
+    // Exclusive-or rule: skip BOTH adoption AND drafting for issue X.
+    expect(adoptionNormalized).toMatch(
+      /SKIP BOTH adoption AND drafting for issue X/,
+    );
+    // Verbatim ledger row shape.
+    expect(adoption).toContain(
+      "`startup · adoption-list-error · <issueRef> · <errorClass> · deferred-to-next-wake`",
+    );
+    // Continue-with-other-issues rule.
+    expect(adoptionNormalized).toMatch(/Continue with the next in-scope issue/);
+    // Do-not-abort rule.
+    expect(adoptionNormalized).toMatch(/do NOT abort the run/);
+    // Companion paragraph § Deferred-to-loop behavior on adoption-path
+    // cockpit_gate_list failure declares the mirror shape (T009 output).
+    // This assertion is not strictly the adoption-pass block, but the FR-014
+    // shape references its companion.
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    expect(step3).toMatch(
+      /Deferred-to-loop behavior on adoption-path `cockpit_gate_list` failure/,
+    );
+  });
+
+  it("471-9 § Adoption pass declares the FR-006 UI-mode-only guard verbatim (dead prose under `ResolvedGateMode === \"local\"`)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // UI-mode-only guard heading references FR-006 / V9.
+    expect(adoptionNormalized).toMatch(
+      /UI-mode-only guard \(per FR-006 \/ V9/,
+    );
+    // Verbatim dead-prose declaration under local.
+    expect(adoptionNormalized).toMatch(
+      /entire § Adoption pass block is dead prose under `ResolvedGateMode === "local"`/,
+    );
+    // No side-effects under local: no list calls, no openGates writes.
+    expect(adoptionNormalized).toMatch(
+      /No `cockpit_gate_list` calls, no `openGates` writes, no ledger rows/,
+    );
+  });
+
+  it("471-10 § Adoption pass declares the FR-005 no-`runId` invariant on the functional list call verbatim (MUST NOT be present on the payload)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // Verbatim "MUST NOT be present" clause on the payload.
+    expect(adoptionNormalized).toMatch(
+      /The `runId` field MUST NOT be present on the payload — omitted, not `null`, not `undefined`, not `""`/,
+    );
+    // References FR-005 / V8 / R4.
+    expect(adoptionNormalized).toMatch(/per FR-005 \/ V8 \/ R4/);
+    // Reinforcement of #469 FR-011 from the consumer end.
+    expect(adoptionNormalized).toMatch(
+      /reinforces #469 FR-011 from the consumer end/,
+    );
+    // The pre-flight probe remains the SOLE list call carrying runId.
+    expect(adoptionNormalized).toMatch(
+      /pre-flight capability probe.*remains the SOLE `cockpit_gate_list` call in the run that carries `runId`/,
+    );
+  });
+
+  it("471-11 § In-memory loop state additions declares `openGates` records carry per-entry `runId` (current-run entries carry current-run runId; adopted entries carry row's originating runId)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const section = extractSubheadingBlock(
+      autoMd,
+      "In-memory loop state additions (UI mode)",
+    );
+    const sectionNormalized = section.replace(/\s+/g, " ");
+    // Per-entry runId is declared MANDATORY.
+    expect(sectionNormalized).toMatch(
+      /Per-entry `runId: string` on `GateRecord` — MANDATORY \(per #471 \/ FR-003 \/ FR-004/,
+    );
+    // Current-run entries carry current-run runId (item a).
+    expect(sectionNormalized).toMatch(
+      /Current-run entries.*every entry added by the CURRENT run's sweep-time or live-path `cockpit_gate_open` success carries the current-run `runId`/,
+    );
+    // Adopted entries carry row's originating runId (item b).
+    expect(sectionNormalized).toMatch(
+      /Adopted entries.*carries the row's ORIGINATING `runId`, read verbatim from the `cockpit_gate_list` row/,
+    );
+    // Every downstream cockpit_gate_ack for an openGates entry reads the
+    // per-entry runId, NOT the run-wide loop-state runId.
+    expect(sectionNormalized).toMatch(
+      /Every downstream `cockpit_gate_ack` for an `openGates` entry MUST read `openGates\[gateId\]\.runId`, NOT the run-wide loop-state `runId`/,
+    );
+    // D.12 step 1 no-record ack is the SOLE ack path that continues to
+    // use the run-wide loop-state runId (the drop path where no openGates
+    // entry exists).
+    expect(sectionNormalized).toMatch(
+      /§ D\.12 step 1 no-record ack is the SOLE ack path that continues to use the run-wide loop-state `runId`/,
+    );
+  });
+
+  it("471-12 § step 3 § gateId idempotency paragraph names adoption as the ordering primitive AND every D.n Step 0 `absent` sub-branch carries the same-generation adopt-natural sibling branch that actually delivers SC-006 (behavioural pin, not a reference-grep)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    // Adoption is named as the ordering primitive in the gateId-idempotency
+    // paragraph.
+    expect(step3Normalized).toMatch(
+      /Adoption is the ordering primitive that prevents the sweep-time `cockpit_gate_open` from duplicating an adopted natural gate across runs/,
+    );
+    // References #471 / SC-006.
+    expect(step3Normalized).toMatch(/per #471 \/ SC-006/);
+    // Adoption runs BEFORE the synthetic-event dispatch pass.
+    expect(step3Normalized).toMatch(
+      /§ Adoption pass block above runs BEFORE this synthetic-event dispatch pass/,
+    );
+
+    // Behavioural pin — the mechanism SC-006 rests on lives in the D.n Step 0
+    // `{status: 'absent'}` sub-branches, not the § Adoption pass. Every one
+    // of D.1 / D.2 / D.3 / D.4 / D.7 / D.11 must carry a "Non-terminal gate
+    // at the SAME `generation`" adopt-natural branch that does NOT draft
+    // and DOES record the row into `openGates` under `row.gateId` with the
+    // row's originating `runId`. A grep for `per #471 / SC-006` is not
+    // sufficient — the previous form of this pin passed on prose describing
+    // a mechanism that did not exist, and the SC-006 promise ("zero
+    // cockpit_gate_open for that natural gate") was broken silently in
+    // review. Pin each row's block individually.
+    const step0Headers = [
+      "D.1 — `waiting-for:clarification`",
+      "D.2 — `waiting-for:<artifact>-review`",
+      "D.3 — `waiting-for:implementation-review`",
+      "D.4 — `waiting-for:manual-validation`",
+      "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)",
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+    ];
+    for (const header of step0Headers) {
+      const block = extractSubheadingBlock(autoMd, header);
+      const blockNormalized = block.replace(/\s+/g, " ");
+      // The same-generation adopt-natural branch is present (behavioural
+      // substring, not a reference-grep).
+      expect(
+        blockNormalized,
+        `${header} must carry the "Non-terminal gate at the SAME generation" adopt-natural sub-branch on \`{status: 'absent'}\` (the mechanism SC-006 depends on)`,
+      ).toMatch(
+        /Non-terminal gate at the SAME `generation`[^—]*—[^]*a prior run opened this SAME/i,
+      );
+      // The branch adopts under the row's originating runId, NOT the
+      // current run's — this is the load-bearing property.
+      expect(
+        blockNormalized,
+        `${header} same-generation adopt sub-branch must adopt under row.gateId with the row's originating runId`,
+      ).toMatch(/row\.runId[^]*(FR-003|originating `runId`)/);
+      // The branch continues to the next event (does NOT draft, does NOT
+      // open).
+      expect(
+        blockNormalized,
+        `${header} same-generation adopt sub-branch must state "do NOT draft" / "do NOT open" and continue to the next event`,
+      ).toMatch(/Do \*\*NOT\*\* draft[^]*Do \*\*NOT\*\* open[^]*Continue to the next event/i);
+      // Cross-references SC-006 in the branch prose.
+      expect(
+        blockNormalized,
+        `${header} same-generation adopt sub-branch must cite #471 / SC-006`,
+      ).toMatch(/#471 \/ SC-006/);
+    }
+
+    // Behavioural pin — the § step 3 § gateId idempotency paragraph must
+    // NOT continue to describe the two runs' `gateId`s as coalescing (the
+    // pre-fix wording that reviewers flagged as contradictory). Two runs'
+    // gateIds intentionally differ (per #469 FR-001), and the suppression
+    // comes from the ADOPTION into `openGates` plus Step 0's same-generation
+    // absent sub-branch, NOT from gateId coalescence.
+    expect(
+      step3Normalized,
+      "§ gateId idempotency paragraph MUST NOT assert that adopted and current-run sweep-time opens share the SAME 4-segment gateId — the two runs' runIds differ by construction (#469 FR-001), so the two gateIds do NOT coalesce; the pre-fix wording was internally contradictory (asserted SAME and NOT-SAME in one parenthetical) and described a mechanism that did not exist. If this pin fails, do NOT weaken it — re-verify that Step 0's same-generation absent sub-branch is the load-bearing suppression site and update the paragraph accordingly.",
+    ).not.toMatch(
+      /adoption pass has already added a `GateRecord` under the SAME 4-segment `gateId`/,
+    );
+  });
+
+  it("471-13 § step 3 § step 4 sub-step 0 escape-hatch `cockpit_gate_ack(superseded)` sites BOTH read `runId` from `openGates[gateId].runId` (not the run-wide loop-state `runId`)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const step3 = extractInstructionsSteps(autoMd).get(3)!;
+    const step4 = extractInstructionsSteps(autoMd).get(4)!;
+    // Step 3 escape-hatch ack site sources runId from openGates[gateId].runId.
+    const step3Normalized = step3.replace(/\s+/g, " ");
+    expect(step3Normalized).toMatch(
+      /the `runId` value is READ from `openGates\[gateId\]\.runId` \(per #471 \/ FR-003 \/ § In-memory loop state additions above\), NOT the run-wide loop-state `runId`/,
+    );
+    // For adopted entries the two differ.
+    expect(step3Normalized).toMatch(
+      /for an adopted entry \(per § Adoption pass above\) they differ — `openGates\[gateId\]\.runId` carries the row's originating `runId`/,
+    );
+    // Step 4 sub-step 0 per-wake escape-hatch ack site also sources runId
+    // from openGates[gateId].runId.
+    const step4Normalized = step4.replace(/\s+/g, " ");
+    expect(step4Normalized).toMatch(
+      /the `runId` value is READ from `openGates\[gateId\]\.runId` \(per #471 \/ FR-003 \/ § In-memory loop state additions above\), NOT the run-wide loop-state `runId`/,
+    );
+    expect(step4Normalized).toMatch(
+      /for an adopted entry \(per § step 3 § Adoption pass above\) they differ — `openGates\[gateId\]\.runId` carries the row's originating `runId`/,
+    );
+  });
+
+  it("471-14 § D.12 gate-answer step 5 (operator-answer-applied) `cockpit_gate_ack(applied)` reads `runId` from `openGates[event.gateId].runId`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    const blockNormalized = block.replace(/\s+/g, " ");
+    // Ack literal is present unchanged.
+    expect(block).toContain(`cockpit_gate_ack(gateId, outcome: "applied")`);
+    // The runId is READ from openGates[event.gateId].runId, per #471.
+    expect(blockNormalized).toMatch(
+      /the `runId` value is READ from `openGates\[event\.gateId\]\.runId` \(per #471 \/ FR-003 \/ § In-memory loop state additions above\), NOT the run-wide loop-state `runId`/,
+    );
+    // For adopted entries the two differ — openGates[event.gateId].runId
+    // carries the row's originating runId.
+    expect(blockNormalized).toMatch(
+      /for an adopted entry \(per § step 3 § Adoption pass above\) they differ — `openGates\[event\.gateId\]\.runId` carries the row's originating `runId`/,
+    );
+  });
+
+  it("471-15 § D.12 gate-answer step 3 live-state supersession `cockpit_gate_ack(superseded, 'live state moved past …')` reads `runId` from `openGates[gateId].runId`", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    const blockNormalized = block.replace(/\s+/g, " ");
+    // Live-state supersession ack literal is present unchanged.
+    expect(block).toContain(
+      `cockpit_gate_ack(gateId, outcome: "superseded", detail: "live state moved past <transition-class>")`,
+    );
+    // The runId is READ from openGates[gateId].runId, per #471.
+    expect(blockNormalized).toMatch(
+      /this live-state-supersession ack ALSO passes `runId` verbatim — the `runId` value is READ from `openGates\[gateId\]\.runId` \(per #471 \/ FR-003 \/ § In-memory loop state additions above\), NOT the run-wide loop-state `runId`/,
+    );
+  });
+
+  it("471-16 § D.12 gate-answer step 1 no-record ack CONTINUES to use the run-wide loop-state `runId` (drift-audit negative pin — asserts pre-#471 behaviour preserved on the drop path where no `openGates` entry exists)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    const blockNormalized = block.replace(/\s+/g, " ");
+    // The no-record ack literal is present unchanged (drop path — no matching
+    // openGates entry to source per-entry runId from).
+    expect(block).toContain(
+      `cockpit_gate_ack(gateId, outcome: "superseded", detail: "no matching open record — likely startup-race or duplicate delivery")`,
+    );
+    // Positive: the no-record ack MUST pass the run's pre-flight-derived
+    // runId (the run-wide loop-state runId).
+    expect(blockNormalized).toMatch(
+      /this call ALSO passes the run's pre-flight-derived `runId` verbatim/,
+    );
+    // Negative: the no-record ack MUST NOT read runId from an openGates
+    // entry — there is NO entry to source from on the drop path. Any
+    // future edit that adds `openGates[event.gateId].runId` to the no-record
+    // ack site is a bug and breaks this pin (per T014's preserve-shape
+    // requirement — pre-#471 behaviour is intentional on this drop path).
+    const noRecordMatch = block.match(
+      /Look up record[^]*?superseded \(no record\) · source: ui-gate/,
+    );
+    expect(
+      noRecordMatch,
+      "D.12 step 1 no-record ack section must be locatable",
+    ).not.toBeNull();
+    expect(
+      noRecordMatch![0],
+      "D.12 step 1 no-record ack MUST NOT source runId from openGates (there is no entry to source from)",
+    ).not.toMatch(/openGates\[event\.gateId\]\.runId|openGates\[gateId\]\.runId/);
+  });
+
+  it("471-17 § Adoption pass declares the adopted-`answered` structural limitation verbatim (answer preserved only if D.12 redelivery fires; otherwise escape hatch re-asks after 3 sweeps) — filed as a Follow-up rather than implied away", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    // The structural limitation heading references FR-010 / spec § Follow-ups.
+    expect(adoptionNormalized).toMatch(
+      /Adopted-`answered` structural limitation \(per FR-010 \/ spec § Follow-ups\)/,
+    );
+    // NO MCP surface returns the answer document.
+    expect(adoptionNormalized).toMatch(
+      /NO MCP surface returns the operator's answer document/,
+    );
+    // The answer is preserved only if D.12 redelivery fires.
+    expect(adoptionNormalized).toMatch(
+      /adopted answer is preserved ONLY if D\.12 redelivery fires/,
+    );
+    // Escape hatch re-asks after 3 sweeps.
+    expect(adoptionNormalized).toMatch(
+      /escape hatch supersedes after 3 sweeps/,
+    );
+    // Answer-document surface is filed as a Follow-up (out of scope).
+    expect(adoptionNormalized).toMatch(
+      /answer-document surface would require a cloud-side schema change and is filed as a Follow-up/,
+    );
+  });
+
+  it("471-19 § Pre-draft check — shared rules 'Consequence' paragraph AGREES with the D.7 / D.11 row prose on the list call (the paragraph must NOT claim the list call is skipped for D.7 / D.11 — since #471, those two rows DO issue `cockpit_gate_list` on `absent` to reach the same-generation adoption branch; only D.6 / D.10, which have no Step 0, genuinely skip it) — this is the round-2 assertion shape that would have caught the shared-rule/row-prose contradiction reviewers flagged", () => {
+    // Round-1 (#471 round 1) caught the D.11-only scoping of the drift-branch
+    // guard leaving the D.7 mirror hazard live; that was fixed by broadening
+    // the guard to all four escalation rows. Round-2 (#471 round 2) caught
+    // that the same "Consequence" paragraph — which had said "the plugin
+    // skips the list call and the drift branch" for all four rows — was
+    // never updated when D.7 / D.11 gained a same-generation adoption branch
+    // that REQUIRES the list call. The general rule and the specific rows
+    // contradicted each other, and an executor following the general rule
+    // never reached the adoption branch in D.7 / D.11, reproducing the
+    // round-1 duplicate-gate hazard on exactly the two escalation rows.
+    //
+    // The pin: the shared "Consequence" paragraph must (a) still disable
+    // the drift branch for all four rows, (b) name D.7 / D.11 as the two
+    // rows that DO issue the list call for adoption, and (c) name D.6 /
+    // D.10 as the two rows without a Step 0 that genuinely skip it. A grep
+    // for "skips the list call" as an unqualified assertion applied to all
+    // four rows is a defect this pin fails on.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const shared = extractSubheadingBlock(
+      autoMd,
+      "Pre-draft check — shared rules (UI mode)",
+    );
+    const sharedNormalized = shared.replace(/\s+/g, " ");
+
+    // (a) The drift branch stays disabled for all four rows — the anti-
+    // hazard property preserved from round 1.
+    expect(sharedNormalized).toMatch(
+      /drift branch is DISABLED for `gateType: 'escalation'` \(D\.6, D\.7, D\.10, D\.11\)/,
+    );
+    expect(sharedNormalized).toMatch(
+      /in D\.6, D\.7, D\.10, and D\.11 the \*\*drift branch never fires\*\*/,
+    );
+
+    // (b) The list call is NOT unqualifiedly skipped for D.7 / D.11 — the
+    // paragraph names them explicitly as the two rows that DO call
+    // cockpit_gate_list for the same-generation adoption branch (#471 /
+    // SC-006).
+    expect(
+      sharedNormalized,
+      "shared-rules 'Consequence' paragraph must name D.7 and D.11 as the escalation rows that DO issue cockpit_gate_list for the same-generation adoption branch",
+    ).toMatch(
+      /list call itself is NOT skipped for the two escalation rows that have a Step 0 \(D\.7, D\.11\)/,
+    );
+    expect(sharedNormalized).toMatch(/same-generation adoption branch/);
+    expect(sharedNormalized).toMatch(/per #471 \/ SC-006/);
+
+    // (c) D.6 / D.10 are named as the two rows WITHOUT a Step 0 that
+    // genuinely issue no list call — this is what keeps the paragraph
+    // internally consistent with `:588` (which lists the rows without a
+    // pre-draft check).
+    expect(
+      sharedNormalized,
+      "shared-rules 'Consequence' paragraph must name D.6 / D.10 as the two rows without a Step 0 for which the original 'skip the list call' sentence stays true",
+    ).toMatch(/D\.6 and D\.10 have no Step 0/);
+
+    // NEGATIVE PIN — the pre-round-2 wording is forbidden: the paragraph
+    // must NOT claim that D.6, D.7, D.10, and D.11 (all four together)
+    // skip the list call. That is the exact defect this pin exists to
+    // catch — a general rule that contradicts the specific rows.
+    expect(
+      sharedNormalized,
+      "shared-rules 'Consequence' paragraph MUST NOT assert that all four escalation rows skip the list call on `absent` — since #471, D.7 and D.11 DO issue the list call to reach the same-generation adoption branch. If this pin fails, do NOT weaken it — re-verify that the D.7 (`:871`) and D.11 (`:988`) row prose issue `cockpit_gate_list` on `absent` and rewrite the shared paragraph to name D.7 / D.11 as the exception.",
+    ).not.toMatch(
+      /in D\.6, D\.7, D\.10, and D\.11,? on a `\{ status: 'absent' \}` return the plugin skips the list call/,
+    );
+
+    // Cross-check the row prose: D.7 and D.11 Step 0 `absent` sub-branches
+    // MUST actually issue the list call the shared paragraph now claims
+    // they do. This is the "general rule and specific rows agree" shape
+    // reviewers asked for — the assertion that would have caught round 2.
+    for (const header of [
+      "D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)",
+      "D.11 — `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` → escalation gate (I've resolved it / Skip / Stop)",
+    ]) {
+      const block = extractSubheadingBlock(autoMd, header);
+      const blockNormalized = block.replace(/\s+/g, " ");
+      // The row's Step 0 `absent` sub-branch issues the list call.
+      expect(
+        block,
+        `${header} Step 0 \`absent\` sub-branch must issue cockpit_gate_list — the shared-rules paragraph names this row as one that DOES call it for adoption`,
+      ).toContain("cockpit_gate_list({ issueRef, gateType })");
+      // The row cites SC-006 alongside the same-generation adoption branch.
+      expect(
+        blockNormalized,
+        `${header} same-generation adoption branch must cite #471 / SC-006`,
+      ).toMatch(/#471 \/ SC-006/);
+    }
+  });
+
+  it("471-18 `--gates=local` byte-path invariance — zero adoption-path `cockpit_gate_list` occurrences under the `local` branch of § step 3 (complements 469-29)", () => {
+    // Under --gates=local the § Adoption pass block is dead prose. This pin
+    // asserts (a) the block's dead-prose guard sentence declares the fact
+    // verbatim (471-9 duplicates this from a different angle), AND (b) the
+    // adoption block does not attach ANY cockpit_gate_list call to a local
+    // branch. The complement of 469-29 (which pins zero runId under local
+    // Step 0 blocks). Together the two pins guarantee neither runId nor
+    // adoption-path list calls survive the --gates=local byte path.
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const adoption = extractAdoptionPassBlock(autoMd);
+    // The block's own dead-prose guard: no cockpit_gate_list under local.
+    const adoptionNormalized = adoption.replace(/\s+/g, " ");
+    expect(adoptionNormalized).toMatch(
+      /entire § Adoption pass block is dead prose under `ResolvedGateMode === "local"`/,
+    );
+    // Scan for any sentence that would attach a cockpit_gate_list call to
+    // a local-branch statement inside the adoption block. Adoption's ONLY
+    // list-call declaration is the functional-call shape pinned by 471-2,
+    // which is UI-mode-scoped by the block's outer guard. This pin is a
+    // structural audit: no cockpit_gate_list appears alongside `local`
+    // within the same sentence anywhere in the block.
+    const adoptionSentences = adoption
+      .split(/(?<=\.)\s+/)
+      .filter((s) => s.trim().length > 0);
+    for (const sentence of adoptionSentences) {
+      // A sentence that both mentions `local` (as ResolvedGateMode branch)
+      // AND `cockpit_gate_list(...)` would imply a list call on the local
+      // path. Two guards allow the sentence to co-mention `local` safely:
+      //   (i) it names `local` inside a "dead prose"/"MUST NOT"/"do not"
+      //       negation, OR
+      //   (ii) the sentence names `local` in a phrase like "Under `local`"
+      //       that scopes an EXPLICIT NEGATIVE statement.
+      // If neither guard is present but a functional cockpit_gate_list call
+      // appears, break out — that is the local-branch drift the pin catches.
+      const mentionsLocal = /\blocal\b/i.test(sentence);
+      const mentionsListCall = /cockpit_gate_list\(/.test(sentence);
+      if (mentionsLocal && mentionsListCall) {
+        // Allowed only if the sentence explicitly negates OR states the
+        // block is dead prose under local.
+        const isNegation =
+          /dead prose|MUST NOT|no `?cockpit_gate_list`?/i.test(sentence);
+        expect(
+          isNegation,
+          `§ Adoption pass local-branch sentence must not attach a cockpit_gate_list call: "${sentence}"`,
+        ).toBe(true);
+      }
     }
   });
 });
