@@ -51,7 +51,20 @@ describe('PluginManifestSchema', () => {
     });
 
     it('accepts various valid semver versions', () => {
-      const versions = ['0.0.1', '1.0.0', '10.20.30', '1.0.0-alpha', '1.0.0-beta.1', '1.0.0+build.123'];
+      const versions = [
+        '0.0.1',
+        '1.0.0',
+        '10.20.30',
+        '1.0.0-alpha',
+        '1.0.0-beta.1',
+        '1.0.0+build.123',
+        // Hyphens are legal inside prerelease/build identifiers (semver §9-10).
+        // The published preview channel uses exactly this shape; rejecting it
+        // made every preview-channel plugin silently undiscoverable.
+        '0.0.0-preview-20260722182217',
+        '1.2.3-rc-1',
+        '1.0.0+build-123',
+      ];
 
       for (const version of versions) {
         const manifest = {
