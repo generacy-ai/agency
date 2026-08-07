@@ -2,7 +2,12 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { PluginDiscovery, findNodeModules, createDiscoveryOptions } from './discovery.js';
+import {
+  PluginDiscovery,
+  findNodeModules,
+  createDiscoveryOptions,
+  resolveSiblingPackagesDir,
+} from './discovery.js';
 
 describe('PluginDiscovery', () => {
   let testDir: string;
@@ -56,6 +61,35 @@ describe('PluginDiscovery', () => {
       expect(plugins).toHaveLength(1);
       expect(plugins[0]?.manifest.id).toBe('@generacy-ai/agency-plugin-test');
       expect(plugins[0]?.source).toBe('node_modules');
+    });
+
+    it('discovers preview-channel plugins whose version contains hyphens', async () => {
+      // Regression: `0.0.0-preview-<timestamp>` failed manifest validation, so
+      // every preview-channel plugin was dropped and the MCP server came up
+      // healthy with zero tools.
+      const nodeModules = join(testDir, 'node_modules');
+      await createMockPlugin(nodeModules, '@generacy-ai/agency-plugin-preview', {
+        version: '0.0.0-preview-20260722182217',
+      });
+
+      const plugins = await discovery.discoverFromNodeModules(nodeModules);
+
+      expect(plugins).toHaveLength(1);
+      expect(plugins[0]?.manifest.version).toBe('0.0.0-preview-20260722182217');
+    });
+
+    it('deduplicates a plugin found under more than one search path', async () => {
+      const nodeModules = join(testDir, 'node_modules');
+      await createMockPlugin(nodeModules, '@generacy-ai/agency-plugin-dup', {
+        version: '1.0.0',
+      });
+
+      const plugins = await discovery.discover({
+        searchPaths: [nodeModules, nodeModules],
+        pattern: /^(@generacy-ai\/)?agency-plugin-[\w-]+$/,
+      });
+
+      expect(plugins).toHaveLength(1);
     });
 
     it('discovers multiple plugins', async () => {
@@ -258,15 +292,42 @@ describe('createDiscoveryOptions', () => {
   it('creates options with node_modules path', () => {
     const options = createDiscoveryOptions('/project');
 
-    expect(options.searchPaths).toEqual(['/project/node_modules']);
+    expect(options.searchPaths[0]).toBe('/project/node_modules');
     expect(options.additionalPlugins).toBeUndefined();
   });
 
   it('includes additional plugins when provided', () => {
     const options = createDiscoveryOptions('/project', undefined, ['/custom/plugin1', '/custom/plugin2']);
 
-    expect(options.searchPaths).toEqual(['/project/node_modules']);
+    expect(options.searchPaths[0]).toBe('/project/node_modules');
     expect(options.additionalPlugins).toEqual(['/custom/plugin1', '/custom/plugin2']);
+  });
+
+  it("appends agency's own sibling package directory as a fallback", () => {
+    // Without this the server finds nothing when launched from a repo that
+    // does not itself depend on the plugins — the normal cluster case.
+    const options = createDiscoveryOptions('/project');
+    const siblingDir = resolveSiblingPackagesDir();
+
+    expect(siblingDir).not.toBeNull();
+    expect(options.searchPaths).toContain(siblingDir as string);
+    // Listed last so configured paths win on duplicate plugin ids.
+    expect(options.searchPaths[options.searchPaths.length - 1]).toBe(siblingDir);
+  });
+
+  it('does not duplicate the sibling directory when already configured', () => {
+    const siblingDir = resolveSiblingPackagesDir() as string;
+    const options = createDiscoveryOptions('/project', [siblingDir]);
+
+    expect(options.searchPaths.filter((p) => p === siblingDir)).toHaveLength(1);
+  });
+
+  it('resolves the sibling directory to the parent of the agency package', () => {
+    // npm:    <root>/node_modules/@generacy-ai/agency -> <root>/node_modules/@generacy-ai
+    // source: <root>/packages/agency                  -> <root>/packages
+    const siblingDir = resolveSiblingPackagesDir() as string;
+
+    expect(siblingDir.endsWith('/packages') || siblingDir.endsWith('/@generacy-ai')).toBe(true);
   });
 });
 
