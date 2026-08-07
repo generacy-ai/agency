@@ -6,9 +6,10 @@
  */
 
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { DiscoveredPlugin, DiscoveryOptions, PluginManifest } from './types.js';
-import { safeParseManifest } from './manifest.js';
+import { safeParseManifest, validateManifest } from './manifest.js';
 
 /**
  * Default plugin name pattern for node_modules scanning
@@ -20,6 +21,34 @@ const DEFAULT_PLUGIN_PATTERN = /^(@generacy-ai\/)?agency-plugin-[\w-]+$/;
  * Agency manifest field name in package.json
  */
 const AGENCY_MANIFEST_FIELD = 'agency';
+
+/**
+ * Directory that holds the agency package's sibling packages.
+ *
+ * Plugin discovery is otherwise entirely cwd-relative, which breaks whenever
+ * the MCP server is launched from a repo that does not itself depend on the
+ * plugins — the normal case for a cluster, where the server runs inside a
+ * checkout of the *target* repo. Agency's own siblings are a reliable anchor
+ * in every deployment flavour we ship:
+ *
+ *   npm install  → /…/node_modules/@generacy-ai/agency  → …/@generacy-ai
+ *   source build → /…/agency/packages/agency            → …/packages
+ *
+ * In both cases the parent directory contains the `agency-plugin-*` packages,
+ * so scanning it makes first-party plugins discoverable without per-repo
+ * configuration. Returns null when the location cannot be resolved (e.g. a
+ * bundled build with a rewritten import.meta.url).
+ */
+export function resolveSiblingPackagesDir(): string | null {
+  try {
+    // this file lives at <pkgRoot>/dist/plugins/discovery.js (or src/ in dev),
+    // so <pkgRoot> is three levels up and its parent holds the siblings.
+    const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    return dirname(packageRoot);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Plugin Discovery class for finding plugins in the filesystem
@@ -39,11 +68,23 @@ export class PluginDiscovery {
    */
   async discover(options: DiscoveryOptions): Promise<DiscoveredPlugin[]> {
     const discovered: DiscoveredPlugin[] = [];
+    // Search paths legitimately overlap (a project's node_modules and agency's
+    // sibling directory can resolve to the same place), so first match wins.
+    const seen = new Set<string>();
+
+    const add = (plugins: DiscoveredPlugin[]): void => {
+      for (const plugin of plugins) {
+        if (seen.has(plugin.manifest.id)) {
+          continue;
+        }
+        seen.add(plugin.manifest.id);
+        discovered.push(plugin);
+      }
+    };
 
     // Scan search paths (typically node_modules directories)
     for (const searchPath of options.searchPaths) {
-      const fromPath = await this.scanPath(searchPath, 'node_modules');
-      discovered.push(...fromPath);
+      add(await this.scanPath(searchPath, 'node_modules'));
     }
 
     // Load additional explicit plugin paths
@@ -51,7 +92,7 @@ export class PluginDiscovery {
       for (const pluginPath of options.additionalPlugins) {
         const plugin = await this.loadFromPath(pluginPath, 'explicit');
         if (plugin) {
-          discovered.push(plugin);
+          add([plugin]);
         }
       }
     }
@@ -163,6 +204,20 @@ export class PluginDiscovery {
 
       const manifest = this.extractManifest(packageJson, packagePath);
       if (!manifest) {
+        // A package that matched the plugin name pattern but failed manifest
+        // validation is almost always a defect, not a package we should ignore.
+        // Swallowing it silently is what let an over-strict semver check hide a
+        // zero-tool MCP server behind a healthy-looking connection.
+        const { errors } = validateManifest({
+          id: packageJson['name'],
+          name: packageJson['name'],
+          version: packageJson['version'],
+          main: packageJson['main'] ?? './dist/index.js',
+        });
+        const reasons = (errors ?? []).map((e) => `${e.path}: ${e.message}`).join('; ');
+        process.stderr.write(
+          `[agency] Ignoring plugin at ${packagePath}: invalid manifest (${reasons || 'unknown reason'})\n`,
+        );
         return null;
       }
 
@@ -263,6 +318,14 @@ export function createDiscoveryOptions(
   // Add additional search paths if provided
   if (additionalSearchPaths) {
     searchPaths.push(...additionalSearchPaths);
+  }
+
+  // Always fall back to agency's own siblings so first-party plugins are found
+  // when the server runs outside a project that depends on them. Listed last so
+  // an explicitly configured path still wins on duplicate plugin ids.
+  const siblingDir = resolveSiblingPackagesDir();
+  if (siblingDir && !searchPaths.includes(siblingDir)) {
+    searchPaths.push(siblingDir);
   }
 
   return {

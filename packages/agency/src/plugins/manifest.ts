@@ -10,9 +10,15 @@ import type { PluginManifest, ValidationResult } from './types.js';
 
 /**
  * Semver version pattern (simplified)
- * Matches: 1.0.0, 1.2.3-alpha, 1.0.0-beta.1, 1.0.0+build.123
+ * Matches: 1.0.0, 1.2.3-alpha, 1.0.0-beta.1, 1.0.0+build.123,
+ * 0.0.0-preview-20260722182217
+ *
+ * Prerelease and build identifiers may contain hyphens (semver 2.0.0 §9-10),
+ * so the character classes must include `-` and not just `\w`. The published
+ * preview channel uses `0.0.0-preview-<timestamp>`; rejecting it here made
+ * every preview-channel plugin silently undiscoverable.
  */
-const SEMVER_PATTERN = /^\d+\.\d+\.\d+(-[\w.]+)?(\+[\w.]+)?$/;
+const SEMVER_PATTERN = /^\d+\.\d+\.\d+(-[\w.-]+)?(\+[\w.-]+)?$/;
 
 /**
  * Plugin ID pattern (npm package format)

@@ -3,6 +3,7 @@ import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ConfigLoader } from './loader.js';
+import { DEFAULT_MODE, DEFAULT_MODE_PATTERNS } from './schema.js';
 import { AgencyError, ErrorCodes } from '../errors/index.js';
 
 describe('ConfigLoader', () => {
@@ -148,8 +149,18 @@ describe('ConfigLoader', () => {
 
       expect(config.name).toBe('agency');
       expect(config.plugins).toEqual([]);
-      expect(config.modes).toEqual({ default: ['*'] });
-      expect(config.defaultMode).toBe('default');
+      expect(config.modes).toEqual(DEFAULT_MODE_PATTERNS);
+      expect(config.defaultMode).toBe(DEFAULT_MODE);
+    });
+
+    it('defaults to a mode that mode-scoped plugins actually declare', async () => {
+      // spec-kit declares modes ["research","coding"] and npm declares
+      // ["coding","review"]; a default outside those lists hides their tools.
+      const loader = new ConfigLoader(testDir);
+      const config = await loader.load();
+
+      expect(config.defaultMode).toBe('coding');
+      expect(config.modes[config.defaultMode as string]).toEqual(['*']);
     });
   });
 
