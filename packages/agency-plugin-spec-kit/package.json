@@ -1,6 +1,6 @@
 {
   "name": "@generacy-ai/agency-plugin-spec-kit",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Specification management plugin for Agency - structured feature development tools for agents",
   "repository": {
     "type": "git",
