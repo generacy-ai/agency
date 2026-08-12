@@ -1,6 +1,6 @@
 {
   "name": "@generacy-ai/agency-plugin-firebase",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Firebase operations plugin for Agency",
   "repository": {
     "type": "git",

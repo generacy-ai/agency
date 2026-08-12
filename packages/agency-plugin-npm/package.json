@@ -1,6 +1,6 @@
 {
   "name": "@generacy-ai/agency-plugin-npm",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "NPM operations plugin for Agency - provides MCP tools for npm-ecosystem operations",
   "repository": {
     "type": "git",

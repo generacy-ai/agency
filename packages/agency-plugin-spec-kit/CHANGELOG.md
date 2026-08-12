@@ -1,5 +1,13 @@
 # @generacy-ai/agency-plugin-spec-kit
 
+## 1.0.2
+
+### Patch Changes
+
+- Updated dependencies [7a0ff8c]
+  - @generacy-ai/agency@0.1.2
+  - @generacy-ai/agency-plugin-humancy@1.0.2
+
 ## 1.0.1
 
 ### Patch Changes
