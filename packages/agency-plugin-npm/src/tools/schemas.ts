@@ -70,9 +70,6 @@ const BaseTestSchema = BaseParamsSchema.extend({
   /** Test file pattern to run */
   pattern: z.string().optional(),
 
-  /** Run in watch mode */
-  watch: z.boolean().optional(),
-
   /** Test script name */
   script: z.string().optional(),
 });

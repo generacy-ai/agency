@@ -18,6 +18,7 @@ vi.mock('../../src/exec/runner.js', () => ({
     shortMessage: 'Operation completed.',
   }),
   formatCommand: (cmd: string, args: string[]) => `${cmd} ${args.join(' ')}`,
+  DEFAULT_EXEC_TIMEOUT_MS: 600_000,
 }));
 
 describe('build tools', () => {

@@ -10,7 +10,7 @@ import { TerseOutput, terseToMcpToolResult } from '@generacy-ai/agency';
 import { ValidateSchema, zodToJsonSchema } from '../schemas.js';
 import { detectPackageManager, isDetectionSuccess, buildCommand } from '../../pm/index.js';
 import { getAvailableScripts } from '../../scripts/index.js';
-import { exec } from '../../exec/index.js';
+import { exec, formatFailureOutput } from '../../exec/index.js';
 import type { NpmPluginConfig } from '../../config.js';
 
 /** A script candidate resolved for execution */
@@ -222,7 +222,7 @@ export function createValidateTool(config: NpmPluginConfig): AgencyTool {
       for (const r of failed) {
         lines.push('');
         lines.push(`--- ${r.name} ---`);
-        lines.push(r.stderr || r.stdout);
+        lines.push(formatFailureOutput(r));
       }
 
       lines.push('');
