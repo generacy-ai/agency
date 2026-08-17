@@ -186,6 +186,17 @@ describe('ToolRegistry', () => {
       expect(tools).toEqual([]);
     });
 
+    it('should list only explicitly opted-in tools for an empty-pattern mode (speckit semantics)', () => {
+      registry.setModePatterns({ speckit: [] });
+      registry.register(createTestTool({ name: 'spec_kit.check_prereqs', modes: ['coding', 'speckit'] }));
+      registry.register(createTestTool({ name: 'humancy.notify' })); // no modes → pattern fallback
+      registry.register(createTestTool({ name: 'source_control.push', modes: ['coding'] }));
+
+      const tools = registry.getToolsForMode('speckit');
+
+      expect(tools.map((t) => t.name)).toEqual(['spec_kit.check_prereqs']);
+    });
+
     it('should support excludes patterns (excludes win over includes)', () => {
       registry.setModePatterns({
         restricted: {

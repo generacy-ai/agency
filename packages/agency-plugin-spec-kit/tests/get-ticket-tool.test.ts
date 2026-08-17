@@ -162,14 +162,15 @@ describe('createGetTicketTool', () => {
       await expect(tool.execute({ ref: '#999' })).rejects.toThrow(NotFoundError);
     });
 
-    it('should return formatted JSON output', async () => {
+    it('should return compact JSON output', async () => {
       const tool = createGetTicketTool(config, getProvider);
 
       const result = await tool.execute({ ref: '#123' });
 
       const text = (result.content[0] as { text: string }).text;
-      // Should be pretty-printed JSON (contains newlines)
-      expect(text).toContain('\n');
+      // Compact single-line JSON (tickets carry full issue bodies; no indent)
+      expect(text).not.toContain('\n');
+      expect(JSON.parse(text)).toMatchObject({ title: 'Test Issue' });
     });
   });
 

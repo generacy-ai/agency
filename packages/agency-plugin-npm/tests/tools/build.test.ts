@@ -102,7 +102,7 @@ describe('build tools', () => {
       expect(validate.name).toBe('build.validate');
       expect(validate.namespace).toBe('build');
       expect(validate.outputPattern).toBe('terse');
-      expect(validate.modes).toEqual(['default', 'coding', 'review']);
+      expect(validate.modes).toEqual(['default', 'coding', 'review', 'speckit']);
     });
 
     it('discovers validation scripts from package.json', async () => {

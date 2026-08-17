@@ -145,7 +145,7 @@ function errorResult(
   };
 
   return {
-    content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
+    content: [{ type: 'text', text: JSON.stringify(response) }],
     isError: true,
   };
 }
@@ -155,7 +155,7 @@ function errorResult(
  */
 function successResult(data: TasksToIssuesResult): ToolResult {
   return {
-    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+    content: [{ type: 'text', text: JSON.stringify(data) }],
   };
 }
 
@@ -295,7 +295,7 @@ export function createTasksToIssuesTool(
       'Convert tasks from tasks.md into GitHub issues with configurable grouping strategies',
     namespace: 'spec_kit',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['coding', 'speckit'],
     inputSchema: {
       type: 'object',
       properties: {

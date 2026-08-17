@@ -20,7 +20,7 @@ export function createRunUnitTool(config: NpmPluginConfig): AgencyTool {
     inputSchema: zodToJsonSchema(RunUnitSchema),
     namespace: 'test',
     outputPattern: 'terse',
-    modes: ['default', 'coding'],
+    modes: ['default', 'coding', 'speckit'],
 
     async execute(params: unknown): Promise<ToolResult> {
       const parsed = RunUnitSchema.safeParse(params);

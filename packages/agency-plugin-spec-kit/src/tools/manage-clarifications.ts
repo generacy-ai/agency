@@ -457,7 +457,7 @@ export function createManageClarificationsTool(
       'Manage clarifications.md file - read, append questions, or update answers',
     namespace: 'spec_kit',
     outputPattern: 'terse',
-    modes: ['coding', 'research'],
+    modes: ['coding', 'research', 'speckit'],
     inputSchema: {
       type: 'object',
       properties: {
@@ -477,43 +477,10 @@ export function createManageClarificationsTool(
         },
         questions: {
           type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              topic: {
-                type: 'string',
-                description: 'Short topic identifier',
-              },
-              context: {
-                type: 'string',
-                description: 'Why this question matters',
-              },
-              question: {
-                type: 'string',
-                description: 'The specific question',
-              },
-              options: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    label: {
-                      type: 'string',
-                      description: 'Option label (A, B, C, etc.)',
-                    },
-                    description: {
-                      type: 'string',
-                      description: 'Option description',
-                    },
-                  },
-                  required: ['label', 'description'],
-                },
-                description: 'Optional list of choices',
-              },
-            },
-            required: ['topic', 'context', 'question'],
-          },
-          description: "Questions to append (for 'append' operation)",
+          items: { type: 'object' },
+          description:
+            "Questions to append (for 'append' operation). Each item: " +
+            '{topic, context, question, options?: [{label, description}]}',
         },
         question_number: {
           type: 'number',
