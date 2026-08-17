@@ -123,12 +123,11 @@ Call the `manage_clarifications` MCP tool with operation "append":
 
 ### Step 5a: Update Labels for Pending Questions
 
-After persisting questions, call `manage_clarification_labels` MCP tool to add the `waiting-for:clarification` label:
+After persisting questions, add the `waiting-for:clarification` label to the issue using the `gh` CLI:
 
 1. Extract the issue number from the current branch name (pattern: `###-*`, e.g., `155-feature-name` → `155`)
-2. Call `manage_clarification_labels` with:
-   - `issue_number`: The extracted issue number
-   - `has_pending_questions`: `true`
+2. Run: `gh issue edit <issue_number> --add-label "waiting-for:clarification"`
+3. If the command fails because the label does not exist in the repository, create it first (`gh label create "waiting-for:clarification" --color FBCA04 --description "Clarification questions pending answers"`) and retry once
 
 This ensures the workflow blocks until the user answers the questions.
 
@@ -180,15 +179,11 @@ If answers reveal new information that should be in spec.md:
 
 ### Step 7a: Update Labels When All Questions Answered
 
-After updating answers, check if all questions have been answered (no `*Pending*` answers remain):
+After updating answers, check whether all questions are now answered. Do NOT re-read the clarifications file — you already know the question list from Step 2 and which answers you just applied in Step 7; a question is still pending only if it had `*Pending*` in Step 2 and you did not update it.
 
-1. Call `manage_clarifications` with operation "read" to get updated `pending_count`
-2. If `pending_count` is 0 (all questions answered):
-   - Extract the issue number from the current branch name (pattern: `###-*`)
-   - Call `manage_clarification_labels` with:
-     - `issue_number`: The extracted issue number
-     - `has_pending_questions`: `false`
-   - This removes the `waiting-for:clarification` label
+If no pending questions remain:
+- Extract the issue number from the current branch name (pattern: `###-*`)
+- Run: `gh issue edit <issue_number> --remove-label "waiting-for:clarification"`
 
 **Note**: The `completed:clarification` label is added by the USER to signal they are done answering, not by the agent.
 
@@ -229,7 +224,7 @@ Where:
 When running as part of an speckit workflow, labels track clarification state:
 
 ### Label Lifecycle
-1. **Questions posted**: `waiting-for:clarification` label added to the issue (by agent via `manage_clarification_labels`)
+1. **Questions posted**: `waiting-for:clarification` label added to the issue (by agent via `gh issue edit`)
 2. **Developer answers**: Developer posts answers as issue comment, adds `completed:clarification` label
 3. **Agent resumes**: Agent reads answers from GitHub, processes them, may ask follow-ups or complete
 

@@ -23,10 +23,10 @@ Generate an actionable, dependency-ordered task list from the implementation pla
    - If neither flag → proceed to auto-detection
 
 2. **Auto-detect epic context** (only if no flags):
-   - Call `preflight_check` MCP tool with the current issue URL
-   - Check the response for `epic_context.is_epic`
-   - If `epic_context.is_epic == true` → `epic_mode = true`
-   - Otherwise → `epic_mode = false`
+   - Extract the issue number from the issue URL argument or the current branch name (pattern: `###-*`)
+   - Run: `gh issue view <issue_number> --json labels --jq '[.labels[].name]'`
+   - If the labels include `epic` or `process:speckit-epic` → `epic_mode = true`
+   - Otherwise (including when no issue number can be determined) → `epic_mode = false`
 
 3. **Report mode selection**:
    - If epic mode: "📦 Epic mode: Generating coarse-grained task groups (2-8 hours each)"
