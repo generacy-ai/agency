@@ -7,7 +7,7 @@ import { TerseOutput, terseToMcpToolResult } from '@generacy-ai/agency';
 import { RunCoverageSchema, zodToJsonSchema } from '../schemas.js';
 import { detectPackageManager, isDetectionSuccess, buildCommand } from '../../pm/index.js';
 import { validateScript, formatScriptNotFoundError } from '../../scripts/index.js';
-import { exec, formatCommand } from '../../exec/index.js';
+import { exec, formatCommand, formatFailureOutput } from '../../exec/index.js';
 import type { NpmPluginConfig } from '../../config.js';
 
 /**
@@ -79,7 +79,7 @@ export function createRunCoverageTool(config: NpmPluginConfig): AgencyTool {
           '',
           `> ${cmdStr}`,
           '',
-          result.stdout || result.stderr,
+          formatFailureOutput(result),
           '',
           threshold !== undefined
             ? `Recovery: Increase test coverage to meet ${threshold}% threshold.`
@@ -89,8 +89,13 @@ export function createRunCoverageTool(config: NpmPluginConfig): AgencyTool {
         return terseToMcpToolResult(TerseOutput.failure(output));
       }
 
-      // Extract coverage percentage from output if possible
-      const coverageMatch = result.stdout.match(/(\d+(?:\.\d+)?)\s*%/);
+      // Extract coverage percentage from output if possible. Prefer the
+      // "All files" row of the istanbul/v8 text summary (its first numeric
+      // column is total statement coverage); fall back to the first
+      // percentage anywhere in the output.
+      const coverageMatch =
+        result.stdout.match(/All files[^|\n]*\|\s*(\d+(?:\.\d+)?)/) ??
+        result.stdout.match(/(\d+(?:\.\d+)?)\s*%/);
       const coveragePercent = coverageMatch ? coverageMatch[1] : null;
 
       const successMessage = coveragePercent

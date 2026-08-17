@@ -6,7 +6,7 @@ import type { AgencyTool, ToolResult } from '@generacy-ai/agency';
 import { TerseOutput, terseToMcpToolResult } from '@generacy-ai/agency';
 import { InstallDependenciesSchema, zodToJsonSchema } from '../schemas.js';
 import { detectPackageManager, isDetectionSuccess, buildCommand } from '../../pm/index.js';
-import { exec, formatCommand } from '../../exec/index.js';
+import { exec, formatCommand, formatFailureOutput } from '../../exec/index.js';
 import type { NpmPluginConfig } from '../../config.js';
 
 /**
@@ -61,7 +61,7 @@ export function createInstallDependenciesTool(config: NpmPluginConfig): AgencyTo
           '',
           `> ${cmdStr}`,
           '',
-          result.stderr || result.stdout,
+          formatFailureOutput(result),
           '',
           'Recovery: Check network connectivity and package availability.',
         ].join('\n');

@@ -7,7 +7,7 @@ import { TerseOutput, terseToMcpToolResult } from '@generacy-ai/agency';
 import { RunE2ESchema, zodToJsonSchema } from '../schemas.js';
 import { detectPackageManager, isDetectionSuccess, buildCommand } from '../../pm/index.js';
 import { validateScript, formatScriptNotFoundError } from '../../scripts/index.js';
-import { exec, formatCommand } from '../../exec/index.js';
+import { exec, formatCommand, formatFailureOutput } from '../../exec/index.js';
 import type { NpmPluginConfig } from '../../config.js';
 
 /**
@@ -30,7 +30,7 @@ export function createRunE2ETool(config: NpmPluginConfig): AgencyTool {
         );
       }
 
-      const { cwd = process.cwd(), workspace, pattern, watch } = parsed.data;
+      const { cwd = process.cwd(), workspace, pattern } = parsed.data;
       const scriptName = parsed.data.script ?? config.scripts['test:e2e'] ?? 'test:e2e';
 
       // Validate script exists
@@ -55,9 +55,6 @@ export function createRunE2ETool(config: NpmPluginConfig): AgencyTool {
       if (pattern) {
         additionalArgs.push(pattern);
       }
-      if (watch) {
-        additionalArgs.push('--watch');
-      }
 
       // Build the command
       const { command, args } = buildCommand(pm, 'run', {
@@ -79,7 +76,7 @@ export function createRunE2ETool(config: NpmPluginConfig): AgencyTool {
           '',
           `> ${cmdStr}`,
           '',
-          result.stdout || result.stderr,
+          formatFailureOutput(result),
           '',
           'Recovery: Fix the failing tests and run again.',
         ].join('\n');

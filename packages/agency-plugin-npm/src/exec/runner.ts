@@ -35,6 +35,13 @@ export interface ExecOptions {
 }
 
 /**
+ * Default timeout applied when the caller does not set one. Package scripts
+ * (builds, test suites) that run longer than this are killed rather than
+ * hanging the MCP call forever.
+ */
+export const DEFAULT_EXEC_TIMEOUT_MS = 600_000;
+
+/**
  * Execute a command and capture output
  *
  * @param command - Command to execute
@@ -47,6 +54,8 @@ export async function exec(
   args: string[],
   options: ExecOptions
 ): Promise<ExecResult> {
+  const timeoutMs = options.timeout ?? DEFAULT_EXEC_TIMEOUT_MS;
+
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
@@ -55,7 +64,7 @@ export async function exec(
         ...options.env,
       },
       shell: true,
-      timeout: options.timeout,
+      timeout: timeoutMs,
     });
 
     const stdout: string[] = [];
@@ -78,11 +87,17 @@ export async function exec(
       });
     });
 
-    child.on('close', (code) => {
+    child.on('close', (code, signal) => {
+      // A null exit code with a signal means the process was killed — with
+      // shell: true the most likely cause is our own timeout SIGTERM.
+      const signalNote =
+        code === null && signal
+          ? `\nProcess terminated by ${signal} — the command may have exceeded the ${timeoutMs}ms timeout.`
+          : '';
       resolve({
         exitCode: code ?? 1,
         stdout: stdout.join(''),
-        stderr: stderr.join(''),
+        stderr: stderr.join('') + signalNote,
         shortMessage: options.shortMessage,
       });
     });

@@ -7,7 +7,7 @@ import { TerseOutput, terseToMcpToolResult } from '@generacy-ai/agency';
 import { FormatSchema, zodToJsonSchema } from '../schemas.js';
 import { detectPackageManager, isDetectionSuccess, buildCommand } from '../../pm/index.js';
 import { validateScript, formatScriptNotFoundError } from '../../scripts/index.js';
-import { exec, formatCommand } from '../../exec/index.js';
+import { exec, formatCommand, formatFailureOutput } from '../../exec/index.js';
 import type { NpmPluginConfig } from '../../config.js';
 
 /**
@@ -76,7 +76,7 @@ export function createFormatTool(config: NpmPluginConfig): AgencyTool {
           '',
           `> ${cmdStr}`,
           '',
-          result.stderr || result.stdout,
+          formatFailureOutput(result),
           '',
           check
             ? 'Recovery: Run without check=true to apply formatting.'
