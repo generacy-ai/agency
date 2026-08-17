@@ -1,5 +1,12 @@
 # @generacy-ai/agency-plugin-docker
 
+## 2.0.0
+
+### Patch Changes
+
+- Updated dependencies [5d3e502]
+  - @generacy-ai/agency@0.2.0
+
 ## 1.0.2
 
 ### Patch Changes
