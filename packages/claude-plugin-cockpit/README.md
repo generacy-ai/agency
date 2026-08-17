@@ -114,6 +114,29 @@ Companion guidance for Claude sessions collaborating with a developer: after hel
 
 Source of truth: `commands/auto.md § Offering auto`.
 
+## Configuration — models, quiet mode, heartbeat (`cockpit.auto`)
+
+`/cockpit:auto` reads an optional `cockpit.auto` block from the workspace's `.generacy/config.yaml` once at pre-flight:
+
+```yaml
+cockpit:
+  auto:
+    loop: { model: sonnet, effort: low }   # loop session; consumed by headless launchers, not by the playbook
+    heartbeatSeconds: 1200                 # base C4 heartbeat (default 300); backs off ×2 to 1800s while drains stay empty
+    quiet: true                            # headless output profile (same as passing --quiet)
+    agents:                                # per-role model/effort for the analysis subagents
+      default:   { model: sonnet }
+      clarifier: { model: opus, effort: high }
+      reviewer:  { model: opus, effort: high }
+      validator: { model: haiku }
+      fixer:     { model: sonnet, effort: high }
+      diagnoser: { model: sonnet }
+```
+
+The five analysis hops run as named agents shipped in `agents/` — `cockpit-clarifier` (clarification drafting), `cockpit-reviewer` (artifact + PR review), `cockpit-validator` (manual-validation summary), `cockpit-fixer` (bounded red-checks fixer), `cockpit-diagnoser` (agent-error / merge-conflict diagnosis). Role resolution per spawn is `agents.<role>` → `agents.default` → inherit the session model. This is what lets the loop session run on a cheap model while review/clarification reasoning stays on a strong one.
+
+**Quiet mode** (`--quiet` flag or `quiet: true`): ledger lines go to the run's `.ledger` file only (no `[ledger]` transcript echo), status tables print only inside gate bodies, and the exit run summary is posted as a comment on the tracking ref instead of the transcript. Intended for headless UI-launched runs (`--gates=ui`); interactive behavior is unchanged without it.
+
 ## Error Handling
 
 Every command classifies failures identically. Each command file inlines the three-class block below verbatim as its terminal `Instructions` step; this section is the canonical source of truth those inlined blocks cite.
