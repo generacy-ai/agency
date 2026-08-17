@@ -19,6 +19,7 @@
   },
   "files": [
     "commands",
+    "agents",
     ".claude-plugin",
     "README.md"
   ],
