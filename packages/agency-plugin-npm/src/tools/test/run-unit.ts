@@ -7,7 +7,7 @@ import { TerseOutput, terseToMcpToolResult } from '@generacy-ai/agency';
 import { RunUnitSchema, zodToJsonSchema } from '../schemas.js';
 import { detectPackageManager, isDetectionSuccess, buildCommand } from '../../pm/index.js';
 import { validateScript, formatScriptNotFoundError } from '../../scripts/index.js';
-import { exec, formatCommand } from '../../exec/index.js';
+import { exec, formatCommand, formatFailureOutput } from '../../exec/index.js';
 import type { NpmPluginConfig } from '../../config.js';
 
 /**
@@ -20,7 +20,7 @@ export function createRunUnitTool(config: NpmPluginConfig): AgencyTool {
     inputSchema: zodToJsonSchema(RunUnitSchema),
     namespace: 'test',
     outputPattern: 'terse',
-    modes: ['default', 'coding'],
+    modes: ['default', 'coding', 'speckit'],
 
     async execute(params: unknown): Promise<ToolResult> {
       const parsed = RunUnitSchema.safeParse(params);
@@ -30,7 +30,7 @@ export function createRunUnitTool(config: NpmPluginConfig): AgencyTool {
         );
       }
 
-      const { cwd = process.cwd(), workspace, pattern, watch } = parsed.data;
+      const { cwd = process.cwd(), workspace, pattern } = parsed.data;
       const scriptName = parsed.data.script ?? config.scripts.test ?? 'test';
 
       // Validate script exists
@@ -55,9 +55,6 @@ export function createRunUnitTool(config: NpmPluginConfig): AgencyTool {
       if (pattern) {
         additionalArgs.push(pattern);
       }
-      if (watch) {
-        additionalArgs.push('--watch');
-      }
 
       // Build the command
       const { command, args } = buildCommand(pm, 'run', {
@@ -74,13 +71,13 @@ export function createRunUnitTool(config: NpmPluginConfig): AgencyTool {
 
       if (result.exitCode !== 0) {
         const cmdStr = formatCommand(command, args);
-        // Include full output on test failure
+        // Include the tail of both streams on test failure
         const output = [
           `Tests failed (exit code ${result.exitCode}):`,
           '',
           `> ${cmdStr}`,
           '',
-          result.stdout || result.stderr,
+          formatFailureOutput(result),
           '',
           'Recovery: Fix the failing tests and run again.',
         ].join('\n');

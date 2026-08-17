@@ -153,7 +153,7 @@ export function createGetPathsTool(
     description: 'Get all feature paths for the current or specified branch',
     namespace: 'spec_kit',
     outputPattern: 'terse',
-    modes: ['coding', 'research'],
+    modes: ['coding', 'research', 'speckit'],
     inputSchema: {
       type: 'object',
       properties: {

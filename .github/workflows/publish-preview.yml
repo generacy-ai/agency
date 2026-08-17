@@ -27,27 +27,46 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Every publishable package must be named by SOME changeset before
+      # `changeset version --snapshot` runs. A package left uncovered keeps its
+      # real package.json version, and `changeset publish --tag preview` then
+      # publishes that real version under @preview — permanently burning the
+      # version number, because npm forbids republishing it and the stable
+      # Release job will skip it as "already published" forever after. That is
+      # how @generacy-ai/claude-plugin-cockpit@0.1.1 shipped under @preview on
+      # 2026-08-07, stranding @stable on 0.1.0. Topping up the uncovered
+      # packages (rather than only synthesizing when .changeset is empty) is
+      # what closes the partial-coverage hole.
       - name: Ensure changesets for preview
         run: |
-          CHANGESET_FILES=$(find .changeset -name '*.md' ! -name 'README.md' 2>/dev/null | head -1)
-          if [ -n "$CHANGESET_FILES" ]; then
-            echo "Changeset files found, proceeding with preview publish"
-          else
-            echo "No changeset files found, generating synthetic changeset"
-            node -e "
-              const fs = require('fs'), path = require('path');
-              const config = JSON.parse(fs.readFileSync('.changeset/config.json', 'utf8'));
-              const ignore = new Set(config.ignore || []);
-              const pkgs = fs.readdirSync('packages')
-                .map(d => path.join('packages', d, 'package.json'))
-                .filter(p => fs.existsSync(p))
-                .map(p => JSON.parse(fs.readFileSync(p, 'utf8')))
-                .filter(p => !p.private && p.name && !ignore.has(p.name));
-              const lines = ['---', ...pkgs.map(p => '\"' + p.name + '\": patch'), '---', '', 'Preview publish (synthetic)', ''];
-              fs.writeFileSync('.changeset/preview-publish.md', lines.join('\n'));
-              console.log('Created synthetic changeset for ' + pkgs.length + ' packages');
-            "
-          fi
+          node - <<'EOF'
+          const fs = require('fs'), path = require('path');
+          const config = JSON.parse(fs.readFileSync('.changeset/config.json', 'utf8'));
+          const ignore = new Set(config.ignore || []);
+          const pkgs = fs.readdirSync('packages')
+            .map(d => path.join('packages', d, 'package.json'))
+            .filter(p => fs.existsSync(p))
+            .map(p => JSON.parse(fs.readFileSync(p, 'utf8')))
+            .filter(p => !p.private && p.name && !ignore.has(p.name));
+
+          // Package names already declared in the frontmatter of a pending changeset.
+          const covered = new Set();
+          for (const entry of fs.readdirSync('.changeset')) {
+            if (!entry.endsWith('.md') || entry === 'README.md') continue;
+            const src = fs.readFileSync(path.join('.changeset', entry), 'utf8');
+            const frontmatter = src.split(/^---$/m)[1] || '';
+            for (const m of frontmatter.matchAll(/"([^"]+)"\s*:/g)) covered.add(m[1]);
+          }
+
+          const missing = pkgs.filter((p) => !covered.has(p.name));
+          if (missing.length === 0) {
+            console.log(`All ${pkgs.length} publishable packages are covered by pending changesets`);
+            process.exit(0);
+          }
+          const lines = ['---', ...missing.map((p) => `"${p.name}": patch`), '---', '', 'Preview publish (synthetic)', ''];
+          fs.writeFileSync('.changeset/preview-publish.md', lines.join('\n'));
+          console.log(`Created synthetic changeset topping up ${missing.length} uncovered package(s): ${missing.map((p) => p.name).join(', ')}`);
+          EOF
 
       - name: Verify latency dependency
         id: latency
@@ -80,11 +99,40 @@ jobs:
         if: steps.latency.outputs.found == 'true'
         run: pnpm build
 
-      - name: Publish preview snapshots
+      - name: Version preview snapshots
+        if: steps.latency.outputs.found == 'true'
+        run: pnpm changeset version --snapshot preview
+
+      # Backstop for the failure mode described above: refuse to publish if any
+      # publishable package still carries a real (non-snapshot) version. Failing
+      # red here is always recoverable; publishing a real version under @preview
+      # is not.
+      - name: Assert all versions are preview snapshots
         if: steps.latency.outputs.found == 'true'
         run: |
-          pnpm changeset version --snapshot preview
-          pnpm changeset publish --tag preview --provenance
+          node - <<'EOF'
+          const fs = require('fs'), path = require('path');
+          const config = JSON.parse(fs.readFileSync('.changeset/config.json', 'utf8'));
+          const ignore = new Set(config.ignore || []);
+          const offenders = fs.readdirSync('packages')
+            .map(d => path.join('packages', d, 'package.json'))
+            .filter(p => fs.existsSync(p))
+            .map(p => JSON.parse(fs.readFileSync(p, 'utf8')))
+            .filter(p => !p.private && p.name && !ignore.has(p.name))
+            .filter(p => !/^0\.0\.0-preview-/.test(p.version));
+
+          if (offenders.length > 0) {
+            for (const p of offenders) {
+              console.log(`::error::${p.name}@${p.version} is not a preview snapshot — publishing it under @preview would burn that version number and permanently strand @stable. Add a changeset for ${p.name}.`);
+            }
+            process.exit(1);
+          }
+          console.log('All publishable packages carry 0.0.0-preview-* versions.');
+          EOF
+
+      - name: Publish preview snapshots
+        if: steps.latency.outputs.found == 'true'
+        run: pnpm changeset publish --tag preview --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

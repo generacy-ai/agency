@@ -50,6 +50,12 @@ export interface AgencyServerOptions {
 
   /** Whether to auto-discover and load plugins on start */
   autoLoadPlugins?: boolean;
+
+  /**
+   * Mode to start in, overriding `defaultMode` from every config source.
+   * Ignored with a stderr warning if the mode is not defined in `modes`.
+   */
+  modeOverride?: string;
 }
 
 /**
@@ -133,6 +139,17 @@ export class AgencyServer {
     } else {
       const loader = new ConfigLoader(options.projectRoot);
       config = await loader.load();
+    }
+
+    if (options.modeOverride) {
+      if (config.modes[options.modeOverride]) {
+        config = { ...config, defaultMode: options.modeOverride };
+      } else {
+        process.stderr.write(
+          `Agency: unknown mode '${options.modeOverride}' (available: ${Object.keys(config.modes).join(', ')}); ` +
+            `keeping '${config.defaultMode ?? 'default'}'\n`
+        );
+      }
     }
 
     return new AgencyServer(config, options);

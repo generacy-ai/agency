@@ -36,6 +36,10 @@ export const DEFAULT_MODE_PATTERNS: Record<string, string[]> = {
   coding: ['*'],
   review: ['*'],
   debug: ['*'],
+  // Minimal surface for automated speckit workflow sessions. The empty
+  // pattern list means tools WITHOUT an explicit `modes` array are excluded;
+  // only tools that opt in by listing 'speckit' in `modes` are advertised.
+  speckit: [],
 };
 
 /**

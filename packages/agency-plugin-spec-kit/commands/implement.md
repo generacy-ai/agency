@@ -79,12 +79,12 @@ Execute the implementation plan by processing tasks defined in tasks.md.
 6a. **Merge at priority phase boundaries** (P1→P2, P2→P3):
    - When transitioning between priority phases (e.g., after all P1 tasks, before starting P2):
      1. Commit current work with message: `feat: Complete [phase] tasks for #<issue>`
-     2. Call `merge_from_base` MCP tool to sync with latest develop/main
-     3. If conflicts detected:
-        - The tool returns conflict details for agent resolution
+     2. Sync with the latest base branch: `git fetch origin` then `git merge origin/<base>` (where `<base>` is the branch this feature branched from — usually `develop`, or `main` if the repo has no develop branch)
+     3. If the merge reports conflicts:
+        - Run `git status` to list conflicted files
         - Analyze each conflict in context of the work just completed
         - Resolve conflicts by editing files (preserve local implementation intent)
-        - Stage resolved files with `git add`
+        - Stage resolved files with `git add`, then `git commit` to conclude the merge
         - If conflicts are semantic (contradictory intent), report to user
      4. Log merge result (one line for success)
      5. Continue with next priority phase
@@ -166,7 +166,7 @@ Execute the implementation plan by processing tasks defined in tasks.md.
 
 9. **Completion validation**:
    - Verify all tasks completed
-   - Run any defined tests
+   - Run any defined tests — prefer the `build_validate` and `test_run_unit` MCP tools over raw shell commands: they return a one-line result on success and only the failure tail on failure, keeping the session small
    - Report final status with summary
 
    **Note**: After reporting, check your todo list for any remaining parent workflow steps.
@@ -178,10 +178,8 @@ Execute the implementation plan by processing tasks defined in tasks.md.
       2. **Medium confidence**: Contains keywords: "manual", "manually", "hand-test", "manual testing", "manually verify"
     - Count automated vs manual remaining tasks
     - **If ALL remaining incomplete tasks are manual** (automated=0, manual>0):
-      - Call `update_phase_labels` MCP tool with:
-        - `issue_number`: Extract from branch name or context
-        - `phase: "manual-validation"`
-        - `action: "block"`
+      - Extract the issue number from the branch name (pattern: `###-*`) or context
+      - Run: `gh issue edit <issue_number> --add-label "waiting-for:manual-validation"` (if the label does not exist in the repository, create it with `gh label create` and retry once)
       - Report: "✓ All automated tasks complete. Manual tasks remaining:"
       - List each remaining manual task
       - Add: "Added `waiting-for:manual-validation` label. Complete manual tasks, then add `completed:manual-validation` label to resume workflow."
@@ -204,6 +202,25 @@ Execute the implementation plan by processing tasks defined in tasks.md.
       - Skip steps 4-10
       - Exit immediately - do not re-process completed tasks
     - This prevents re-running implementation on an already-complete task list
+
+## Task Increment Boundaries (Headless Mode)
+
+Applies only in headless mode (invoked with `--headless` or with the environment variable `CLAUDE_HEADLESS=true`). Interactive sessions ignore this section.
+
+Large task lists exhaust the session's context window mid-implementation, losing uncommitted work. In headless mode, implement in bounded increments instead:
+
+1. At the start of execution, count incomplete tasks. If **more than 10** are incomplete, plan to complete at most 10 in this session. Respect phase ordering, and finish the current parallel batch rather than splitting it (slight overrun is fine).
+2. After completing the increment, make sure every finished task is marked complete in tasks.md (step 7). Do not start the next task.
+3. Output the sentinel below as the **final line** of your response, then stop:
+
+   ```
+   SPECKIT_IMPLEMENT_PARTIAL: {"partial":true,"tasks_completed":<N>,"tasks_remaining":<M>,"tasks_total":<T>}
+   ```
+
+   - The prefix `SPECKIT_IMPLEMENT_PARTIAL: ` is literal, case-sensitive, with exactly one space after the colon
+   - The payload is single-line JSON: `tasks_completed` = tasks finished this session, `tasks_remaining` = incomplete tasks still in tasks.md, `tasks_total` = all tasks
+4. The orchestrator detects the sentinel, commits and pushes the work in progress, and re-invokes `/implement` with a fresh session. Already-completed tasks are skipped on resume (see step 10a), so increments are idempotent.
+5. Never emit the sentinel when all tasks are complete — a full completion runs steps 9-10 normally and produces no sentinel.
 
 ## Constraints
 

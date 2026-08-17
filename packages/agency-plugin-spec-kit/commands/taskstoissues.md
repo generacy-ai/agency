@@ -80,14 +80,16 @@ This command respects the tasks-review gate for epic issues:
    ```
 
 6. **Create issues using `tasks_to_issues` MCP tool**:
-   - Call the `tasks_to_issues` MCP tool with:
-     - `grouping`: The user's chosen strategy (`per-task`, `per-story`, or `per-phase`)
-     - `dry_run`: Set to `true` first to preview issues
+   - **Headless mode** (see detection note below): call the tool ONCE with `dry_run: false`. Do not do a dry-run pass — there is no user to review the preview, and the preview payload is large.
+   - **Interactive mode**: optionally call the tool with `dry_run: true` first, review the planned grouping with the user, and call again with `dry_run: false` once they confirm.
+   - Parameters for the real call:
+     - `grouping`: The chosen strategy (`per-task`, `per-story`, or `per-phase`)
+     - `dry_run`: `false`
      - `epic_number`: The epic issue number (if applicable)
      - `feature_dir`: Path to the feature directory (from step 1)
-   - Review the dry-run output with user
-   - If user confirms, call `tasks_to_issues` again with `dry_run: false` to create issues
    - The MCP tool handles label creation and dependency linking automatically
+
+   **Headless detection**: you are in headless mode if invoked with the `--headless` flag OR the environment variable `CLAUDE_HEADLESS` is set to `true`.
 
 7. **Update tasks.md** (optional):
    - Add issue links to tasks

@@ -456,7 +456,7 @@ export function createUpdateAgentTool(
       'Update AI agent context files with technology information from the current feature plan.md',
     namespace: 'spec_kit',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['coding', 'speckit'],
     inputSchema: {
       type: 'object',
       properties: {

@@ -18,6 +18,7 @@ vi.mock('../../src/exec/runner.js', () => ({
     shortMessage: 'Operation completed.',
   }),
   formatCommand: (cmd: string, args: string[]) => `${cmd} ${args.join(' ')}`,
+  DEFAULT_EXEC_TIMEOUT_MS: 600_000,
 }));
 
 describe('build tools', () => {
@@ -101,7 +102,7 @@ describe('build tools', () => {
       expect(validate.name).toBe('build.validate');
       expect(validate.namespace).toBe('build');
       expect(validate.outputPattern).toBe('terse');
-      expect(validate.modes).toEqual(['default', 'coding', 'review']);
+      expect(validate.modes).toEqual(['default', 'coding', 'review', 'speckit']);
     });
 
     it('discovers validation scripts from package.json', async () => {
