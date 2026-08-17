@@ -108,7 +108,7 @@ export function createValidateTool(config: NpmPluginConfig): AgencyTool {
     inputSchema: zodToJsonSchema(ValidateSchema),
     namespace: 'build',
     outputPattern: 'terse',
-    modes: ['default', 'coding', 'review'],
+    modes: ['default', 'coding', 'review', 'speckit'],
 
     async execute(params: unknown): Promise<ToolResult> {
       const parsed = ValidateSchema.safeParse(params);

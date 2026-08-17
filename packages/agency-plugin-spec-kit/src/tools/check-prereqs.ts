@@ -191,7 +191,7 @@ export function createCheckPrereqsTool(
       'Check prerequisites for a command. Validates required files exist and returns list of available optional documents.',
     namespace: 'spec_kit',
     outputPattern: 'terse',
-    modes: ['coding', 'research'],
+    modes: ['coding', 'research', 'speckit'],
     inputSchema: {
       type: 'object',
       properties: {

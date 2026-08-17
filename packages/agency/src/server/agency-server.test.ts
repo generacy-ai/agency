@@ -65,6 +65,30 @@ describe('AgencyServer', () => {
     it('should use default mode from config', async () => {
       expect(server.getMode()).toBe('default');
     });
+
+    it('should start in the mode given by modeOverride', async () => {
+      const overridden = await AgencyServer.create({
+        config: testConfig,
+        modeOverride: 'dev',
+      });
+      expect(overridden.getMode()).toBe('dev');
+    });
+
+    it('should ignore an unknown modeOverride with a warning', async () => {
+      const stderrSpy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+      try {
+        const overridden = await AgencyServer.create({
+          config: testConfig,
+          modeOverride: 'no-such-mode',
+        });
+        expect(overridden.getMode()).toBe('default');
+        expect(stderrSpy).toHaveBeenCalledWith(
+          expect.stringContaining("unknown mode 'no-such-mode'")
+        );
+      } finally {
+        stderrSpy.mockRestore();
+      }
+    });
   });
 
   describe('registerTool/unregisterTool', () => {

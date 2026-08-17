@@ -334,7 +334,7 @@ export function createCreateFeatureTool(
       'Create a new feature branch and initialize the spec directory with template files',
     namespace: 'spec_kit',
     outputPattern: 'terse',
-    modes: ['coding'],
+    modes: ['coding', 'speckit'],
     inputSchema: {
       type: 'object',
       properties: {

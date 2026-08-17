@@ -7,16 +7,26 @@
  * auto-discovery of plugins.
  *
  * Usage:
- *   npx @generacy-ai/agency
- *   node bin/agency.js
+ *   npx @generacy-ai/agency [--mode <name>]
+ *
+ * Flags:
+ *   --mode <name> - Start in the named mode (e.g. "speckit"), overriding
+ *                   defaultMode from every config source
  *
  * Environment variables:
  *   AGENCY_NAME - Server name (default: "agency")
  *   AGENCY_PLUGINS - Comma-separated list of plugins to load
- *   AGENCY_DEFAULT_MODE - Default mode (default: "default")
+ *   AGENCY_DEFAULT_MODE - Default mode (default: "coding"; overridden by
+ *                         .agency/config.json and by --mode)
  */
 
 import { AgencyServer } from './server/index.js';
+
+/** Extract the value of a `--flag value` pair from argv, if present */
+function argValue(argv: string[], flag: string): string | undefined {
+  const idx = argv.indexOf(flag);
+  return idx !== -1 ? argv[idx + 1] : undefined;
+}
 
 async function main(): Promise<void> {
   try {
@@ -24,6 +34,7 @@ async function main(): Promise<void> {
     const server = await AgencyServer.create({
       projectRoot: process.cwd(),
       autoLoadPlugins: true,
+      modeOverride: argValue(process.argv.slice(2), '--mode'),
     });
 
     // Handle graceful shutdown

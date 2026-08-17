@@ -133,7 +133,9 @@ export function createGetTicketTool(
         content: [
           {
             type: 'text',
-            text: JSON.stringify(ticket, null, 2),
+            // Compact on purpose: tickets carry full issue bodies, and the
+            // 2-space indent inflated an already-large payload
+            text: JSON.stringify(ticket),
           },
         ],
       };

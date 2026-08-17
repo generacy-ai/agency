@@ -20,7 +20,7 @@ export function createCompileTool(config: NpmPluginConfig): AgencyTool {
     inputSchema: zodToJsonSchema(CompileSchema),
     namespace: 'build',
     outputPattern: 'terse',
-    modes: ['default', 'coding'],
+    modes: ['default', 'coding', 'speckit'],
 
     async execute(params: unknown): Promise<ToolResult> {
       const parsed = CompileSchema.safeParse(params);
