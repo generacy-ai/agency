@@ -25,6 +25,16 @@ raises a remediation-cap gate. `auto` should react to engine gates, not run the 
 Full design: `docs/engine-review-remediate-plan.md` in generacy-ai/tetrad-development; condensed
 summary in the epic body. This is P5 (rollout) issue generacy-ai/agency#500.
 
+## Clarifications
+
+### Session 2026-08-20 (Batch 1)
+
+- Q1 (final-approval gate shape) → Option A: `approve` → cockpit merge path; `hold`/`reject` → no-op (label stays, gate re-fires). Findings rendered from gate body; no reviewer subagent. (FR-004)
+- Q2 (remediation-limit resume) → Option A: options `resume remediation` / `stop`; `resume` calls `cockpit_advance(issue=<ref>, gate="remediation-limit")`. (FR-003)
+- Q3 (version-skew detection) → Option A: probe `generacy --version` at pre-flight; below the documented minimum, abort with a visible operator error. (FR-008)
+- Q4 (D.6 red-checks fixer) → Option A: remove D.6's fixer/escalation dispatch entirely; `completed:validate` red is ledger-only and re-fires as an engine gate. (FR-001)
+- Q5 (D.9/D.9a rows) → Option A: keep both as ledger-only rows, unchanged. (FR-006)
+
 ## User Stories
 
 ### US1: auto no longer drives implementation review rounds
@@ -88,14 +98,14 @@ degrade gracefully below it,
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | Remove reviewer/fixer subagent dispatch against implementation PRs from `auto.md`. | P1 | Affects D.3, D.6, G.2 (implementation branch). |
+| FR-001 | Remove reviewer/fixer subagent dispatch against implementation PRs from `auto.md`. | P1 | Affects D.3, D.6, G.2 (implementation branch). D.6's bounded-fixer/escalation dispatch is removed entirely (Q4): `completed:validate` red becomes a ledger-only no-op that re-fires as an engine gate. |
 | FR-002 | Keep artifact-gate reviews (spec/plan/tasks) unchanged. | P1 | D.2 and artifact branch of G.2 stay as-is. |
-| FR-003 | Handle `waiting-for:remediation-limit` as a fused human gate surfacing remaining findings from the gate body. | P1 | New gate; parse findings for presentation. |
-| FR-004 | Route the post-validate `waiting-for:implementation-review` final-approval gate into the cockpit merge path. | P1 | Gate moved post-validate by engine. |
+| FR-003 | Handle `waiting-for:remediation-limit` as a fused human gate surfacing remaining findings from the gate body. | P1 | New gate. Options `resume remediation` / `stop` (Q2); `resume remediation` calls `cockpit_advance(issue=<ref>, gate="remediation-limit")` (resets engine counter server-side); `stop` exits auto cleanly with no label writes. Parse findings from gate body for presentation. |
+| FR-004 | Route the post-validate `waiting-for:implementation-review` final-approval gate into the cockpit merge path. | P1 | Gate moved post-validate by engine. Options `approve` / `hold`/`reject` (Q1): `approve` → cockpit merge path (merge on green, never on red); `hold`/`reject` → no-op, label stays and gate re-fires (mirrors D.4 `not yet`). Render findings from gate body if present; no reviewer subagent dispatched. |
 | FR-005 | Reduce PR-state polling tied to review-round driving. | P1 | Directly targets GraphQL 5k/hr exhaustion. |
-| FR-006 | Stop routing external PR feedback via auto's fixer; the engine's remediate loop absorbs it. | P2 | D.9/D.9a pr-feedback paths become ledger-only or removed per engine ownership. |
+| FR-006 | Stop routing external PR feedback via auto's fixer; the engine's remediate loop absorbs it. | P2 | D.9 (`address-pr-feedback`) / D.9a (`pr-feedback`) rows kept as ledger-only, unchanged (Q5) — already server-side-owned; deletion would strip pins and orphan E3 enriched-line references. |
 | FR-007 | Re-pin `playbook-verification.test.ts` to the slimmed `auto.md` contract without weakening assertions. | P1 | Per CLAUDE.md pin policy. |
-| FR-008 | Define the minimum generacy package version the slimmed playbook requires and degrade gracefully below it. | P1 | Version-skew handling both directions. |
+| FR-008 | Define the minimum generacy package version the slimmed playbook requires and degrade gracefully below it. | P1 | Version-skew handling both directions. Probe engine version at pre-flight via `generacy --version` alongside the existing `command -v generacy` check (Q3); below the documented minimum, abort at pre-flight with a visible operator error naming the required version (mirrors Monitor-absence / `--gates=ui` hard-fails). Do not create the ledger dir or start the loop. |
 
 ## Success Criteria
 
