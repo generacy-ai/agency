@@ -2836,8 +2836,8 @@ describe("444 — /cockpit:auto Form 4 — token parsing, dispatch, and library 
 //
 // Pins the wire-contract-driven contract additions to auto.md:
 //   - `--gates=ui|local|auto` step-1 flag (V1 parse; auto resolution; ui hard-fail)
-//   - § UI-mode gate mapping section with a 10-row table (G.1, G.2, G.3, G.4a,
-//     G.4b, G.4c, G.4d, G.5, G.6, G.7 — G.4e explicitly excluded)
+//   - § UI-mode gate mapping section with an 11-row table (G.1, G.2, G.3, G.4b,
+//     G.4c, G.4d, G.5, G.6, G.7, G.8, G.9 — G.4a and G.4e explicitly excluded)
 //   - Dispatch class D.12 (`gate-answer`) row + subsection
 //   - § UI-mode fallback on `cockpit_gate_open` call error subsection
 //   - `· source: ui-gate` / `· source: ui-gate-fallback` ledger suffix rules
@@ -5987,7 +5987,7 @@ describe("500 slim auto to gates/queue/clarify/merge", () => {
     expect(g2).toContain("no longer routes through G.2");
   });
 
-  it("500-5 D.13 + G.9 present `resume remediation`/`stop`; resume → cockpit_advance(gate=remediation-limit); stop → exit clean, no label writes; findings from gate body, no subagent", () => {
+  it("500-5 D.13 + G.9 present `resume remediation`/`stop`; resume → cockpit_advance(gate=remediation-limit); stop → exit clean, no label writes; findings fetched from the `## Remediation limit reached` issue comment (#504), no subagent", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const d13 = extractSubheadingBlock(autoMd, "D.13 — `waiting-for:remediation-limit`");
     const g9 = extractSubheadingBlock(autoMd, "G.9 — Remediation-limit gate");
@@ -6001,21 +6001,44 @@ describe("500 slim auto to gates/queue/clarify/merge", () => {
     // stop → clean exit, no label writes.
     expect(d13).toMatch(/`stop` → exit auto cleanly/);
     expect(d13).toContain("**No label writes**");
-    // Findings from the gate body; no subagent.
-    expect(d13).toContain("no subagent is spawned");
-    // G.9 gate contract mirrors it.
+    // No subagent.
+    expect(d13).toContain("No subagent is spawned");
+    // #504 findings-fetch contract (T020): gh issue view → startsWith the exact
+    // case-sensitive heading → single most-recent by createdAt → em-dash bullet → (none) fallback.
+    expect(d13).toContain("gh issue view <issue-ref> --json comments");
+    expect(d13).toContain(
+      "`startsWith` the exact, case-sensitive string `## Remediation limit reached`",
+    );
+    expect(d13).toContain("single most-recent matching comment by `createdAt`");
+    expect(d13).toContain("- <file>:<line> — <title>");
+    expect(d13).toContain("`(none)` fallback");
+    // Negative: the pre-#504 undefined "gate body" findings source is retired.
+    expect(d13).not.toContain("gate body");
+    // G.9 gate contract mirrors the same fetch/selection/bullet/(none) contract.
     expect(g9).toContain("`resume remediation` / `stop`");
-    expect(g9).toContain("parsed from the **gate body**");
+    expect(g9).toContain(
+      "`startsWith` the exact, case-sensitive string `## Remediation limit reached`",
+    );
+    expect(g9).toContain("- <file>:<line> — <title>");
+    expect(g9).toContain("render `(none)` when no comment matches");
+    expect(g9).not.toContain("gate body");
   });
 
-  it("500-6 G.8 renders findings from the gate body, branches approve on the detected model (post-validate → merge, legacy → advance, undetectable → fail closed), and spawns no reviewer subagent / runs no request-changes guardrail", () => {
+  it("500-6 G.8 has no findings artifact and renders `(none)` unconditionally (#504), branches approve on the detected model (post-validate → merge, legacy → advance, undetectable → fail closed), and spawns no reviewer subagent / runs no request-changes guardrail", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const g8 = extractSubheadingBlock(
       autoMd,
       "G.8 — Implementation-review final-approval gate",
     );
-    // Positive: findings parsed from the gate body; approve/hold/reject options.
-    expect(g8).toContain("parsed from the **gate body**");
+    // Positive (#504): G.8 has no findings artifact on either path; renders (none)
+    // unconditionally, keeping exactly the single byte-for-byte body row.
+    expect(g8).toContain(
+      "G.8 has NO findings artifact on either the post-validate or legacy path",
+    );
+    expect(g8).toContain("renders `(none)` unconditionally");
+    expect(g8).toContain("| (none) | | | |");
+    // Negative: the pre-#504 gate-body findings claim is retired everywhere in G.8.
+    expect(g8).not.toContain("gate body");
     expect(g8).toContain("`approve` / `hold` / `reject`");
     // Positive: approve branches on the § D.3 step 4 detected model.
     expect(g8).toContain(
@@ -6089,6 +6112,37 @@ describe("500 slim auto to gates/queue/clarify/merge", () => {
     expect(d13).toContain(
       "MUST be recognized so a remediation-limit label never falls through to D.10",
     );
+  });
+
+  it("504-1 D.5 guards a co-present `waiting-for:implementation-review`: green-path defer (no merge), passive no-op deferral token, fail-safe re-query; the deferral prose does not trip the 437-5 defer-on-pending regex", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const d5 = extractSubheadingBlock(
+      autoMd,
+      "D.5 — `completed:validate` (checks green) → merge without gate",
+    );
+    // Positive: the green-path label guard exists and defers on a co-present label.
+    expect(d5).toContain("Implementation-review co-presence guard");
+    expect(d5).toContain(
+      "**present** (co-present with `completed:validate`) → **DEFER**",
+    );
+    // Passive no-op: writes the deferral token; calls no tool; writes no label.
+    expect(d5).toContain("deferred: implementation-review pending");
+    expect(d5).toContain("does NOT call `cockpit_merge`");
+    expect(d5).toContain("does NOT call `cockpit_gate_open`");
+    expect(d5).toContain("does NOT invoke the G.8 presentation path");
+    // G.8 (D.3's own trigger) performs the merge on approve — D.5 does not.
+    expect(d5).toContain("performs the merge (`auto.md:1494`)");
+    // Absent → the legacy / already-approved merge path is unchanged (SC-002).
+    expect(d5).toContain(
+      "→ merge (step 3) — the legacy / already-approved path, unchanged",
+    );
+    // Non-decisive → fail-safe authoritative re-query; absence-of-signal ≠ absence-of-gate (Q1=A).
+    expect(d5).toContain("cockpit_status(issue=<issue-ref>, json=true)");
+    expect(d5).toContain("Absence-of-signal is NEVER treated as absence-of-gate");
+    // Ledger enum carries the deferral outcome token.
+    expect(d5).toContain("`deferred: implementation-review pending`");
+    // Negative (437-5 invariant): the deferral prose must NOT match the defer-on-pending regex.
+    expect(d5).not.toMatch(/defer\s+(this\s+wake|on\s+pending)/i);
   });
 });
 
