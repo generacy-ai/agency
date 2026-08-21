@@ -51,7 +51,7 @@
 - B: Close the gap in this PR — compute the remediation counter client-side (e.g., parse it from the engine gate body, alongside the findings per Q4) so the full "PR head SHA + counter" formula is derivable and idempotent.
 - C: Other (specify)
 
-**Answer**: *Pending*
+**Answer**: A — Accept the gap for now: derive from PR head SHA only (counter omitted), and document the non-idempotent re-ask across restart/takeover as a follow-up, exactly like the other gapped gateTypes (auto.md:1561). Restart-stability of the SHA half still holds. auto.md:1561 already frames the counter (and PR head SHA / findings-hash) as a shared DATA-GAP follow-up across gateTypes; option A keeps `remediation-limit` consistent with its SHA-based siblings (`implementation-review`/`manual-validation`, also gapped). Option B would parse a counter from the engine body beyond the Q4 findings render yet still couldn't achieve full idempotency (the PR head SHA is itself gapped), making it a partial, scope-expanding, inconsistent fix.
 
 ### Q6: Scope — editing the auto.md discriminator table (:1555) and DATA GAPS list (:1561)
 **Context**: FR-002 requires the discriminator to be documented as "PR head SHA + remediation counter" with "the remaining-findings-hash form is not used". The Assumptions section says auto.md "already contains ... the `remediation-limit` discriminator-table entry" and that the work is "closing the wire-type, sweep, and enumeration gaps, not authoring D.13 from scratch." But auto.md:1555 still reads "PR head SHA + remediation counter **(or remediation counter + remaining-findings hash)**" — the rejected alternative Q1 said to drop. Whether this PR edits the auto.md prose (:1555 row and the :1561 DATA GAPS list) or only the plugin comment block determines the file set and which playbook-verification pins move.
@@ -61,7 +61,7 @@
 - B: Plugin-side only — update `gate-wire-types.ts`; treat auto.md prose reconciliation as a separate change.
 - C: Other (specify)
 
-**Answer**: *Pending*
+**Answer**: A — In scope: edit auto.md:1555 (dropping the rejected parenthetical) and :1561 (as Q5 dictates), plus the plugin comment block, in one PR; re-pin any affected playbook-verification rows accordingly. FR-002 mandates the discriminator be documented as "PR head SHA + remediation counter" with the findings-hash form "not used", but auto.md:1555 still carries the rejected parenthetical Q1 dropped, leaving the playbook self-contradictory; FR-006 already requires re-pinning playbook-verification rows (500-5/7/9) that pin auto.md content, so auto.md is necessarily in the file set. Plugin-side-only (B) would leave the source-of-truth playbook table contradicting the pinned Q1 decision and the plugin comment block that FR-001 says must stay in sync.
 
 ### Q7: DispatchClass union — add "D.13"?
 **Context**: FR-001 mandates adding `remediation-limit` to the wire `GateType` union (gate-wire-types.ts:105-113). But the parallel `DispatchClass` union in the same file (:142-152) also omits `"D.13"`, even though auto.md:1043 constructs an adoption `GateRecord` with `dispatchClass: 'D.13'`. If `GateRecord.dispatchClass` is typed as `DispatchClass`, that literal won't type-check until `"D.13"` is added. The spec's FR table is silent on this second union.
@@ -71,4 +71,4 @@
 - B: Out of scope — the `DispatchClass` union is not consumed where a `'D.13'` literal must type-check, so no change is needed (please confirm the reasoning).
 - C: Other (specify)
 
-**Answer**: *Pending*
+**Answer**: A — In scope: add `"D.13" // waiting-for:remediation-limit (G.9) → gateType "remediation-limit"` to the `DispatchClass` union so adoption `GateRecord`s type-check. `GateRecord.dispatchClass` is typed as `DispatchClass` (gate-wire-types.ts:318) and auto.md:1043's adoption path constructs a `GateRecord` with `dispatchClass: 'D.13'` (mandatory; D.12 steps 3–4 route on it), so the literal cannot type-check until `D.13` joins the union; `D.13` also opens a real gate (G.9), unlike the ledger-only classes the union deliberately omits. Option B's reasoning fails against line 318's explicit typing and the FR-001 directive to keep the parallel comment block in sync.

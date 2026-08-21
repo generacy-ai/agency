@@ -78,7 +78,9 @@ Filed from a post-merge code review of epic generacy-ai/generacy#1120 / agency#5
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
 | FR-001 | The plugin `GateType` union (`lib/gate-wire-types.ts`) MUST include `remediation-limit`. | P1 | Union at :105-113; keep discriminator comment block in sync. |
-| FR-002 | The generation-discriminator documentation MUST describe `remediation-limit`'s discriminator as **PR head SHA + remediation counter** (durable-state-derived), consistent with auto.md's discriminator table. The remaining-findings-hash form is not used (it is a data gap and not durable). | P1 | auto.md :1555 row; clarified Q1. |
+| FR-002 | The generation-discriminator documentation MUST describe `remediation-limit`'s discriminator as **PR head SHA + remediation counter** (durable-state-derived), consistent with auto.md's discriminator table. The remaining-findings-hash form is not used (it is a data gap and not durable). Because the remediation counter is itself a listed DATA GAP (auto.md:1561) the parent loop does not yet compute, the discriminator is **derived from PR head SHA only today** (counter omitted); the non-idempotent re-ask across restart/takeover is documented as a follow-up alongside the other gapped gateTypes. | P1 | auto.md :1555 row, :1561 DATA GAPS; clarified Q1, Q5. |
+| FR-007 | The `"D.13"` member MUST be added to the `DispatchClass` union (`lib/gate-wire-types.ts:142-152`) with its mapping comment, so the adoption `GateRecord` (auto.md:1043, `dispatchClass: 'D.13'`) type-checks against `GateRecord.dispatchClass: DispatchClass` (gate-wire-types.ts:318). | P1 | Second union in the same file; clarified Q7. |
+| FR-008 | auto.md prose MUST be reconciled to the pinned discriminator: drop the rejected parenthetical at :1555 ("or remediation counter + remaining-findings hash") and update the :1561 DATA GAPS list, in the same PR as the plugin change. | P1 | auto.md :1555, :1561; clarified Q6. Drives the FR-006 re-pins. |
 | FR-003 | The startup synthetic-event sweep's **base** trigger set MUST include D.13 so a parked `waiting-for:remediation-limit` issue is dispatched (or adopted) at startup in **both local and UI mode** (the base set at auto.md :349 runs mode-agnostically). | P1 | auto.md :349; clarified Q3 — base set, not UI-mode-only. |
 | FR-004 | The D.10 unknown-state enumeration MUST be extended so `waiting-for:remediation-limit` matches D.13 and does not route to unknown-state escalation. | P1 | auto.md :1014 clause (d). |
 | FR-005 | Changes MUST coordinate with generacy-ai/generacy#1163 so the plugin union and the MCP `GateTypeSchema` enum both admit `remediation-limit` before UI-mode dogfood. | P1 | Cross-repo dependency. |
@@ -87,6 +89,7 @@ Filed from a post-merge code review of epic generacy-ai/generacy#1120 / agency#5
 ### Key Entities
 
 - **GateType (wire)**: The discriminated union the plugin passes on `cockpit_gate_status`/`cockpit_gate_open`; must gain the `remediation-limit` member.
+- **DispatchClass (wire)**: The parallel union in the same file (:142-152) typing `GateRecord.dispatchClass` (:318); must gain `"D.13"` so the auto.md:1043 adoption `GateRecord` type-checks (clarified Q7).
 - **D.13 dispatch row**: The auto.md playbook row that handles `waiting-for:remediation-limit`; already present but unreachable due to the wire-type and enumeration gaps.
 - **remediation-limit gate**: The operator-inbox gate raised when the engine's remediate loop exhausts its retry cap. The plugin's D.13 draft-then-open flow **fetches/composes the remaining findings from issue/PR state** — parsed from the engine-written gate body on the issue (auto.md:1032,1575), rendered client-side as sibling #504 pins ("latest linked-issue comment starting with `## Remediation limit reached`"). It does not read findings from `cockpit_gate_status`, which returns only `{gateId, status}` (clarified Q4).
 
@@ -106,7 +109,7 @@ Filed from a post-merge code review of epic generacy-ai/generacy#1120 / agency#5
 ## Assumptions
 
 - auto.md at develop `1455ce5` already contains the D.13 row and the `remediation-limit` discriminator-table entry; the work is closing the wire-type, sweep, and enumeration gaps, not authoring D.13 from scratch.
-- The generation discriminator for `remediation-limit` is durable-state-derived (PR head SHA + remediation counter), consistent with the other gateTypes, so derived `gateId`s are stable across restart/takeover.
+- The generation discriminator for `remediation-limit` is durable-state-derived (documented as PR head SHA + remediation counter), consistent with the other gateTypes. The remediation counter is a DATA GAP the parent loop does not yet compute (auto.md:1561), so the discriminator is derived from PR head SHA only today; the SHA half is restart-stable, and the non-idempotent re-ask across restart/takeover is an accepted follow-up shared with the other gapped gateTypes (clarified Q5).
 - generacy-ai/generacy#1163 is the coordinating counterpart and will land the MCP `GateTypeSchema` change.
 
 ## Out of Scope
