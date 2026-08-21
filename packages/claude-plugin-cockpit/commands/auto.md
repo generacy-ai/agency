@@ -353,7 +353,7 @@ $ARGUMENTS
    **UI-mode extended trigger set (Q2=B)**. When `ResolvedGateMode === "ui"`, the startup sweep re-opens remote gates via `cockpit_gate_open` for **every persistent gate-trigger state** — a superset of the `waiting-for:*` baseline. Under `local`, the sweep behaves EXACTLY as today. Trigger states:
 
    - **All `waiting-for:*` labels**: `waiting-for:clarification` (D.1), `waiting-for:<artifact>-review` (D.2 — spec / clarification / plan / tasks), `waiting-for:implementation-review` (D.3), `waiting-for:manual-validation` (D.4), `waiting-for:merge-conflicts` (D.11 — co-occurs with `blocked:stuck-merge-conflicts`).
-   - **Persistent NON-`waiting-for:*` triggers**: `agent:error` (D.7), `failed:<subtype>` (D.7), `completed:validate` with red checks (D.6 — after fixer, if the fixer state is not in-memory-only), `phase-complete` (D.8 — G.5), `blocked:stuck-merge-conflicts` (D.11 — either label alone triggers). These are persistent labels that do NOT self-re-fire; restricting the UI sweep to `waiting-for:*` only would silently drop them across a restart / takeover.
+   - **Persistent NON-`waiting-for:*` triggers**: `agent:error` (D.7), `failed:<subtype>` (D.7), `completed:validate` with red checks (D.6 — ledger-only, engine-owned remediate), `phase-complete` (D.8 — G.5), `blocked:stuck-merge-conflicts` (D.11 — either label alone triggers). These are persistent labels that do NOT self-re-fire; restricting the UI sweep to `waiting-for:*` only would silently drop them across a restart / takeover.
 
    **`runId` on every sweep-time `cockpit_gate_open` (per #469 / FR-004 / R11).** Under `runIdEnabled === true`, every `cockpit_gate_open` call in the extended trigger set above (every `waiting-for:*` label AND every persistent non-`waiting-for:*` trigger) passes the run's pre-flight-derived `runId` (per § step 1 Pre-flight `runId` derivation and § In-memory loop state additions above). Under `runIdEnabled === false` the `runId` field is OMITTED from every sweep-time open call (V6). The `runId` is read verbatim from loop state — NO consumer re-derives (V2 / FR-014). Sweep-time and live-time opens for the same natural gate coalesce on the same 4-segment `gateId` under `runIdEnabled === true` (per § gateId idempotency below).
 
@@ -828,15 +828,15 @@ Call-time errors here are handled DIFFERENTLY from `cockpit_gate_open` call-time
 **Ledger line**: `<issue-ref> · completed:validate · merge · <outcome>` — outcomes: `merged (PR #<n>)` / `blocked: missing-approval` / `blocked: draft` / `blocked: pending` / `blocked: missing-label` / `infrastructure failure — <checks>`.
 
 **Failure modes**:
-- Merge returns `result: "red"` → fall through to D.6 (fixer branch).
+- Merge returns `result: "red"` → fall through to D.6 (ledger-only, engine-owned remediate).
 - Merge returns `result: "blocked"` → handle per `merge.md`'s decision tree (missing-label / missing-approval / draft / pending). For `pending`, defer to the watcher (do not poll); for other blocked reasons, ledger line and continue.
-- Infrastructure/runner failure → do not burn a fixer attempt; ledger line `infrastructure failure — <check names>` and continue.
+- Infrastructure/runner failure → ledger line `infrastructure failure — <check names>` and continue.
 
 ### D.6 — `completed:validate` (red) / merge red → ledger-only (engine-owned remediate)
 
 **Trigger**: `completed:validate` with an enriched line `checks: "red"` verdict (E4), OR (on `checks: absent | pending` fallback per Q4=B) a `cockpit_status(issue=<issue-ref>, json=true)` returning `checks_state == "red"`, OR a merge call in D.5 returned `result: "red"`.
 
-**Source of truth**: as D.5 — decisive `checks: "red"` fires the fixer without a per-event re-check; fallback on `absent | pending` or bare / malformed lines; `· source: enriched-line` suffix on the enriched-line path only (E6).
+**Source of truth**: as D.5 — a decisive `checks: "red"` verdict writes the ledger-only row (engine-owned remediate, per Dispatch step 2) without a per-event re-check; fallback on `absent | pending` or bare / malformed lines; `· source: enriched-line` suffix on the enriched-line path only (E6).
 
 **Dispatch**:
 1. **Classify failing checks** — infrastructure/runner failures are recorded as such (repo-owned CI classes only: tests / lint / typecheck / build).
@@ -1653,7 +1653,7 @@ Mnemonic column names: `issue · transition · action · outcome`. The separator
 
 > A dispatch without a ledger line is a protocol violation.
 
-**What counts as a "dispatch"**: any typed event from a `cockpit_await_events` batch that the parent processes; any event synthesized by the startup sweep; any escalation-gate retry that re-runs the fixer or re-presents the escalation gate; any session-mute skip.
+**What counts as a "dispatch"**: any typed event from a `cockpit_await_events` batch that the parent processes; any event synthesized by the startup sweep; any escalation-gate retry that re-presents the escalation gate; any session-mute skip.
 
 **What does NOT count**: re-check calls that don't produce a dispatch decision; pre-flight failures (before the loop begins); re-arms and doorbell arm-ups (re-arms are idempotent).
 
@@ -1799,7 +1799,7 @@ Events dispatched: <N>
   · Review verdicts: <k2>
   · Manual-validation gates: <k3>
   · Phase-queue confirmations: <k4>
-  · Merges: <k5> (<green>/<red>, <fixer runs>)
+  · Merges: <k5> (<green>/<red>)
   · Escalations: <k6>
   · Cursor recoveries: <k7> (by class: invalid-cursor=<a>, resetFrom=<b>, expiry=<c>, discarded=<d>)
   · Cursor-recovery escalations: <k8> (continue-degraded=<x>, stop=<y>)
