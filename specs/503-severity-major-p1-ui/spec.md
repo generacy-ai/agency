@@ -47,7 +47,7 @@ Filed from a post-merge code review of epic generacy-ai/generacy#1120 / agency#5
 
 **Acceptance Scenarios**:
 
-1. **Given** an issue parked at `waiting-for:remediation-limit`, **When** `auto` restarts and runs the startup sweep, **Then** the extended UI-mode trigger set includes D.13 and a `cockpit_gate_open` (or adoption) fires for that issue.
+1. **Given** an issue parked at `waiting-for:remediation-limit`, **When** `auto` restarts and runs the startup sweep, **Then** the base trigger set includes D.13 (so recovery works in both local and UI mode) and a `cockpit_gate_open` (or adoption) fires for that issue.
 
 ---
 
@@ -67,7 +67,7 @@ Filed from a post-merge code review of epic generacy-ai/generacy#1120 / agency#5
 
 ### Edge Cases
 
-- **Schema-side coordination**: The generacy MCP `GateTypeSchema` is a closed 8-value enum without `remediation-limit` (tracked as generacy-ai/generacy#1163). Both schema sides MUST land before UI-mode dogfood, or gate verbs still reject the value at the MCP boundary even after the plugin union is fixed.
+- **Schema-side coordination**: The generacy MCP `GateTypeSchema` is a closed 8-value enum without `remediation-limit` (tracked as generacy-ai/generacy#1163). Both schema sides MUST land before UI-mode dogfood, or gate verbs still reject the value at the MCP boundary even after the plugin union is fixed. **Merge sequencing (clarified Q2)**: this plugin PR MAY merge independently ahead of #1163 — its runtime remediation-limit behavior is already gated on the engine via the `MIN_GENERACY_VERSION=0.2.0` pre-flight probe (auto.md:226,244), so live gate-verb acceptance is sequenced on #1163 without blocking this PR's merge. Dogfood remains gated on #1163.
 - **runId on/off**: The fix must hold under both `runIdEnabled === true` (four-input identity) and `runIdEnabled === false` (three-input, `runId` omitted).
 - **Local mode**: Local mode is unaffected by the wire-type defect but the two dispatch gaps (startup sweep, D.10 enumeration) must be closed for local mode too.
 
@@ -78,8 +78,8 @@ Filed from a post-merge code review of epic generacy-ai/generacy#1120 / agency#5
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
 | FR-001 | The plugin `GateType` union (`lib/gate-wire-types.ts`) MUST include `remediation-limit`. | P1 | Union at :105-113; keep discriminator comment block in sync. |
-| FR-002 | The generation-discriminator documentation MUST describe `remediation-limit`'s discriminator (PR head SHA + remediation counter, or remediation counter + remaining-findings hash) consistent with auto.md's discriminator table. | P1 | auto.md :1555 row. |
-| FR-003 | The startup synthetic-event sweep's UI-mode extended trigger set MUST include D.13 so a parked `waiting-for:remediation-limit` issue is dispatched (or adopted) at startup. | P1 | auto.md :349, :355-356. |
+| FR-002 | The generation-discriminator documentation MUST describe `remediation-limit`'s discriminator as **PR head SHA + remediation counter** (durable-state-derived), consistent with auto.md's discriminator table. The remaining-findings-hash form is not used (it is a data gap and not durable). | P1 | auto.md :1555 row; clarified Q1. |
+| FR-003 | The startup synthetic-event sweep's **base** trigger set MUST include D.13 so a parked `waiting-for:remediation-limit` issue is dispatched (or adopted) at startup in **both local and UI mode** (the base set at auto.md :349 runs mode-agnostically). | P1 | auto.md :349; clarified Q3 — base set, not UI-mode-only. |
 | FR-004 | The D.10 unknown-state enumeration MUST be extended so `waiting-for:remediation-limit` matches D.13 and does not route to unknown-state escalation. | P1 | auto.md :1014 clause (d). |
 | FR-005 | Changes MUST coordinate with generacy-ai/generacy#1163 so the plugin union and the MCP `GateTypeSchema` enum both admit `remediation-limit` before UI-mode dogfood. | P1 | Cross-repo dependency. |
 | FR-006 | Affected `playbook-verification` rows 500-5, 500-7, 500-9 MUST be re-pinned to the new contract (per CLAUDE.md drift-audit rule: re-pin, never weaken). | P1 | playbook-verification.test.ts. |
@@ -88,7 +88,7 @@ Filed from a post-merge code review of epic generacy-ai/generacy#1120 / agency#5
 
 - **GateType (wire)**: The discriminated union the plugin passes on `cockpit_gate_status`/`cockpit_gate_open`; must gain the `remediation-limit` member.
 - **D.13 dispatch row**: The auto.md playbook row that handles `waiting-for:remediation-limit`; already present but unreachable due to the wire-type and enumeration gaps.
-- **remediation-limit gate**: The operator-inbox gate raised when the engine's remediate loop exhausts its retry cap, carrying the remaining findings in the body.
+- **remediation-limit gate**: The operator-inbox gate raised when the engine's remediate loop exhausts its retry cap. The plugin's D.13 draft-then-open flow **fetches/composes the remaining findings from issue/PR state** — parsed from the engine-written gate body on the issue (auto.md:1032,1575), rendered client-side as sibling #504 pins ("latest linked-issue comment starting with `## Remediation limit reached`"). It does not read findings from `cockpit_gate_status`, which returns only `{gateId, status}` (clarified Q4).
 
 ## Success Criteria
 
