@@ -8,7 +8,7 @@ arguments:
 
 # Auto Command
 
-Drive the named tracking ref (an epic, an existing tracking issue, or a newly filed tracking issue) to terminal state by dispatching Monitor-delivered wake-ups through `cockpit_await_events` and routing to the six existing assist commands' *actions* (MCP tool calls + subagent hops), never the assist commands themselves. The loop shape is: **pre-flight (incl. `Monitor` presence check) → arm `generacy cockpit doorbell <epic-ref>` under harness `Monitor` (sensor) → startup sweep (tool-presence check + synthetic-event dispatch) → per wake (Monitor line OR ScheduleWakeup heartbeat fire): drain typed batch via `cockpit_await_events(epic|issue, cursor, maxWaitMs=1, coalesceWindowMs=3000)` → consume batch in stream order → per event: re-check live state → dispatch → write one ledger line → advance in-memory cursor → arm next heartbeat → wait for next wake → exit on terminal state (`epic-complete` in epic mode, G.7 scope-drained `Finish` in epic-less mode).** Two hard boundaries are load-bearing: **never merge on red** (anything red routes through the bounded-fixer branch and, if still red, an escalation gate) and **every gate prompts** (per-gate auto-approve / "full auto" is explicitly out of scope). Analysis lives in named subagents (`cockpit-clarifier`, `cockpit-reviewer`, `cockpit-validator`, `cockpit-fixer`, `cockpit-diagnoser` — model/effort per role configurable via the `cockpit.auto.agents` block, see § step 1 run-config load) returning strict JSON per hop; the parent loop stays thin.
+Drive the named tracking ref (an epic, an existing tracking issue, or a newly filed tracking issue) to terminal state by dispatching Monitor-delivered wake-ups through `cockpit_await_events` and routing to the six existing assist commands' *actions* (MCP tool calls + subagent hops), never the assist commands themselves. The loop shape is: **pre-flight (incl. `Monitor` presence check) → arm `generacy cockpit doorbell <epic-ref>` under harness `Monitor` (sensor) → startup sweep (tool-presence check + synthetic-event dispatch) → per wake (Monitor line OR ScheduleWakeup heartbeat fire): drain typed batch via `cockpit_await_events(epic|issue, cursor, maxWaitMs=1, coalesceWindowMs=3000)` → consume batch in stream order → per event: re-check live state → dispatch → write one ledger line → advance in-memory cursor → arm next heartbeat → wait for next wake → exit on terminal state (`epic-complete` in epic mode, G.7 scope-drained `Finish` in epic-less mode).** Two hard boundaries are load-bearing: **never merge on red** (anything red is **engine-owned** — `completed:validate` red is a ledger-only no-op that re-fires as an engine gate; `auto` runs no cluster-side fixer branch) and **every gate prompts** (per-gate auto-approve / "full auto" is explicitly out of scope). Analysis lives in named subagents (`cockpit-clarifier`, `cockpit-reviewer`, `cockpit-validator`, `cockpit-diagnoser` — model/effort per role configurable via the `cockpit.auto.agents` block, see § step 1 run-config load) returning strict JSON per hop; the parent loop stays thin.
 
 ## User Input
 
@@ -223,6 +223,26 @@ $ARGUMENTS
 
    Then exit non-zero. Do **NOT** create the ledger directory. Do **NOT** write a ledger line. Do **NOT** fall back to spawning `generacy cockpit watch`.
 
+   **Then**, probe the engine version for skew (FR-008, Q3). The slimmed `auto` no longer drives implementation-PR review rounds; an **old** engine still expects the client to drive them, so running new-`auto` against an old engine would silently strand the loop. Run `generacy --version` (`generacy` exposes `.version(VERSION)` — the same CLI `auto` already invokes; no new MCP field). Parse the emitted version and compare it against **`MIN_GENERACY_VERSION` = `0.2.0`** — the first `generacy` release that ships epic generacy-ai/generacy#1120's post-validate `implementation-review` gate move **and** the `remediation-limit` gate. `MIN_GENERACY_VERSION` is a load-bearing literal; a change to its value re-triggers the spec's clarify phase.
+
+   - **version ≥ `0.2.0`** → proceed.
+   - **version < `0.2.0`** → print verbatim:
+
+   ```
+   generacy is older than the minimum this /cockpit:auto requires (need >= 0.2.0). Below that version the engine still expects the client to drive implementation-review rounds, which this slimmed playbook no longer does. Upgrade the cluster's generacy build to >= 0.2.0, or drive the epic manually with /cockpit:watch, /cockpit:status, and /cockpit:advance.
+   ```
+
+     Then exit non-zero. Do **NOT** create the ledger directory. Do **NOT** write a ledger line. Do **NOT** start the loop.
+   - **version output unparseable or missing** → **fail closed** (treat as below-minimum), but print a **distinct** diagnostic:
+
+   ```
+   Could not parse `generacy --version` output — cannot confirm generacy is at the required minimum (>= 0.2.0). Failing closed. Upgrade or verify the cluster's generacy build, or drive the epic manually with /cockpit:watch, /cockpit:status, and /cockpit:advance.
+   ```
+
+     Then exit non-zero, with the same no-ledger-dir / no-ledger-line / no-loop guarantee as the below-minimum branch.
+
+   This version guard byte-mirrors the Monitor-absence (`:208–214`) and doorbell-absence (`:218–224`) hard-fails above — a familiar, already-pinned pre-flight failure idiom (exit non-zero, no ledger dir, no ledger line, no loop). It runs AFTER the doorbell-surface probe and BEFORE `command -v generacy`'s downstream `gh auth status`. Both skew directions: old-engine + new-auto is blocked here; new-engine + old-auto is inert by construction (an old `auto` lacks the D.13 / G.8 / G.9 rows, so the engine's new gates fall through to the D.10 unknown-state escalation — a visible escalation, not a silent strand — so no guard is needed for that direction).
+
    On probe success, continue: `gh auth status` (on failure → **Error handling** class `AUTH_FAILURE`); confirm the operator's cwd is a writable git repo; create the ledger directory with `mkdir -p .generacy/cockpit/auto-runs` (on failure → **Error handling** class `OTHER`). Compute the run's ledger filename: `.generacy/cockpit/auto-runs/<tracking-ref-slug>-<timestamp>.ledger`, where `<tracking-ref-slug>` is the tracking reference with `/` replaced by `-` and `#` stripped, and `<timestamp>` is `YYYYMMDD-HHMMSS` in the operator's local time captured now.
 
    **Pre-flight `runId` derivation (load-bearing, per #469 / FR-001).** Immediately after the ledger filename is computed above, derive the run's `runId` from the SAME components used for the ledger filename stem. This step MUST run before any gate verb fires — before the § Pre-flight probe (UI mode) below, before the § step 3 startup sweep opens any gate, and before any drafting D.n dispatch.
@@ -312,9 +332,9 @@ $ARGUMENTS
 
    4. **Broad adoption rule (per FR-009 / SC-009 / V5).** For each returned non-terminal row `{gateId, gateType, generation, status, runId}` for an in-scope issue, adopt EVERY row into `openGates` — including rows whose `(gateType, generation)` does NOT match a natural gate the current-run sweep would draft. Compute `dispatchClass` from `(row.gateType, row.generation)` using the SAME mapping-table rule the current-run sweep uses (per § UI-mode gate mapping / § Generation discriminator (UI mode)). Add a `GateRecord` under `row.gateId` with `{gateId, gateType, generation, status, runId: row.runId, issueRef, dispatchClass, transitionClass}` — the per-entry `runId` is the ROW's `runId` verbatim (FR-003 / V2). `inboxUrl`, `title`, `askedAt`, `originalDraft` are NOT populated on adopted entries — the `cockpit_gate_list` return shape does not carry them (DATA GAP). An unanswered adopted `open` entry sits in `openGates` and does nothing (the escape hatch only ticks `answered` entries); answered entries route via `dispatchClass`.
 
-   5. **Generation-drift branch (per FR-013 / SC-010 / V3; contract: `contracts/adoption-drift.md`).** For a row whose `(row.issueRef, row.gateType)` matches a natural gate the current-run sweep would draft AND `row.generation` differs from the current-run derived generation AND `row.gateType ∈ {clarification, artifact-review, implementation-review, manual-validation}`: call `cockpit_gate_ack({ gateId: row.gateId, outcome: 'superseded', detail: 'generation drift — content changed since original draft (was g<old>, now g<new>)', runId: row.runId })`. The `detail` string is the SAME string the live-path drift branch uses at every § Dispatch D.n Step 0 — sourced verbatim from the playbook; if the live-path string changes, this branch inherits. The `runId` is the ROW's originating `runId` (per FR-003) — `runId` is accepted-and-ignored on the ack path, so the ack lands regardless of which run opened the stale gate. Then: do NOT add the row to `openGates`; do NOT draft here (the § Synthetic-event dispatch block below produces the fresh open at the current-run generation and current-run `runId`). **Precedence**: FR-013 wins over FR-009 for its matching rows — classify `adopt-natural` first (same-generation match), then `drift-supersede`, then `broad-adopt`.
+   5. **Generation-drift branch (per FR-013 / SC-010 / V3; contract: `contracts/adoption-drift.md`).** For a row whose `(row.issueRef, row.gateType)` matches a natural gate the current-run sweep would draft AND `row.generation` differs from the current-run derived generation AND `row.gateType ∈ {clarification, artifact-review, implementation-review, manual-validation, remediation-limit}`: call `cockpit_gate_ack({ gateId: row.gateId, outcome: 'superseded', detail: 'generation drift — content changed since original draft (was g<old>, now g<new>)', runId: row.runId })`. The `detail` string is the SAME string the live-path drift branch uses at every § Dispatch D.n Step 0 — sourced verbatim from the playbook; if the live-path string changes, this branch inherits. The `runId` is the ROW's originating `runId` (per FR-003) — `runId` is accepted-and-ignored on the ack path, so the ack lands regardless of which run opened the stale gate. Then: do NOT add the row to `openGates`; do NOT draft here (the § Synthetic-event dispatch block below produces the fresh open at the current-run generation and current-run `runId`). **Precedence**: FR-013 wins over FR-009 for its matching rows — classify `adopt-natural` first (same-generation match), then `drift-supersede`, then `broad-adopt`.
 
-   6. **`escalation` carve-out (per FR-013 / V4 / SC-011).** `row.gateType === 'escalation'` DISABLES the drift branch. Prior-run `escalation` rows with generation drift take the BROAD-adopt branch instead — adopted at their stale generation, left non-terminal. Four dispatch rows (D.6 G.4a, D.7 G.4b, D.10 G.4c, D.11 G.4d) share the one `escalation` enum value and the wire carries no subtype discriminator (upstream generacy#1046), so superseding could destroy an escalation the current run cannot correctly recreate.
+   6. **`escalation` carve-out (per FR-013 / V4 / SC-011).** `row.gateType === 'escalation'` DISABLES the drift branch. Prior-run `escalation` rows with generation drift take the BROAD-adopt branch instead — adopted at their stale generation, left non-terminal. Three dispatch rows (D.7 G.4b, D.10 G.4c, D.11 G.4d) share the one `escalation` enum value and the wire carries no subtype discriminator (upstream generacy#1046), so superseding could destroy an escalation the current run cannot correctly recreate.
 
    7. **Adopted-`answered` counter initialisation (per FR-010 / SC-012 / V6).** For every row adopted with `row.status === 'answered'`, set `answeredGateSweepCounter[row.gateId] = 1` in the SAME atomic step as adding the entry to `openGates`. This matches the reuse-answered branch semantics established by #457 (the record-time increment IS the entry's count for the sweep in which it was added). The load-bearing threshold `3` still applies: an adopted `answered` entry reaches count `3` at startup-sweep+2, at which point the escape hatch fires.
 
@@ -479,6 +499,7 @@ Any other outcome — parse failure, non-object result, missing `to`, missing `l
 | D.9d | `phase:*` (prefix-match) | **enriched line** (ledger-only) | fallback (ledger-only) |
 | D.10 | Unrecognized / ambiguous | **fallback (retain re-check)** | fallback |
 | D.11 | `waiting-for:merge-conflicts` / `blocked:stuck-merge-conflicts` | **fallback (retain re-check)** | fallback |
+| D.13 | `waiting-for:remediation-limit` | **enriched line** | fallback |
 
 **Retain-the-re-check** (D.8, D.10, D.11): human/consequential gates where a stale-line dispatch could open a gate against superseded state — retain the authoritative re-check.
 
@@ -489,7 +510,7 @@ Any other outcome — parse failure, non-object result, missing `to`, missing `l
 | `checks` value | Action |
 |----------------|--------|
 | `"green"` | D.5 branch: `cockpit_merge(issue=<issue-ref>)` (unchanged from pre-#437) |
-| `"red"` | D.6 branch: bounded fixer subagent (unchanged from pre-#437) |
+| `"red"` | D.6 branch: **ledger-only no-op** — red validate is engine-owned and re-fires as an engine gate (remediation / remediation-limit); no fixer subagent |
 | `"pending"` | **Fall back** to a single authoritative `cockpit_status(issue=<issue-ref>, json=true)` OR `cockpit_merge(issue=<issue-ref>)` (per the D.5 vs. D.6 dispatch); branch on the returned verdict per pre-#437 logic |
 | Absent (field missing OR `null`/`undefined`) | **Fall back** — same as `"pending"` |
 
@@ -525,16 +546,16 @@ Any other outcome — parse failure, non-object result, missing `to`, missing `l
 
 ## Dispatch
 
-Label-driven classes (D.1–D.11) plus the UI-mode gate-answer completion class D.12 (fires only under `ResolvedGateMode === "ui"`). Authoritative state resolves per step 4a / § Enriched-line dispatch contract: enriched `to` / `labels` (and, for D.5/D.6, `checks`) are the source of truth for label-driven classes; the per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check is retained for D.8, D.10, D.11 and fires as fallback for bare lines or absent/`pending` `checks`. Ledger-only rows (D.9, D.9a, D.9b, D.9c, D.9d) skip any query entirely per § Invariants #8's cost contract. **D.12**: under `ResolvedGateMode === "ui"`, every gate contract G.1–G.7 that maps to the wire record (per § UI-mode gate mapping) OPENS via `cockpit_gate_open` instead of `AskUserQuestion`; the operator's answer arrives as a D.12 `gate-answer` event routed onto the SAME downstream handling the local `AskUserQuestion` path performs today, closing the record with `cockpit_gate_ack(applied | superseded | failed)`. Each dispatch is **CLI verb + optional subagent + optional gate**; no dispatch invokes a `/cockpit:*` slash command (invariant §4).
+Label-driven classes (D.1–D.11) plus the UI-mode gate-answer completion class D.12 (fires only under `ResolvedGateMode === "ui"`). Authoritative state resolves per step 4a / § Enriched-line dispatch contract: enriched `to` / `labels` (and, for D.5/D.6, `checks`) are the source of truth for label-driven classes; the per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check is retained for D.8, D.10, D.11 and fires as fallback for bare lines or absent/`pending` `checks`. Ledger-only rows (D.9, D.9a, D.9b, D.9c, D.9d) skip any query entirely per § Invariants #8's cost contract. **D.12**: under `ResolvedGateMode === "ui"`, every gate contract G.1–G.9 that maps to the wire record (per § UI-mode gate mapping) OPENS via `cockpit_gate_open` instead of `AskUserQuestion`; the operator's answer arrives as a D.12 `gate-answer` event routed onto the SAME downstream handling the local `AskUserQuestion` path performs today, closing the record with `cockpit_gate_ack(applied | superseded | failed)`. Each dispatch is **CLI verb + optional subagent + optional gate**; no dispatch invokes a `/cockpit:*` slash command (invariant §4).
 
 | # | Event | Action shape |
 |---|-------|--------------|
 | D.1 | `waiting-for:clarification` | Clarification drafter subagent → single batched-gate `AskUserQuestion` (three options) → post + `cockpit advance` |
 | D.2 | `waiting-for:<artifact>-review` | Review-verdict analyzer subagent → fused verdict gate → `cockpit advance` OR `COMMENT` review |
-| D.3 | `waiting-for:implementation-review` | Same as D.2 (uses #390 contract for PR-scope analyzer) |
+| D.3 | `waiting-for:implementation-review` | Final-approval gate G.8 (findings from gate body, **no subagent**) → `approve` → cockpit merge path; `hold`/`reject` → no-op (label stays, gate re-fires) |
 | D.4 | `waiting-for:manual-validation` | Manual-validation summarizer subagent → confirm gate → `cockpit advance` |
 | D.5 | `completed:validate` + green | `cockpit merge` (no gate — human verdict was implementation-review) |
-| D.6 | `completed:validate` + red / merge red | Bounded fixer subagent (once) → still red → escalation gate (Retry / Skip / Stop) |
+| D.6 | `completed:validate` + red / merge red | Ledger line only (engine remediate loop owns red validate; re-fires as an engine gate) |
 | D.7 | `agent:error` / `failed:*` | Fetch evidence → escalation gate (Requeue / Skip / Stop) |
 | D.8 | `phase-complete` | Phase-queue confirmation gate → `cockpit queue --yes` |
 | D.9 | `waiting-for:address-pr-feedback` | Ledger line only (server-side owns it) |
@@ -544,11 +565,12 @@ Label-driven classes (D.1–D.11) plus the UI-mode gate-answer completion class 
 | D.9d | `phase:*` (prefix-match) | Ledger line only (engine-owned phase transition) |
 | D.11 | `waiting-for:merge-conflicts` **or** `blocked:stuck-merge-conflicts` (labels co-occur when the engine escalates; deduplicated per-issue for one incident) | Escalation gate (`I've resolved it` / `Skip` / `Stop`) |
 | D.10 | Unrecognized / ambiguous | Escalation gate (Skip / Stop only, never Retry) |
+| D.13 | `waiting-for:remediation-limit` | Remediation-limit gate G.9 (findings from gate body, **no subagent**) → `resume remediation` → `cockpit_advance(issue, gate="remediation-limit")`; `stop` → exit clean, no label writes |
 | D.12 | `gate-answer` (typed event `type: "gate-answer"` on the doorbell NDJSON line and as a `cockpit_await_events` batch item; FLAT frozen shape — carries `gateId`, `gateKey`, `optionId`, `freeText`, `actor`, `deliveryId` (NO `generation`); fires only under `ResolvedGateMode === "ui"`) | Stale-gate check (gateId identity) → live-state supersession check → route optionId (+freeText) to the SAME downstream handling the local `AskUserQuestion` path performs (per § UI-mode gate mapping) → `cockpit_gate_ack(applied | superseded | failed)` |
 
 ### Pre-draft check — shared rules (UI mode)
 
-Rules every § Dispatch **Step 0 — pre-draft gate-status check** obeys, stated once so the six Step 0 blocks (D.1, D.2, D.3, D.4, D.7, D.11) cannot drift apart. All are dead prose under `ResolvedGateMode === "local"` (Step 0 is skipped entirely there).
+Rules every § Dispatch **Step 0 — pre-draft gate-status check** obeys, stated once so the seven Step 0 blocks (D.1, D.2, D.3, D.4, D.7, D.11, D.13) cannot drift apart. All are dead prose under `ResolvedGateMode === "local"` (Step 0 is skipped entirely there).
 
 **`runId` (fourth input under `runIdEnabled === true`) — per #469 / FR-010 / FR-014.** The pre-draft check's `gateId` uses FOUR inputs when `runIdEnabled === true`; the fourth is the pre-flight-derived `runId` (per § step 1 Pre-flight `runId` derivation and § In-memory loop state additions above). The `runId` is threaded on the `cockpit_gate_status` payload as an explicit literal read verbatim from loop state — NEVER re-derived by the Step 0 site, even by the same rule (per V2 / FR-014). Under `runIdEnabled === false` the field is OMITTED from the wire payload (V6) and the pre-#469 3-input identity applies. The six Step 0 blocks name the same four inputs by construction, so sweep-derived and live-derived `gateId`s coalesce when content is unchanged AND the run is the same. The compute-once + explicit-literal invariant extends to subagent dispatch prompts — see § UI-mode gate mapping header note "Subagent dispatch prompt template addition".
 
@@ -563,19 +585,20 @@ The generation-drift branch — step 0's `{ status: 'absent' }` → `cockpit_gat
 
 **When the discriminator is NOT recoverable from the list entry, the drift branch MUST NOT supersede.** Skip the drift branch entirely — do not call `cockpit_gate_list`, do not ack anything — and proceed exactly as "no existing gate": fall through to the draft-then-open flow.
 
-**Recoverability per `gateType`.** Four of the frozen enum values map 1:1 onto a single Step-0 row, so condition 2 is satisfied by condition 1 alone. `escalation` does not:
+**Recoverability per `gateType`.** Five of the frozen enum values map 1:1 onto a single Step-0 row, so condition 2 is satisfied by condition 1 alone. `escalation` does not:
 
 | gateType | Step-0 row(s) that open it | discriminator recoverable from a list entry? |
 |---|---|---|
 | `clarification` | D.1 (G.1) | yes — `gateType` ⇒ row |
 | `artifact-review` | D.2 (G.2) | yes — `gateType` ⇒ row |
-| `implementation-review` | D.3 (G.2) | yes — `gateType` ⇒ row |
+| `implementation-review` | D.3 (G.8) | yes — `gateType` ⇒ row |
 | `manual-validation` | D.4 (G.3) | yes — `gateType` ⇒ row |
-| `escalation` | **D.6 (G.4a), D.7 (G.4b), D.10 (G.4c), D.11 (G.4d)** | **NO — four rows share one `gateType`** |
+| `remediation-limit` | D.13 (G.9) | yes — `gateType` ⇒ row |
+| `escalation` | **D.7 (G.4b), D.10 (G.4c), D.11 (G.4d)** | **NO — three rows share one `gateType`** |
 
 (`phase-queue`, `filing`, and `scope-drained` have no Step 0 today — D.8 / G.6 / G.7 run no pre-draft check; each maps 1:1 to a single row.)
 
-**Consequence — the drift branch is DISABLED for `gateType: 'escalation'` (D.6, D.7, D.10, D.11).** All four escalation rows open gates under the single frozen enum value `escalation`, and a list entry carries only `{gateId, gateType, generation, status}` — **nothing on the wire says which escalation row opened a listed gate.** So in D.6, D.7, D.10, and D.11 the **drift branch never fires** — no listed escalation entry is ever acked `superseded` from an escalation row. **The list call itself is NOT skipped for the two escalation rows that have a Step 0 (D.7, D.11):** since #471, `{ status: 'absent' }` on those rows issues `cockpit_gate_list` in order to reach the **same-generation adoption branch** (per #471 / SC-006), which keys on generation *equality*, not on recovering the dispatch subtype — condition 2 does not apply and no supersession occurs. Every listed entry that is not a same-generation non-terminal match falls through to draft-then-open without an ack. D.6 and D.10 have no Step 0, so they genuinely issue no list call.
+**Consequence — the drift branch is DISABLED for `gateType: 'escalation'` (D.7, D.10, D.11).** All three escalation rows open gates under the single frozen enum value `escalation`, and a list entry carries only `{gateId, gateType, generation, status}` — **nothing on the wire says which escalation row opened a listed gate.** So in D.7, D.10, and D.11 the **drift branch never fires** — no listed escalation entry is ever acked `superseded` from an escalation row. **The list call itself is NOT skipped for the two escalation rows that have a Step 0 (D.7, D.11):** since #471, `{ status: 'absent' }` on those rows issues `cockpit_gate_list` in order to reach the **same-generation adoption branch** (per #471 / SC-006), which keys on generation *equality*, not on recovering the dispatch subtype — condition 2 does not apply and no supersession occurs. Every listed entry that is not a same-generation non-terminal match falls through to draft-then-open without an ack. D.10 has no Step 0, so it genuinely issues no list call.
 
 **The plugin MUST NOT recover the subtype by parsing the `generation` string.** `generation` is an opaque `z.string().min(1)` on the wire with no format contract; the `<subtype>:<triggeringLabelOrState>:<occurrence>` shape in § Generation discriminator (UI mode) is a plugin-side authoring convention, not a wire guarantee — a mis-parse here destroys a live operator gate.
 
@@ -727,7 +750,7 @@ Call-time errors here are handled DIFFERENTLY from `cockpit_gate_open` call-time
 
 **Source of truth**: Read `to` and `labels` from the enriched doorbell line per § Enriched-line dispatch contract E3 — no per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check on the enriched-line path; bare / malformed lines take the fallback path per FR-005. The ledger row carries `· source: enriched-line` on the enriched-line path (no suffix on fallback) per § Enriched-line dispatch contract E6.
 
-**Dispatch**: Structurally identical to D.2; the only difference is the scope passed to the subagent — an artifact file (D.2) vs. a PR reference (D.3).
+**Dispatch**: The post-validate `waiting-for:implementation-review` gate is a **final human approval** (moved post-validate by engine epic generacy-ai/generacy#1120). The engine has already run review → remediate → validate server-side; there is **no fresh verdict to compute cluster-side and no `cockpit-reviewer` subagent is spawned** (FR-001 / SC-002). `auto` renders the engine's findings from the gate body and offers a merge/hold/reject decision — see § Gate contract G.8. The **trigger, Source-of-truth, and Step 0** blocks are preserved from the pre-#1120 contract (identity/drift/adoption machinery — gateType stays `implementation-review`, generation = PR head SHA); only the analysis + verdict-application content below changed.
 
 0. **Step 0 — pre-draft gate-status check (UI mode only).** Before spawning any drafting subagent or fetching any context, check whether an existing operator-inbox gate already covers this event. Skip Step 0 entirely under `ResolvedGateMode === "local"`; under `ui`:
 
@@ -743,19 +766,13 @@ Call-time errors here are handled DIFFERENTLY from `cockpit_gate_open` call-time
    3. **Error handling — classify the typed error; only a literal `absent` means "no existing gate".** Both tools return `{ status: 'ok', data }` or `{ status: 'error', class, detail }`; four classes are reachable: `query-unreachable` (sustained outage after the tool's retry budget), `invalid-args` (deterministic caller bug), `internal` (deterministic server/tool bug), `transport` (call never reached the query surface). Classify per § Pre-draft check — shared rules → **Gate-query error taxonomy** and take that row's action. **MUST NOT** collapse ANY error class to `status: 'absent'`, and MUST NOT fall through to the draft-then-open flow on any of them: every class aborts this event's dispatch, writes its ledger row (`<issue-ref> · <transition-class> · pre-draft-check · error: <class> — <detail> · source: ui-gate`; the `query-unreachable` row's detail is the verbatim `aborting sweep for this event`), prints the visible operator-facing error line, and continues with the NEXT event in the batch.
 
 1. **Resolve PR** — from `cockpit status --json`, get the issue's associated PR ref (`<owner>/<repo>#<pr-n>`).
-2. **Spawn review-verdict analyzer subagent** — same subagent as D.2, invoked with the PR ref as scope:
-   ```
-   subagent_type: "cockpit-reviewer"
-   description: "Code review PR #<n>"
-   model: <cockpit.auto.agents.reviewer.model ?? cockpit.auto.agents.default.model — OMIT the line when neither is set>
-   effort: <cockpit.auto.agents.reviewer.effort ?? cockpit.auto.agents.default.effort — OMIT the line when neither is set>
-   prompt: <PR ref + review instructions + return-schema directive>
-   ```
-   The prompt carries only the PR reference. `model`/`effort` are read from the `cockpitAutoConfig` loaded at pre-flight (§ step 1). Behavioral contract: the `cockpit-reviewer` agent definition. It returns strict JSON per the SB.2 schema — the parent renders the parsed findings as a findings-summary table; it never restates the JSON verbatim.
-3. **Present fused verdict gate** — same as D.2 (see § Gate contract G.2).
-4. **Apply verdict** — same as D.2. On `request-changes`, run the D.2 four-step guardrail; the `<acting-bot-login>` used in the Leg-2 GraphQL filter is the PR-author credential (single-credential rule — the same account that opened the PR posts the review), so it MUST match the `viewer.login` seen by `gh api graphql -f query='{ viewer { login } }'` in the same session. The `<owner>/<repo>/<pr-n>` triple comes from step 1's `cockpit status --json` result.
+2. **Render findings from the gate body** — the engine has already run review → remediate → validate server-side and wrote its remaining findings into the gate body. Parse the findings from the gate body and render them as a findings-summary table; **no `cockpit-reviewer` subagent is spawned** (FR-001 / SC-002). If the gate body carries no findings, render `| (none) | | | |`.
+3. **Present final-approval gate** (see § Gate contract G.8). In one assistant response: findings-summary table (from step 2) + single `AskUserQuestion` with options `approve` / `hold` / `reject` (in that order), header `Approve?` (≤ 12 chars), `multiSelect: false`.
+4. **Apply verdict**:
+   - `approve` → cockpit merge path (D.5 step 2): `cockpit_merge(issue=<issue-ref>)` — **merge on green, never on red** (invariant §1). The tool resolves the issue's linked PR internally.
+   - `hold` / `reject` → do nothing (the label stays; the gate re-fires when the operator or engine takes another action — mirrors D.4 `not yet`). No label writes.
 
-**Ledger line**: `<issue-ref> · waiting-for:implementation-review · review-analysis+<verdict> · <outcome>` — outcomes as in D.2.
+**Ledger line**: `<issue-ref> · waiting-for:implementation-review · implementation-review-approval+<verdict> · <outcome>` — outcomes: `merged (PR #<n>)` / `held` / `rejected` / `blocked: <reason>` (merge-path blocked reasons as in D.5) / `error: <description>`.
 
 ### D.4 — `waiting-for:manual-validation`
 
@@ -815,41 +832,19 @@ Call-time errors here are handled DIFFERENTLY from `cockpit_gate_open` call-time
 - Merge returns `result: "blocked"` → handle per `merge.md`'s decision tree (missing-label / missing-approval / draft / pending). For `pending`, defer to the watcher (do not poll); for other blocked reasons, ledger line and continue.
 - Infrastructure/runner failure → do not burn a fixer attempt; ledger line `infrastructure failure — <check names>` and continue.
 
-### D.6 — `completed:validate` (red) / merge red → bounded fixer subagent
+### D.6 — `completed:validate` (red) / merge red → ledger-only (engine-owned remediate)
 
 **Trigger**: `completed:validate` with an enriched line `checks: "red"` verdict (E4), OR (on `checks: absent | pending` fallback per Q4=B) a `cockpit_status(issue=<issue-ref>, json=true)` returning `checks_state == "red"`, OR a merge call in D.5 returned `result: "red"`.
 
 **Source of truth**: as D.5 — decisive `checks: "red"` fires the fixer without a per-event re-check; fallback on `absent | pending` or bare / malformed lines; `· source: enriched-line` suffix on the enriched-line path only (E6).
 
 **Dispatch**:
-1. **Classify failing checks** — infrastructure/runner failures abort without burning an attempt (repo-owned CI classes only: tests / lint / typecheck / build).
-2. **Spawn bounded fixer subagent** — runs **once autonomously** per red event. Invocation:
-   ```
-   subagent_type: "cockpit-fixer"
-   model: <cockpit.auto.agents.fixer.model ?? cockpit.auto.agents.default.model — OMIT the line when neither is set>
-   effort: <cockpit.auto.agents.fixer.effort ?? cockpit.auto.agents.default.effort — OMIT the line when neither is set>
-   description: "Fix red checks PR #<n>"
-   prompt: <PR ref + failing-check summaries + outcome-scoping directive + return-schema directive>
-   ```
-   `model`/`effort` are read from the `cockpitAutoConfig` loaded at pre-flight (§ step 1). The prompt is **outcome-scoped**, verbatim:
-   > "Make this specific red green (the named failing checks: `<check names>`). No refactors, no feature work, no scope expansion, no 'while I'm here' cleanups. If the fix requires design judgment (ambiguous root cause, multiple viable approaches, an architectural decision), stop and return `{fixed: false, reason: '<explanation>'}` instead of guessing."
-   Behavioral contract: the `cockpit-fixer` agent definition. Return contract: a single JSON value `{fixed: bool, summary, reason?}` — no error shape (errors surface as `{fixed: false, reason: "<error description>"}`).
-3. **Re-evaluate**:
-   - `{fixed: true, summary: …}` → loop back to D.5 (re-run merge; the re-check catches whether the fix actually turned checks green).
-   - `{fixed: false, summary: …, reason: …}` → present escalation gate (see § Gate contract G.4a) with options `Retry (re-run fixer)` / `Skip (session-local mute)` / `Stop (exit auto)`.
-4. **Apply escalation verdict**:
-   - `Retry` → re-run the fixer subagent **once** (operator-approved single re-run; the gate is the bound). Each Retry produces a new ledger line and a new subagent invocation.
-   - `Skip` → add `<issue-ref>` to the in-memory **session mute set**; ledger line; continue. **Labels untouched.**
-   - `Stop` → kill watch; run summary; exit auto cleanly. **No label writes.**
+1. **Classify failing checks** — infrastructure/runner failures are recorded as such (repo-owned CI classes only: tests / lint / typecheck / build).
+2. **Ledger line only — no subagent.** The engine's remediate loop owns red validate: it computes the verdict, loops delta-scoped re-reviews server-side, and re-fires `completed:validate` red as an engine gate (remediation / remediation-limit). `auto` **does not** spawn a `cockpit-fixer` subagent, does not present an escalation gate, and does not write labels here (FR-001, Q4 / SC-002). Write the ledger line and continue.
 
-The fixer runs **once autonomously** per red event; each further run requires the escalation gate's Retry. Bounded by outcome scope, not file scope.
+**Never merge on red** — the merge path (D.5) exits on `result: merged` only (invariant §1); this row never advances to merge.
 
-**Escalation-gateType note (UI mode).** D.6 has no Step 0, but its G.4a gate opens under `gateType: 'escalation'` — shared with D.7 (G.4b), D.10 (G.4c), and D.11 (G.4d) — and is covered by the § Pre-draft check — shared rules **generation-drift branch guard**: no other row's drift branch may ack a D.6 gate `superseded`; the drift branch is disabled for `escalation` outright ([generacy-ai/generacy#1046](https://github.com/generacy-ai/generacy/issues/1046)).
-
-**Ledger lines** (mandatory per-attempt):
-- Successful fix: `<issue-ref> · completed:validate:red · fixer · fixed`.
-- Unfixed (about to escalate): `<issue-ref> · completed:validate:red · fixer · unfixed → escalation`.
-- Escalation outcome: `<issue-ref> · completed:validate:red · fixer+escalation-gate · <retry | skip (session-local mute) | stop (exit)>`.
+**Ledger line**: `<issue-ref> · completed:validate:red · (no-op) · engine-owned remediate` — the red validate is engine-owned and re-fires as an engine gate; if the failing checks are infrastructure/runner failures, append `— infrastructure failure: <check names>`.
 
 ### D.7 — `agent:error` / `failed:*` → escalation gate (Requeue path)
 
@@ -866,7 +861,7 @@ The fixer runs **once autonomously** per red event; each further run requires th
    2. Call `cockpit_gate_status({ issueRef, gateType, generation, runId })` — the three semantic inputs verbatim AND, under `runIdEnabled === true`, the pre-flight-derived `runId`; the `runId` field is OMITTED under `runIdEnabled === false` (V6). The `runId` is read verbatim from loop state; NO consumer re-derives (V2 / FR-014). The tool returns `{ gateId, status: 'open' | 'answered' } | { gateId: null, status: 'absent' }`. Branch on the return:
       - **`{ status: 'open' }`** — a gate is already pending at exactly this `gateId`. Do NOT spawn the drafting subagent. Record a partial `openGates` entry `{gateId, gateType, generation, issueRef, status: 'open', transitionClass, dispatchClass}` — `dispatchClass` is THIS row's `D.n` identifier, MANDATORY (§ D.12 routing on `(dispatchClass, optionId)`); no `inboxUrl`/`title`/`askedAt`; the "one pointer line" is NOT printed. Continue to the next event.
       - **`{ status: 'answered' }`** — answered but not yet resolved by a D.12 event this session. Do NOT spawn the drafting subagent. Record a partial `openGates` entry (same shape, `status: 'answered'`), increment `answeredGateSweepCounter[gateId]` (per § step 3 **Counter semantics**: this record-time increment IS the entry's count for the sweep in which it was added), and continue to the next event; D.12 redelivery + `deliveryId` dedup consumes the answer.
-      - **`{ status: 'absent' }`** — no gate at this exact `gateId`. **The generation-drift branch is DISABLED for this row.** D.7 opens `gateType: 'escalation'` (shared by D.6/D.7/D.10/D.11); a `cockpit_gate_list` entry carries only `{gateId, gateType, generation, status, runId}`, so the § Pre-draft check — shared rules **generation-drift branch guard** condition 2 fails — superseding could destroy another escalation row's live gate. Do NOT recover the subtype by parsing `generation` (opaque wire string). **Residual limitation**: escalation-subtype drift is undetectable; a stale escalation gate stays non-terminal alongside the fresh one ([generacy-ai/generacy#1046](https://github.com/generacy-ai/generacy/issues/1046)). **However, the SAME-generation adoption branch DOES fire on this row (per #471 / SC-006)** — it keys on `gateId` identity, not subtype. Call `cockpit_gate_list({ issueRef, gateType })` (MUST NOT carry `runId` per FR-011 / R4) and iterate `result.gates`:
+      - **`{ status: 'absent' }`** — no gate at this exact `gateId`. **The generation-drift branch is DISABLED for this row.** D.7 opens `gateType: 'escalation'` (shared by D.7/D.10/D.11); a `cockpit_gate_list` entry carries only `{gateId, gateType, generation, status, runId}`, so the § Pre-draft check — shared rules **generation-drift branch guard** condition 2 fails — superseding could destroy another escalation row's live gate. Do NOT recover the subtype by parsing `generation` (opaque wire string). **Residual limitation**: escalation-subtype drift is undetectable; a stale escalation gate stays non-terminal alongside the fresh one ([generacy-ai/generacy#1046](https://github.com/generacy-ai/generacy/issues/1046)). **However, the SAME-generation adoption branch DOES fire on this row (per #471 / SC-006)** — it keys on `gateId` identity, not subtype. Call `cockpit_gate_list({ issueRef, gateType })` (MUST NOT carry `runId` per FR-011 / R4) and iterate `result.gates`:
         - **`result.truncated === true` AND no same-generation entry in the returned page** — treat as a query-unreachable error per sub-step 3 (abort with a visible error); do NOT fall through to draft-fresh.
         - **Non-terminal gate at the SAME `generation`** (`generation === <this event's fresh generation>` AND `status ∈ {open, answered}`) — a prior run opened this SAME escalation gate; `cockpit_gate_status` returned `absent` only because the current run's `runId` derives a DIFFERENT 4-segment `gateId`. Do **NOT** draft, do **NOT** open, do **NOT** supersede. Adopt: add a `GateRecord` under `row.gateId` with `{gateId: row.gateId, gateType: row.gateType, generation: row.generation, status: row.status, runId: row.runId, issueRef, dispatchClass: 'D.7', transitionClass}` — the per-entry `runId` is the ROW's originating `runId` verbatim (per FR-003), NOT the current run's; if `row.status === 'answered'`, set `answeredGateSweepCounter[row.gateId] = 1` in the same atomic step (FR-010 / SC-012). Continue to the next event. (This branch is the sole adoption path for issues entering scope after the startup sweep.)
         - **Anything else** (drift entries at different generation; same-generation but terminal; empty list) — do **NOT** ack anything `superseded`; fall through to the draft-then-open flow (below).
@@ -983,7 +978,7 @@ If `cockpit_status` fails for one or more ad-hoc refs during the helper call, om
    2. Call `cockpit_gate_status({ issueRef, gateType, generation, runId })` — the three semantic inputs verbatim AND, under `runIdEnabled === true`, the pre-flight-derived `runId`; the `runId` field is OMITTED under `runIdEnabled === false` (V6). The `runId` is read verbatim from loop state; NO consumer re-derives (V2 / FR-014). The tool returns `{ gateId, status: 'open' | 'answered' } | { gateId: null, status: 'absent' }`. Branch on the return:
       - **`{ status: 'open' }`** — a gate is already pending at exactly this `gateId`. Do NOT spawn the drafting subagent. Record a partial `openGates` entry `{gateId, gateType, generation, issueRef, status: 'open', transitionClass, dispatchClass}` — `dispatchClass` is THIS row's `D.n` identifier, MANDATORY (§ D.12 routing); no `inboxUrl`/`title`/`askedAt`; the "one pointer line" is NOT printed. Continue to the next event.
       - **`{ status: 'answered' }`** — answered but not yet resolved by a D.12 event this session. Do NOT spawn the drafting subagent. Record a partial `openGates` entry (same shape, `status: 'answered'`), increment `answeredGateSweepCounter[gateId]` (per § step 3 **Counter semantics**: this record-time increment IS the entry's count for the sweep in which it was added), and continue to the next event; D.12 redelivery + `deliveryId` dedup consumes the answer.
-      - **`{ status: 'absent' }`** — no gate at this exact `gateId`. **The generation-drift branch is DISABLED for this row**, for the same reason as D.7: D.11 opens `gateType: 'escalation'` (shared with D.6/D.7/D.10) and a `cockpit_gate_list` entry (`{gateId, gateType, generation, status, runId}`) does not say which row opened a listed gate — the § Pre-draft check — shared rules **generation-drift branch guard** condition 2 fails; superseding could destroy another escalation row's live gate. Do NOT recover the subtype by parsing `generation` (opaque wire string). **Residual limitation**: escalation-subtype drift is undetectable; a stale escalation gate stays non-terminal alongside the fresh one ([generacy-ai/generacy#1046](https://github.com/generacy-ai/generacy/issues/1046)). **However, the SAME-generation adoption branch DOES fire on this row (per #471 / SC-006)** — it keys on `gateId` identity, not subtype. Call `cockpit_gate_list({ issueRef, gateType })` (MUST NOT carry `runId` per FR-011 / R4) and iterate `result.gates`:
+      - **`{ status: 'absent' }`** — no gate at this exact `gateId`. **The generation-drift branch is DISABLED for this row**, for the same reason as D.7: D.11 opens `gateType: 'escalation'` (shared with D.7/D.10) and a `cockpit_gate_list` entry (`{gateId, gateType, generation, status, runId}`) does not say which row opened a listed gate — the § Pre-draft check — shared rules **generation-drift branch guard** condition 2 fails; superseding could destroy another escalation row's live gate. Do NOT recover the subtype by parsing `generation` (opaque wire string). **Residual limitation**: escalation-subtype drift is undetectable; a stale escalation gate stays non-terminal alongside the fresh one ([generacy-ai/generacy#1046](https://github.com/generacy-ai/generacy/issues/1046)). **However, the SAME-generation adoption branch DOES fire on this row (per #471 / SC-006)** — it keys on `gateId` identity, not subtype. Call `cockpit_gate_list({ issueRef, gateType })` (MUST NOT carry `runId` per FR-011 / R4) and iterate `result.gates`:
         - **`result.truncated === true` AND no same-generation entry in the returned page** — treat as a query-unreachable error per sub-step 3 (abort with a visible error); do NOT fall through to draft-fresh.
         - **Non-terminal gate at the SAME `generation`** (`generation === <this event's fresh generation>` AND `status ∈ {open, answered}`) — a prior run opened this SAME escalation gate; `cockpit_gate_status` returned `absent` only because the current run's `runId` derives a DIFFERENT 4-segment `gateId`. Do **NOT** draft, do **NOT** open, do **NOT** supersede. Adopt: add a `GateRecord` under `row.gateId` with `{gateId: row.gateId, gateType: row.gateType, generation: row.generation, status: row.status, runId: row.runId, issueRef, dispatchClass: 'D.11', transitionClass}` — the per-entry `runId` is the ROW's originating `runId` verbatim (per FR-003), NOT the current run's; if `row.status === 'answered'`, set `answeredGateSweepCounter[row.gateId] = 1` in the same atomic step (FR-010 / SC-012). **Also add `<issue-ref>` to the in-memory `dispatched-issues` set** — this run's SIBLING D.11 event (different generation hash) MUST take the `already-dispatched` exit; adopting without setting the sibling flag would let it open a second gate for the same incident. Continue to the next event.
         - **Anything else** (drift entries at different generation; same-generation but terminal; empty list) — do **NOT** ack anything `superseded`. **Now apply the D.11 ordering exception above** — if `<issue-ref>` is in `dispatched-issues`, write the `already-dispatched` ledger row and return; otherwise fall through to the draft-then-open flow (below).
@@ -1028,9 +1023,37 @@ If `cockpit_status` fails for one or more ad-hoc refs during the helper call, om
 
 **Never guess** — the escalation gate is the surface for any state class the playbook cannot dispatch.
 
-**Escalation-gateType note (UI mode).** D.10 has no Step 0, but its G.4c gate opens under `gateType: 'escalation'` — shared with D.6 (G.4a), D.7 (G.4b), and D.11 (G.4d) — and is covered by the § Pre-draft check — shared rules **generation-drift branch guard**: no other row's drift branch may ack a D.10 gate `superseded`; the drift branch is disabled for `escalation` outright ([generacy-ai/generacy#1046](https://github.com/generacy-ai/generacy/issues/1046)).
+**Escalation-gateType note (UI mode).** D.10 has no Step 0, but its G.4c gate opens under `gateType: 'escalation'` — shared with D.7 (G.4b) and D.11 (G.4d) — and is covered by the § Pre-draft check — shared rules **generation-drift branch guard**: no other row's drift branch may ack a D.10 gate `superseded`; the drift branch is disabled for `escalation` outright ([generacy-ai/generacy#1046](https://github.com/generacy-ai/generacy/issues/1046)).
 
 **Ledger line**: `<issue-ref> · <observed-state> · unrecognized-state · <skip (session-local mute) | stop (exit)>`.
+
+### D.13 — `waiting-for:remediation-limit`
+
+**Trigger**: An issue enters `waiting-for:remediation-limit` — the engine's remediate loop hit its retry cap without converging and raised the gate with the remaining findings in the gate body. Verbatim event string: `waiting-for:remediation-limit`. The row MUST be recognized so a remediation-limit label never falls through to D.10 (unknown-state escalation).
+
+**Source of truth**: Read `to` and `labels` from the enriched doorbell line per § Enriched-line dispatch contract E3 — no per-event `cockpit_status(epic=<epic-ref>, json=true)` re-check on the enriched-line path; bare / malformed lines take the fallback path per FR-005. The ledger row carries `· source: enriched-line` on the enriched-line path (no suffix on fallback) per § Enriched-line dispatch contract E6.
+
+**Dispatch**:
+0. **Step 0 — pre-draft gate-status check (UI mode only).** Before spawning any drafting subagent or fetching any context, check whether an existing operator-inbox gate already covers this event. Skip Step 0 entirely under `ResolvedGateMode === "local"`; under `ui`:
+
+   1. Derive `(gateType, generation)` for this event using the SAME per-gateType generation function the live path uses (§ UI-mode gate mapping generation-discriminator table). For this row `gateType = remediation-limit`. The `cockpit_gate_open` MCP tool derives the `gateId` from these inputs — the plugin never hand-builds a hash.
+   2. Call `cockpit_gate_status({ issueRef, gateType, generation, runId })` — pass the three semantic inputs verbatim AND, under `runIdEnabled === true`, the pre-flight-derived `runId` from § In-memory loop state additions; the `runId` field is OMITTED under `runIdEnabled === false` (V6). The `runId` is read verbatim from loop state; NO consumer re-derives (V2 / FR-014). The tool returns `{ gateId, status: 'open' | 'answered' } | { gateId: null, status: 'absent' }`. Branch on the return:
+      - **`{ status: 'open' }`** — a gate is already pending at exactly this `gateId`. Do NOT spawn the drafting subagent. Record a partial `openGates` entry `{gateId, gateType, generation, issueRef, status: 'open', transitionClass, dispatchClass}`, where `dispatchClass` is THIS row's `D.n` identifier — known at record time and MANDATORY (§ D.12 step 3 keys its live-state supersession check on it; § D.12 step 4 routes on `(dispatchClass, optionId)`). The reuse-path record has no `inboxUrl`/`title`/`askedAt` (the query does not return them). Continue to the next event. The "one pointer line" is NOT printed (per FR-005 it is scoped to `cockpit_gate_open` success, which alone carries `inboxUrl`).
+      - **`{ status: 'answered' }`** — answered, but no D.12 event has resolved it this session. Do NOT spawn the drafting subagent. Record the same partial entry with `status: 'answered'`, increment `answeredGateSweepCounter[gateId]` (per § step 3 **Counter semantics**: this record-time increment IS the entry's count for the sweep in which it was added; tick sites supply every subsequent sweep's increment), and continue to the next event. Downstream D.12 delivery consumes the answer via the redelivery + `deliveryId` dedup path.
+      - **`{ status: 'absent' }`** — no gate exists at this exact `gateId`. This row's `gateType` maps 1:1 onto this dispatch row, so the § Pre-draft check — shared rules **generation-drift branch guard** is satisfied and the drift branch MAY fire. Call `cockpit_gate_list({ issueRef, gateType })` — this drift-detection call MUST NOT carry `runId` (per FR-011 / R4; functional `cockpit_gate_list` calls are runId-agnostic — the sole `runId`-bearing list call in the run is the § step 1 § Pre-flight probe (UI mode) capability probe). The tool returns `{ gates: [{gateId, gateType, generation, status, runId}, ...], truncated?: boolean }`. Iterate `result.gates` and branch (same-generation is the more specific match and MUST be evaluated before drift):
+        - **`result.truncated === true` AND neither a same-generation entry NOR a drift entry is present in the returned page** — treat as a query-unreachable error per sub-step 3 (abort this event's sweep with a visible error); do NOT fall through to draft-fresh.
+        - **Non-terminal gate at the SAME `generation`** (`generation === <this event's fresh generation>` AND `status ∈ {open, answered}`) — a prior run opened this SAME natural gate at the SAME content (the current run's `runId` derives a different `gateId`). Do **NOT** draft, do **NOT** open, do **NOT** supersede — byte-identical to the § step 3 § Adoption pass `adopt-natural` branch (per #471 / SC-006). Adopt the row: add a `GateRecord` to `openGates` under `row.gateId` with `{gateId: row.gateId, gateType: row.gateType, generation: row.generation, status: row.status, runId: row.runId, issueRef, dispatchClass: 'D.13', transitionClass}` — the per-entry `runId` is the ROW's originating `runId` verbatim (per FR-003), NOT the current run's; if `row.status === 'answered'`, set `answeredGateSweepCounter[row.gateId] = 1` in the same atomic step (per FR-010 / SC-012). `inboxUrl`/`title`/`askedAt`/`originalDraft` are NOT populated (DATA GAP). Continue to the next event.
+        - **Non-terminal gate at a DIFFERENT `generation`** — generation drift. Call `cockpit_gate_ack(staleGateId, outcome: 'superseded', detail: 'generation drift — content changed since original draft (was g<old>, now g<new>)')` — under `runIdEnabled === true` this drift-branch ack ALSO passes the STALE row's originating `runId` verbatim (read from `row.runId`, per FR-003 — the ack path accepts-and-ignores `runId`, so the ack lands regardless of which run opened the stale gate); under `runIdEnabled === false` the `runId` field is OMITTED (V6). Then fall through to the draft-then-open flow below with the fresh generation.
+        - **Empty `gates` list** — no gate for this `(issueRef, gateType)` pair. Fall through to the draft-then-open flow below unchanged.
+   3. **Error handling — classify the typed error; only a literal `absent` means "no existing gate".** Both tools return `{ status: 'ok', data }` or `{ status: 'error', class, detail }`; four classes are reachable: `query-unreachable` (sustained outage after the tool's retry budget), `invalid-args` (deterministic caller bug), `internal` (deterministic server/tool bug), `transport` (call never reached the query surface). Classify per § Pre-draft check — shared rules → **Gate-query error taxonomy** and take that row's action. **MUST NOT** collapse ANY error class to `status: 'absent'`, and MUST NOT fall through to the draft-then-open flow on any of them: every class aborts this event's dispatch, writes its ledger row (`<issue-ref> · <transition-class> · pre-draft-check · error: <class> — <detail> · source: ui-gate`; the `query-unreachable` row's detail is the verbatim `aborting sweep for this event`), prints the visible operator-facing error line, and continues with the NEXT event in the batch.
+
+1. **Render findings from the gate body** — the engine wrote the remaining findings (the ones it could not converge within the remediation cap) into the gate body. Parse the findings from the gate body and render them; **no subagent is spawned** — the findings come from the engine gate body, not a cluster-side analyzer.
+2. **Present remediation-limit gate** (see § Gate contract G.9). In one assistant response: the remaining-findings rendering (from step 1) + single `AskUserQuestion` with options `resume remediation` / `stop` (in that order), header `Remediate?` (≤ 12 chars), `multiSelect: false`.
+3. **Apply verdict**:
+   - `resume remediation` → `cockpit_advance(issue=<issue-ref>, gate="remediation-limit")` — resets the engine's remediation counter **server-side** and resumes the remediate loop via the engine gate path (same pattern as D.4's `cockpit_advance(issue, gate="manual-validation")`; `cockpit_resume` is the WRONG verb — it is process/paused-issue resume, not a labeled-gate answer).
+   - `stop` → exit auto cleanly (kill watch; run summary). **No label writes** (add-only advance invariant §3).
+
+**Ledger line**: `<issue-ref> · waiting-for:remediation-limit · remediation-limit-gate · <outcome>` — outcomes: `resumed (advanced)` / `advance failed: <desc>` / `stop (exit)`.
 
 ### D.12 — `gate-answer`
 
@@ -1080,7 +1103,7 @@ If `cockpit_status` fails for one or more ad-hoc refs during the helper call, om
 6. Print the "one pointer line" for the new gate; write a ledger row noting the re-open, e.g., G.1's `<ref> · waiting-for:clarification · clarification-batch · make-changes (re-opened g<n>) · source: ui-gate`.
 7. On `cockpit_gate_open` call-time error at re-open, the § UI-mode fallback path fires for the revised draft (local `AskUserQuestion` on the same revised body). The discriminator was still recomputed and the original record still marked `superseded`, so a late answer under the original `gateId` is still `superseded` by gateId identity.
 
-**Interactions**: D.1–D.4, D.6, D.7, D.10, D.11 — under `ResolvedGateMode === "ui"` these classes' gates are OPENED via `cockpit_gate_open` instead of `AskUserQuestion`; the answer arrives as a D.12 event routed BACK to the same-class downstream handling (D.12 is the completion path, the label-driven dispatch the initiation path). D.5 — no gate; `cockpit_gate_open` is never called. D.8 — G.5 opens under `<epic-ref>` (sole per-issue exception); D.12 handles the answer identically and the ledger `<issue-ref>` slot carries `<epic-ref>`. D.9 / D.9a–D.9d — ledger-only, no gate. Fallback path (§ UI-mode fallback on `cockpit_gate_open` call error): if the INITIATION open errors, the local `AskUserQuestion` fires; no `openGates` record is created and no D.12 event arrives for that gate; the local flow writes the ledger row at resolution in the pre-change vocabulary with the `· source: ui-gate-fallback` suffix (distinct from clean UI `· source: ui-gate`).
+**Interactions**: D.1–D.4, D.7, D.10, D.11, D.13 — under `ResolvedGateMode === "ui"` these classes' gates are OPENED via `cockpit_gate_open` instead of `AskUserQuestion`; the answer arrives as a D.12 event routed BACK to the same-class downstream handling (D.12 is the completion path, the label-driven dispatch the initiation path). D.5 — no gate; `cockpit_gate_open` is never called. D.8 — G.5 opens under `<epic-ref>` (sole per-issue exception); D.12 handles the answer identically and the ledger `<issue-ref>` slot carries `<epic-ref>`. D.9 / D.9a–D.9d — ledger-only, no gate. Fallback path (§ UI-mode fallback on `cockpit_gate_open` call error): if the INITIATION open errors, the local `AskUserQuestion` fires; no `openGates` record is created and no D.12 event arrives for that gate; the local flow writes the ledger row at resolution in the pre-change vocabulary with the `· source: ui-gate-fallback` suffix (distinct from clean UI `· source: ui-gate`).
 
 **Ledger line** (per row of the § UI-mode gate mapping table): `<issue-ref> · <transition-class> · <original-action> · <outcome> · source: ui-gate` — `<original-action>` reuses the pre-change vocabulary (`clarification-batch`, `review-analysis+advance`, `phase-queue-gate`, `escalation-gate`, `filing-gate+scope-add`, `scope-drained-gate`, etc.); `<outcome>` reuses the local-vocabulary `applied` outcomes (`advanced`, `queued P<n> (<N> issues)`, `manually validated`, `filed + queued (<new-ref>)`, `keep-watching`, `finish (tracking closed)`, etc.) OR the UI-specific outcomes (`superseded (no record)`, `superseded (stale generation)`, `superseded (state advanced)`, `failed: <detail>`). Additional row for `make-changes` (revised-draft re-open): outcome slot carries `make-changes (re-opened g<n>)`.
 
@@ -1188,9 +1211,9 @@ Both `Make changes` and the "Other" free-text path parse per-question directives
 
 The `Make changes` re-loop re-presents only changed questions plus the same batch gate until Approve or Skip; the "Other" path applies directly, no extra round-trip. Zero directives from a `Make changes` turn ⇒ re-present the entire batch and fire the same gate again.
 
-### G.2 — Review verdict gate (artifact and implementation)
+### G.2 — Review verdict gate (artifact)
 
-**Trigger**: D.2 (`waiting-for:<artifact>-review`) or D.3 (`waiting-for:implementation-review`).
+**Trigger**: D.2 (`waiting-for:<artifact>-review`) only. (D.3 `waiting-for:implementation-review` is now a final-approval gate — see § Gate contract G.8 — and no longer routes through G.2.)
 
 **Presentation** (same response as the `AskUserQuestion` call) — the findings-summary table verbatim:
 
@@ -1255,28 +1278,15 @@ Manual validation checklist for <issue-ref> (PR <pr-number>):
 
 The scenarios and acceptance_checks lists come **only** from the subagent hop — no inline artifact reads in the parent.
 
-### G.4 — Escalation gate (three subtypes)
+### G.4 — Escalation gate (four subtypes)
 
 **Trigger**: One of:
-- (a) `completed:validate` red / merge red after fixer runs and returns `{fixed: false, …}` (D.6).
 - (b) `agent:error` / `failed:*` (D.7).
 - (d) `waiting-for:merge-conflicts` (D.11).
 - (c) Unrecognized / ambiguous state (D.10).
 - (e) Consecutive `invalid-cursor` fault (§ step 5 Branch B; counter ≥ 2, streak not yet operator-acknowledged).
 
 **Presentation** (same response as the `AskUserQuestion` call) — evidence formatted per subtype.
-
-**(a) Validate-red / merge-red**:
-
-```markdown
-Fixer could not resolve <issue-ref> (PR <pr-number>):
-
-<fixer summary — the subagent's `summary` field>
-
-Reason (from fixer): <fixer's `reason` field>
-
-Failing checks: <check names>
-```
 
 **(b) `agent:error` / `failed:*`**: populated verbatim from the diagnosis subagent's verdict (D.7 step 2); no in-parent re-analysis; the option set is unchanged. First-dispatch presentation:
 
@@ -1334,22 +1344,20 @@ Observed: <raw state from cockpit status --json>
 Streamed event: <original transition line>
 ```
 
-**Gate invocation** (per § AskUserQuestion invocation contract — one call per escalation gate; uniform across all five subtypes): question `How to proceed on <issue-ref>?` (a/b/c/d) or `How to proceed on the consecutive invalid-cursor fault on <epic-ref>?` ((e); per-epic, not per-issue) · header `Escalate` (≤ 12 chars) · `multiSelect: false` · options subtype-specific, in the listed order:
+**Gate invocation** (per § AskUserQuestion invocation contract — one call per escalation gate; uniform across all four subtypes): question `How to proceed on <issue-ref>?` (b/c/d) or `How to proceed on the consecutive invalid-cursor fault on <epic-ref>?` ((e); per-epic, not per-issue) · header `Escalate` (≤ 12 chars) · `multiSelect: false` · options subtype-specific, in the listed order:
 
   | Subtype | Options |
   |---------|---------|
-  | (a) validate-red / merge-red | `Retry (re-run fixer)` / `Skip (session-local mute)` / `Stop (exit auto)` |
   | (b) agent:error / failed:* | `Requeue (cockpit resume)` / `Skip (session-local mute)` / `Stop (exit auto)` |
   | (d) merge-conflicts | `I've resolved it — advance the gate` / `Skip (session-local mute)` / `Stop (exit auto)` |
   | (c) unrecognized state | `Skip (session-local mute) (Recommended)` / `Stop (exit auto)` — **NEVER Retry** |
   | (e) consecutive `invalid-cursor` fault | `Continue degraded (sweep-per-batch) (Recommended)` / `Stop (exit auto)` — **NEVER Retry** (single call; per-epic, not per-issue) |
 
 **Post-gate mechanism sentences**:
-- `Retry` (subtype a only) → re-run the fixer subagent **once**. If `{fixed: true}`, loop back to D.5; if `{fixed: false}`, re-present the escalation gate.
 - `Requeue` (subtype b only) → `cockpit_resume(issue=<issue-ref>)`. If tool missing, degrade to Skip with explicit ledger note.
 - `I've resolved it — advance the gate` (subtype d only) → `cockpit_advance(issue=<issue-ref>, gate="merge-conflicts")`. On success, ledger `advanced` and continue. On typed-error return, re-present the D.11 gate with the tool's `code`/`message` prepended verbatim (§ D.11 dispatch step 3).
 - `Continue degraded (sweep-per-batch)` (subtype (e) only) → see § G.4(e) post-gate behavior.
-- `Skip` (subtypes a/b/c/d) → add `<issue-ref>` to the in-memory **session mute set**; ledger line; continue. **Labels untouched.** Subtype (e) does NOT expose `Skip` — the fault is per-epic (cursor mechanism), not per-issue.
+- `Skip` (subtypes b/c/d) → add `<issue-ref>` to the in-memory **session mute set**; ledger line; continue. **Labels untouched.** Subtype (e) does NOT expose `Skip` — the fault is per-epic (cursor mechanism), not per-issue.
 - `Stop` (all subtypes) → kill watch process; print run summary; exit auto cleanly. **No label writes.**
 
 ### G.4(e) — Escalation: consecutive `invalid-cursor` fault
@@ -1467,13 +1475,55 @@ Per-ref disposition ordering matches the tracking issue's task-list markdown (fi
 
 G.7 fires exactly once per drain event; subsequent drains (after `Keep watching` and further ad-hoc work reaching terminal) fire again as fresh gates.
 
-## UI-mode gate mapping (G.1–G.7)
+### G.8 — Implementation-review final-approval gate
 
-Applies only when `ResolvedGateMode === "ui"` (from § step-1 `--gates` resolution). Under `local`, every gate presents via `AskUserQuestion` per § Gate contract above and this section is dead prose. Under `ui`, every gate contract G.1–G.7 that maps to a per-issue wire record opens a remote gate via `cockpit_gate_open(GateOpenParams)` instead of `AskUserQuestion`; the operator's answer arrives as a D.12 `gate-answer` event and D.12 routes `{optionId, freeText}` onto the SAME downstream handling the local `AskUserQuestion` path performs today — no new downstream behavior.
+**Trigger**: D.3 (`waiting-for:implementation-review`, now post-validate). The engine has already run review → remediate → validate server-side; the gate fires **after** `completed:validate` green as the final human approval before merge. There is **no fresh verdict to compute cluster-side and no `cockpit-reviewer` subagent is spawned** (FR-001 / SC-002).
 
-**`runId` — compute-once, threaded as an explicit literal, propagated to gate-verb-issuing subagents (per #469 / FR-014 / FR-015 / FR-016 / R8).** Under `runIdEnabled === true`, EVERY UI-mode `cockpit_gate_open` invocation in a drafting D.n row (D.1 clarification, D.2 artifact-review, D.3 implementation-review, D.4 manual-validation, D.6 G.4a escalation, D.7 G.4b escalation, D.8 G.5 phase-queue, D.10 G.4c escalation, D.11 G.4d escalation) passes the run's pre-flight-derived `runId` (per § step 1 Pre-flight `runId` derivation and § In-memory loop state additions) VERBATIM on the payload. Also carrying `runId` under `runIdEnabled === true`: the § step 3 startup sweep's `cockpit_gate_open` calls (every extended-trigger row), the § UI-mode fallback branch's local counterpart (wire shape N/A), Form 3's G.6 filing gate open under the TENTATIVE UI window, and every G.5 `phase-queue` open (including the synthetic `phase-bootstrap` variant). Under `runIdEnabled === false` the `runId` field is OMITTED from every payload (V6). No `runId` column is added to the mapping-table rows below because `runId` is per-run, NOT per-gateType — the same value is passed to every open call in the run.
+**Presentation** (same response as the `AskUserQuestion` call) — the engine's remaining findings parsed from the **gate body** and rendered if present. No findings-table-from-JSON regeneration (the findings already exist in the gate body); when the gate body carries no findings, render the single body row `| (none) | | | |`:
 
-**Subagent dispatch prompt template addition (per FR-015 / R8).** Under `runIdEnabled === true`, every subagent dispatch prompt that spawns a gate-verb-issuing subagent (D.1 clarification-drafter SB.1, D.2 review-verdict analyzer, D.3 review-verdict analyzer, D.4 manual-validation summarizer, D.7 diagnosis subagent, D.11 merge-conflicts diagnosis subagent) gains ONE additional line stating the run's `runId` verbatim:
+```markdown
+Final approval for <issue-ref> (PR <pr-number>):
+
+| # | File:line | Finding | Blocking? |
+|---|-----------|---------|-----------|
+| 1 | <path>:<line> | <finding from gate body> | Yes |
+| ... |
+```
+
+**Gate invocation** (per § AskUserQuestion invocation contract — one call per final-approval gate): question `Approve <issue-ref> for merge?` · header `Approve?` (≤ 12 chars) · `multiSelect: false` · exactly three discrete options in order: `approve` / `hold` / `reject`.
+
+**Post-gate behavior**:
+- `approve` → route into the **cockpit merge path** (D.5 step 2): `cockpit_merge(issue=<issue-ref>)` — merge on green, **never** on red (invariant §1).
+- `hold` → **no-op**: the label stays; the gate re-fires on the next doorbell (byte-mirrors D.4 `not yet`; add-only advance invariant §3). No label writes.
+- `reject` → **no-op**: same as `hold` (label stays, gate re-fires, no label writes).
+
+Resuming remediation is **out of scope** for this gate — that path is the separate remediation-limit gate (G.9 / D.13). No `cockpit-reviewer` subagent and no request-changes guardrail run here.
+
+### G.9 — Remediation-limit gate
+
+**Trigger**: D.13 (`waiting-for:remediation-limit`) — the engine's remediate loop hit its retry cap without converging and raised the gate with the remaining findings in the gate body.
+
+**Presentation** (same response as the `AskUserQuestion` call) — the remaining findings parsed from the **gate body** and rendered. **No subagent** — the findings come from the engine gate body, not a cluster-side analyzer:
+
+```markdown
+Remediation limit reached for <issue-ref> (PR <pr-number>):
+
+<remaining findings rendered from the gate body>
+```
+
+**Gate invocation** (per § AskUserQuestion invocation contract — one call per remediation-limit gate): question `Resume remediation on <issue-ref>?` · header `Remediate?` (≤ 12 chars) · `multiSelect: false` · exactly two discrete options in order: `resume remediation` / `stop`.
+
+**Post-gate behavior**:
+- `resume remediation` → `cockpit_advance(issue=<issue-ref>, gate="remediation-limit")` — resets the engine's remediation counter **server-side** and resumes the remediate loop via the engine gate path (same pattern as D.4's `cockpit_advance(issue, gate="manual-validation")`; `cockpit_resume` is the WRONG verb).
+- `stop` → exit auto cleanly (kill watch; run summary). **No label writes** (add-only advance invariant §3).
+
+## UI-mode gate mapping (G.1–G.9)
+
+Applies only when `ResolvedGateMode === "ui"` (from § step-1 `--gates` resolution). Under `local`, every gate presents via `AskUserQuestion` per § Gate contract above and this section is dead prose. Under `ui`, every gate contract G.1–G.9 that maps to a per-issue wire record opens a remote gate via `cockpit_gate_open(GateOpenParams)` instead of `AskUserQuestion`; the operator's answer arrives as a D.12 `gate-answer` event and D.12 routes `{optionId, freeText}` onto the SAME downstream handling the local `AskUserQuestion` path performs today — no new downstream behavior.
+
+**`runId` — compute-once, threaded as an explicit literal, propagated to gate-verb-issuing subagents (per #469 / FR-014 / FR-015 / FR-016 / R8).** Under `runIdEnabled === true`, EVERY UI-mode `cockpit_gate_open` invocation in a drafting D.n row (D.1 clarification, D.2 artifact-review, D.3 implementation-review, D.4 manual-validation, D.7 G.4b escalation, D.8 G.5 phase-queue, D.10 G.4c escalation, D.11 G.4d escalation, D.13 remediation-limit) passes the run's pre-flight-derived `runId` (per § step 1 Pre-flight `runId` derivation and § In-memory loop state additions) VERBATIM on the payload. Also carrying `runId` under `runIdEnabled === true`: the § step 3 startup sweep's `cockpit_gate_open` calls (every extended-trigger row), the § UI-mode fallback branch's local counterpart (wire shape N/A), Form 3's G.6 filing gate open under the TENTATIVE UI window, and every G.5 `phase-queue` open (including the synthetic `phase-bootstrap` variant). Under `runIdEnabled === false` the `runId` field is OMITTED from every payload (V6). No `runId` column is added to the mapping-table rows below because `runId` is per-run, NOT per-gateType — the same value is passed to every open call in the run.
+
+**Subagent dispatch prompt template addition (per FR-015 / R8).** Under `runIdEnabled === true`, every subagent dispatch prompt that spawns a gate-verb-issuing subagent (D.1 clarification-drafter SB.1, D.2 review-verdict analyzer, D.4 manual-validation summarizer, D.7 diagnosis subagent, D.11 merge-conflicts diagnosis subagent) gains ONE additional line stating the run's `runId` verbatim:
 
 ```
 runId: "<runId-literal>"
@@ -1481,7 +1531,7 @@ runId: "<runId-literal>"
 
 The subagent quotes the literal verbatim on every gate verb it issues (`cockpit_gate_open`, `cockpit_gate_ack`, `cockpit_gate_status`). Subagents MUST NOT re-derive `runId` from the ledger filename, an environment variable, a shared file, or any other source — the parent is the sole authority (per V2 / FR-014). Under `runIdEnabled === false` the `runId:` line is OMITTED from the prompt entirely (matching the wire shape). Subagents that issue no gate verb need no `runId` line. Rationale: explicit-literal propagation matches every other run-scoped value passed to subagents; re-deriving from the ledger filename would break because the directory accumulates one file per run, so a subagent opening a stale prior-run file would derive the WRONG `runId`.
 
-**Row count**: EXACTLY 10 rows below — G.1, G.2, G.3, G.4a, G.4b, G.4c, G.4d, G.5, G.6, G.7 — never 7 (consolidated) or 11 (including G.4e). G.4(e) escalation stays local-only — the per-epic in-memory cursor-fault has no `<issue-ref>` to key on, so the wire record's per-issue fields (`issueRef`, `issueTitle`, `issueUrl`, `branch`) cannot be populated for it; see § G.4(e) exclusion note below.
+**Row count**: EXACTLY 11 rows below — G.1, G.2, G.3, G.4b, G.4c, G.4d, G.5, G.6, G.7, G.8, G.9 — never including G.4a (D.6 no longer opens a gate — it is ledger-only; the red-validate remediate loop is engine-owned) or G.4e. G.4(e) escalation stays local-only — the per-epic in-memory cursor-fault has no `<issue-ref>` to key on, so the wire record's per-issue fields (`issueRef`, `issueTitle`, `issueUrl`, `branch`) cannot be populated for it; see § G.4(e) exclusion note below.
 
 **Row shape**: `Gate | transitionClass | title | drafted body (source) | options (optionId → label / recommended?) | freeTextAffordance | downstream action per optionId | ledger action verb`. Column meanings:
 
@@ -1502,25 +1552,27 @@ The frozen `gateKey` is `<issueRef>:<gateType>:<generation>` and `gateId = sha25
 | `artifact-review` | artifact kind + review-branch head SHA |
 | `implementation-review` | PR head SHA |
 | `manual-validation` | PR head SHA |
+| `remediation-limit` | PR head SHA + remediation counter (or remediation counter + remaining-findings hash) |
 | `escalation` | subtype + triggering label/state + occurrence counter |
 | `phase-queue` | phase number (`P<next>`) |
 | `filing` | draft hash over `{title, body, labels}` (a `make-changes` edit changes it naturally) |
 | `scope-drained` | tracking ref + drain counter |
 
-**DATA GAPS (follow-up).** The parent loop does not yet compute several of these inputs (review-branch / PR **head SHA** / **prNumber**, durable escalation **occurrence counter**, `scope-drained` **drain counter**, stable clarification **answer-set hash**), so re-asks across restart/takeover are not idempotent for the affected gateTypes; `phase-queue` and `filing` have no gap. **Separately**, `escalation` has a distinct gap: the single enum value is shared by four dispatch rows (D.6 / D.7 / D.10 / D.11) and the query surface exposes no subtype discriminator, so the pre-draft check's generation-drift branch is disabled for it — see § Pre-draft check — shared rules **generation-drift branch guard**; upstream [generacy-ai/generacy#1046](https://github.com/generacy-ai/generacy/issues/1046).
+**DATA GAPS (follow-up).** The parent loop does not yet compute several of these inputs (review-branch / PR **head SHA** / **prNumber**, durable escalation **occurrence counter**, `remediation-limit` **remediation counter** / **remaining-findings hash**, `scope-drained` **drain counter**, stable clarification **answer-set hash**), so re-asks across restart/takeover are not idempotent for the affected gateTypes; `phase-queue` and `filing` have no gap. **Separately**, `escalation` has a distinct gap: the single enum value is shared by three dispatch rows (D.7 / D.10 / D.11) and the query surface exposes no subtype discriminator, so the pre-draft check's generation-drift branch is disabled for it — see § Pre-draft check — shared rules **generation-drift branch guard**; upstream [generacy-ai/generacy#1046](https://github.com/generacy-ai/generacy/issues/1046).
 
 | Gate | transitionClass | title | drafted body (source) | options (optionId → label / recommended?) | freeTextAffordance | downstream action per optionId | ledger action verb |
 |------|-----------------|-------|-----------------------|-------------------------------------------|--------------------|--------------------------------|--------------------|
 | G.1 | `waiting-for:clarification` | `Approve clarification answers for <issue-ref>` | Five-element `### Q<n>` block per open question (title, context, question, options, recommendation, why, provenance) — from § D.1 step 3 / § G.1 above | `approve-all` → `Approve all & post (Recommended)`; `make-changes` → `Make changes`; `skip-batch` → `Skip this batch` | `{ kind: "optional", placeholder: "notes (optional)" }` — used to carry an edit directive alongside `make-changes` in a single submission | `approve-all`: post batch + `cockpit_advance(issue=<ref>, gate="clarification")`. `make-changes` (with freeText): apply edit directive per § G.1 edit-directive handling; recompute the generation discriminator (content hash of the revised answer-set); re-open per § D.12 revised-draft re-open path. `skip-batch`: post subset (skipped Q excluded) or post nothing if all-skipped. | `clarification-batch` |
-| G.2 | `waiting-for:<artifact>-review` (spec / clarification / plan / tasks / implementation) | `Review verdict for <issue-ref> — <artifact>` | Findings-summary table + `Suggested decision:` line (per § D.2 step 3 / § G.2 above) | `approve` → `approve`; `request-changes` → `request-changes`; `abort` → `abort` | `{ kind: "optional", placeholder: "reviewer comment (optional; used as body of request-changes review or approval note)" }` | `approve`: `cockpit_advance(issue=<ref>, gate="<artifact>-review")`. `request-changes` (with freeText as review body): run the D.2 four-step guardrail (pre-validate anchors → compose bundle → POST → two-leg verify → retry once → re-present on failure). `abort`: no downstream action. | `review-analysis+advance` / `review-analysis+request-changes` / `review-analysis+abort` |
+| G.2 | `waiting-for:<artifact>-review` (spec / clarification / plan / tasks) | `Review verdict for <issue-ref> — <artifact>` | Findings-summary table + `Suggested decision:` line (per § D.2 step 3 / § G.2 above) | `approve` → `approve`; `request-changes` → `request-changes`; `abort` → `abort` | `{ kind: "optional", placeholder: "reviewer comment (optional; used as body of request-changes review or approval note)" }` | `approve`: `cockpit_advance(issue=<ref>, gate="<artifact>-review")`. `request-changes` (with freeText as review body): run the D.2 four-step guardrail (pre-validate anchors → compose bundle → POST → two-leg verify → retry once → re-present on failure). `abort`: no downstream action. | `review-analysis+advance` / `review-analysis+request-changes` / `review-analysis+abort` |
 | G.3 | `waiting-for:manual-validation` | `Manual validation for <issue-ref>` | `**Scenarios to test:**` + `**Acceptance checks:**` bulleted lists (per § D.4 / § G.3 above) | `manually-validated` → `manually validated`; `not-yet` → `not yet` | `{ kind: "none" }` | `manually-validated`: `cockpit_advance(issue=<ref>, gate="manual-validation")`. `not-yet`: no downstream action (event re-fires when operator re-invokes). | `manual-validation-summary+advance` / `manual-validation-summary+wait` |
-| G.4a | `completed:validate` (with red checks) OR post-merge red | `Escalation: validate red for <issue-ref>` | Fixer summary + reason + failing checks (per § D.6 / § G.4(a) above) | `retry` → `Retry (re-run fixer)`; `skip` → `Skip (session-local mute)`; `stop` → `Stop (exit auto)` | `{ kind: "none" }` | `retry`: re-spawn fixer subagent → loop D.5. `skip`: add `<ref>` to session mute set. `stop`: exit run cleanly. | `fixer+escalation-gate` |
 | G.4b | `agent:error` OR `failed:<subtype>` | `Escalation: agent-error for <issue-ref>` | D.7 diagnosis subagent verdict block (root cause / evidence / current state / suggested decision + confidence; on repeat dispatches: adds `Failure class changed since prior` row — per § G.4(b) above) | `requeue` → `Requeue (cockpit resume)`; `skip` → `Skip (session-local mute)`; `stop` → `Stop (exit auto)` | `{ kind: "none" }` | `requeue`: `cockpit_resume(issue=<ref>)` (degrade to Skip with explicit ledger note if tool missing). `skip`: add `<ref>` to session mute set. `stop`: exit run cleanly. | `escalation-gate` |
 | G.4c | Unrecognized `waiting-for:*` / `blocked:*` (per D.10 catch-all) | `Escalation: unrecognized state for <issue-ref>` | Observed state (verbatim from `cockpit status --json`) + streamed event line (per § D.10 / § G.4(c) above) | `skip` → `Skip (session-local mute) (Recommended)`; `stop` → `Stop (exit auto)` — **NEVER `retry`** | `{ kind: "none" }` | `skip`: add `<ref>` to session mute set. `stop`: exit run cleanly. | `unrecognized-state` |
 | G.4d | `waiting-for:merge-conflicts` OR `blocked:stuck-merge-conflicts` | `Escalation: merge conflicts on <issue-ref>` | D.11 diagnosis subagent verdict block (auto-remedy status when applicable / root cause / evidence / conflicted paths / suggested decision + confidence — per § G.4(d) above) | `resolved` → `I've resolved it — advance the gate`; `skip` → `Skip (session-local mute)`; `stop` → `Stop (exit auto)` | `{ kind: "none" }` | `resolved`: `cockpit_advance(issue=<ref>, gate="merge-conflicts")` — on typed-error return, re-present the gate (revised generation) per § D.12 revised-draft re-open path. `skip`: add `<ref>` to session mute set (leave dispatched-issues entry in place). `stop`: exit run cleanly. | `escalation-gate` |
 | G.5 | `phase-complete` — and the synthetic `phase-bootstrap` (fresh-epic startup, § step-3) which reuses this row verbatim with a distinct `gateId` and the § G.5 **Bootstrap variant** presentation (issueRef stays `<epic-ref>`) — (epic mode only; issueRef in the wire record is `<epic-ref>` — sole per-issue exception) | `Phase queue: P<next> for <epic-ref>` | Next-phase issue list + (when non-empty) `Open ad-hoc issues in scope (added mid-run):` block (per § D.8 / § G.5 above) | Empty ad-hoc list: `queue` → `Queue P<next> (<N> issues) (Recommended)`; `cancel` → `Cancel`. Non-empty ad-hoc: `hold` → `Hold — <M> ad-hoc (Recommended)`; `queue` → `Queue P<next> (<N> issues)`; `cancel` → `Cancel`. | `{ kind: "none" }` | `queue`: `cockpit_queue(epic=<ref>, phase="P<next>")` (with ad-hoc count in ledger outcome). `hold`: no downstream action (phase-complete persists). `cancel`: no downstream action. | `phase-queue-gate` |
 | G.6 | `filing-gate` (synthetic — not a live label; fires on `--new "<title>"` startup or mid-run file-new intent) | `File issue: <drafted-title>` | Five-element block: title / labels / body / filing target / parent tracking ref (per § G.6 above) | `approve-and-file` → `Approve & file (Recommended)`; `make-changes` → `Make changes`; `skip-dont-file` → `Skip (don't file)` | `{ kind: "optional", placeholder: "edit directive (used by Make changes)" }` | `approve-and-file`: `gh issue create --body-file <tmp>` → capture ref → `cockpit_scope_add(scope=<tracking-ref>, add=<new-ref>)` → `cockpit_queue(...)` (mid-run intent) OR bind trackingRef (Form 3 startup). `make-changes` (with freeText): apply edit directive; recompute the generation discriminator (draft hash of the edited draft — changes naturally); re-open per § D.12 revised-draft re-open path. `skip-dont-file`: no filing (Form 3 startup exits cleanly; mid-run intent continues loop). | `filing-gate+scope-add` / `filing-gate` (skip only) |
 | G.7 | `scope-drained` (synthetic — under `invocationForm: tracking-existing | tracking-new`) | `Scope drained for <tracking-ref>` | Full status table (per § L.4 policy) immediately before this block, then tracking ref / refs processed / per-ref disposition / session-mute count (per § G.7 above) | `keep-watching` → `Keep watching (Recommended)`; `add-more-work` → `Add more work`; `finish` → `Finish (close tracking + summary)` | `{ kind: "required-if", ifOptionId: "add-more-work", placeholder: "Reference an existing ref (e.g., 'also process <ref>') or ask me to file a new issue (e.g., 'file an issue for <topic>')." }` — Q4=A single-answer collapse: on `add-more-work`, D.12 routes `freeText` through the existing § Add-issue intent recognizer (add-existing vs file-new); under fallback (local `AskUserQuestion`) the two-turn flow reverts to today's behavior | `keep-watching`: return to main loop. `add-more-work` (with required freeText): route freeText through § Add-issue intent recognizer → write intent-specific downstream rows (`scope-add · queued` for add-existing; `filing-gate+scope-add · filed + queued (<new-ref>)` for file-new). `finish`: `gh issue close <tracking-ref>` → print run summary → exit zero (ledger line written BEFORE the close). | `scope-drained-gate` |
+| G.8 | `waiting-for:implementation-review` (post-validate final approval) | `Final approval for <issue-ref>` | Engine's remaining findings parsed from the gate body (per § D.3 / § G.8 above) — **no subagent** | `approve` → `approve`; `hold` → `hold`; `reject` → `reject` | `{ kind: "none" }` | `approve`: cockpit merge path (`cockpit_merge(issue=<ref>)`; merge on green, never on red). `hold`: no downstream action (label stays; gate re-fires). `reject`: no downstream action (label stays; gate re-fires). | `implementation-review-approval` |
+| G.9 | `waiting-for:remediation-limit` | `Remediation limit for <issue-ref>` | Engine's remaining findings parsed from the gate body (per § D.13 / § G.9 above) — **no subagent** | `resume-remediation` → `resume remediation`; `stop` → `stop` | `{ kind: "none" }` | `resume-remediation`: `cockpit_advance(issue=<ref>, gate="remediation-limit")` (resets the engine remediation counter server-side). `stop`: exit run cleanly (no label writes). | `remediation-limit-gate` |
 
 **Fallback body identity**: every row's drafted body / options / free-text prompt is authored ONCE per gate — handed to `cockpit_gate_open` on UI-mode success, and the SAME block handed to local `AskUserQuestion` on the § UI-mode fallback path (below). The rows carry no separate "fallback body" column because the body is identical.
 
@@ -1642,16 +1694,15 @@ Stable strings per dispatch table row, so `grep` recipes on `<action>` / `<outco
 | D.2 artifact-review | `review-analysis+advance` | `approved`, `advance failed`, `error: <description>` |
 | D.2 artifact-review | `review-analysis+request-changes` | `posted (<anchored> inline, <unanchored> in body)` |
 | D.2 artifact-review | `review-analysis+request-changes` | `postcondition-failed → re-present-gate` |
-| D.2/D.3 review-verdict | `postcondition-passed` | `leg1=<n>/<n> · leg2=<m>/<n>` |
-| D.2/D.3 review-verdict | `postcondition-failed` | `attempt=<1\|2> · leg1=<a>/<n> · leg2=<b>/<n>` (attempt=2 line appends ` · re-present-gate`) |
-| D.2/D.3 review-verdict | `review-post-retry` | `attempt=1 · backoff=2s` |
+| D.2 review-verdict | `postcondition-passed` | `leg1=<n>/<n> · leg2=<m>/<n>` |
+| D.2 review-verdict | `postcondition-failed` | `attempt=<1\|2> · leg1=<a>/<n> · leg2=<b>/<n>` (attempt=2 line appends ` · re-present-gate`) |
+| D.2 review-verdict | `review-post-retry` | `attempt=1 · backoff=2s` |
 | D.2 artifact-review | `review-analysis+abort` | `aborted` |
-| D.3 implementation-review | (same as D.2) | (same as D.2) |
+| D.3 implementation-review (final approval) | `implementation-review-approval` | `merged (PR #<n>)`, `hold`, `reject`, `blocked: <desc>`, `error: <description>` |
 | D.4 manual-validation | `manual-validation-summary+advance` | `manually validated` |
 | D.4 manual-validation | `manual-validation-summary+wait` | `not yet` |
 | D.5 merge (green) | `merge` | `merged (PR #<n>)`, `blocked: missing-approval`, `blocked: draft`, `blocked: pending`, `blocked: missing-label`, `infrastructure failure — <checks>` |
-| D.6 fixer | `fixer` | `fixed`, `unfixed → escalation` |
-| D.6 fixer + escalation | `fixer+escalation-gate` | `retry`, `skip (session-local mute)`, `stop (exit)` |
+| D.6 completed:validate:red | `(no-op)` | `engine-owned remediate`, `engine-owned remediate — infrastructure failure: <checks>` |
 | D.7 agent-error / failed | `escalation-gate` | `requeue (cockpit resume)`, `requeue failed: <description>`, `skip (session-local mute)`, `skip (cockpit resume unavailable — G-S8 prerequisite)`, `stop (exit)` |
 | D.8 phase-complete | `phase-queue-gate` | `queued P<next> (<N> issues)`, `cancelled` |
 | D.9 address-pr-feedback | `(no-op)` | `server-side-owned` |
@@ -1661,6 +1712,7 @@ Stable strings per dispatch table row, so `grep` recipes on `<action>` / `<outco
 | D.9d phase:* | `(no-op)` | `engine-owned phase transition` |
 | D.11 merge-conflicts | `escalation-gate` | `advanced`, `advance failed: <description>`, `skip (session-local mute)`, `stop (exit)` |
 | D.10 unrecognized | `unrecognized-state` | `skip (session-local mute)`, `stop (exit)` |
+| D.13 remediation-limit | `remediation-limit-gate` | `resumed (advanced)`, `advance failed: <description>`, `stop (exit)` |
 | § step 5 cursor recovery (Branch A) | `cursor-recovery` | `resetFrom · <N>`, `expiry · <N>`, `discarded · <N>` |
 | § step 5 cursor recovery (Branch B) | `cursor-recovery` | `invalid-cursor · <N>` (e.g., `cursor-recovery · invalid-cursor · 1`) |
 | § step 5 Branch B escalation | `escalation-gate` | `continue-degraded`, `stop (exit)` — G.4(e) operator decision; transition class is `invalid-cursor-streak` |
@@ -1683,7 +1735,7 @@ Stable strings per dispatch table row, so `grep` recipes on `<action>` / `<outco
 
 The `<issue-ref>` slot of the heartbeat row carries the **`<epic-ref>`** (or the tracking ref under `--tracking` / `--new`, matching the ledger header line's `Tracking ref:` field) — heartbeats are epic-scoped, not per-issue.
 
-**`source: enriched-line` marker rule (per § Enriched-line dispatch contract E6)**: Rows D.1, D.2, D.3, D.4, D.7, D.9, D.9a, D.9b, D.9c, and D.9d append `· source: enriched-line` to their `<outcome>` slot when the dispatch was driven by an enriched doorbell line (E2 = true and class in the E3 "enriched line" column); D.5/D.6 append it on decisive `checks: "green" | "red"` (E4). No suffix (equivalent to `source: re-query`) on fallback re-query rows — bare / malformed lines, D.5/D.6 with `checks: absent | pending`, and the retain-the-re-check classes D.8, D.10, D.11. The marker sits inside the outcome slot; the four-column format is preserved.
+**`source: enriched-line` marker rule (per § Enriched-line dispatch contract E6)**: Rows D.1, D.2, D.3, D.4, D.7, D.9, D.9a, D.9b, D.9c, D.9d, and D.13 append `· source: enriched-line` to their `<outcome>` slot when the dispatch was driven by an enriched doorbell line (E2 = true and class in the E3 "enriched line" column); D.5/D.6 append it on decisive `checks: "green" | "red"` (E4). No suffix (equivalent to `source: re-query`) on fallback re-query rows — bare / malformed lines, D.5/D.6 with `checks: absent | pending`, and the retain-the-re-check classes D.8, D.10, D.11. The marker sits inside the outcome slot; the four-column format is preserved.
 
 **UI-mode extensions (Q5=B — `· source: ui-gate` / `· source: ui-gate-fallback`)**. Applies under `ResolvedGateMode === "ui"`; contract: `contracts/ledger-ui-mode.md`.
 
@@ -1726,11 +1778,11 @@ The full epic status table (anchor: header row `| Issue | Phase | State |`) is e
 
 1. **`phase-complete` dispatch** (D.8, § Gate contract G.5 presentation block).
 2. **`epic-complete` exit** (step 6, § Ledger L.6 run-summary paragraph).
-3. **Escalation-gate presentations** (D.6 G.4a, D.7 G.4b, D.10 G.4c, D.11 G.4d) — operator orientation before an escalation decision.
+3. **Escalation-gate presentations** (D.7 G.4b, D.10 G.4c, D.11 G.4d) — operator orientation before an escalation decision.
 4. **Startup-sweep summary** (step 3) — session-start orientation. The sweep ends with exactly one full status table, then enters the main loop.
 5. **Scope-drained gate G.7 presentation** — operator orientation before an exit decision in epic-less mode.
 
-Between phase boundaries, the ledger line is the sole record of a dispatch. No status table is emitted after D.1–D.5, D.9/D.9a/D.9b/D.9c/D.9d, or any actionable dispatch that is not one of the five surfaces above.
+Between phase boundaries, the ledger line is the sole record of a dispatch. No status table is emitted after D.1–D.6, D.9/D.9a/D.9b/D.9c/D.9d, or any actionable dispatch that is not one of the five surfaces above.
 
 Under quiet mode (§ step 1 `--quiet`), no table is printed to the transcript at any of the five surfaces; tables embedded inside gate presentation bodies (surfaces 3 and 5) are unaffected — they reach the operator through the gate itself.
 
@@ -1771,11 +1823,11 @@ Counts derive from the ledger file (or the in-memory count if the file is unavai
 
 ## Invariants
 
-1. **Never merge on red.** `completed:validate` + green routes straight to `cockpit merge`; anything red routes through the bounded-fixer branch and, if still red, the escalation gate. The branch exits `0` only on `result: merged`.
+1. **Never merge on red.** `completed:validate` + green routes to the cockpit merge path, and the post-validate `implementation-review` final-approval gate (G.8) `approve` routes into that SAME merge path. Anything red is **engine-owned** — `completed:validate` red is a ledger-only no-op that re-fires as an engine gate (remediation / remediation-limit); `auto` runs no cluster-side fixer branch and no escalation gate for red checks. The merge path exits `0` only on `result: merged`, never on red.
 2. **Cockpit comments marked.** Every comment the playbook posts to an issue or PR carries the `<!-- generacy-cockpit:… -->` prefix marker (e.g., `<!-- generacy-cockpit:clarification-answers -->`).
 3. **Add-only advance.** `Skip` in every escalation gate is **session-local mute only** — labels are untouched, `cockpit advance` is never called with a fake-skip flag. A muted issue resurfaces in the next auto run's startup sweep.
 4. **No cross-slash-command invocation** from `auto.md`. Cross-command composition is CLI verb (`generacy cockpit …`) + subagent boundary only. No `/cockpit:*`, `/code-review`, or `/speckit:*` invocation from the parent's execution path.
-5. **Analysis in subagents** whose contracts end with the subagent — the #390 pattern. All analysis workloads (clarification drafting, review verdict, manual-validation summary, bounded fixer, diagnosis) live inside named-agent hops (`cockpit-clarifier` / `cockpit-reviewer` / `cockpit-validator` / `cockpit-fixer` / `cockpit-diagnoser`) with strict-JSON returns; per-role model/effort comes from `cockpit.auto.agents` (§ step 1 run-config load), inheriting the session model when unset.
+5. **Analysis in subagents** whose contracts end with the subagent — the #390 pattern. All analysis workloads (clarification drafting, artifact review verdict, manual-validation summary, diagnosis) live inside named-agent hops (`cockpit-clarifier` / `cockpit-reviewer` / `cockpit-validator` / `cockpit-diagnoser`) with strict-JSON returns; per-role model/effort comes from `cockpit.auto.agents` (§ step 1 run-config load), inheriting the session model when unset. Implementation review/remediate is engine-owned — `auto` spawns no `cockpit-fixer` and no reviewer against an implementation PR.
 6. **Autonomy *policy* out of scope.** Per-gate auto-approve and "full auto" mode are explicitly out of scope in v1. Every gate prompts; none auto-proceed.
 7. **Stream consumption is unfiltered.** Every non-empty line from `generacy cockpit doorbell` is consumed by the parent — content-based filters over the stream (e.g., "only wake on lines matching `waiting-for:*`") are prohibited, because a filter could silently drop legitimate events. Enriched lines (JSON-parseable objects carrying `to` and `labels`) ARE parsed for dispatch inputs per the § Enriched-line dispatch contract; bare lines fall back to `cockpit_await_events` for authoritative state. `cockpit_await_events` remains the sole source of typed batches for the merge-gate fallback path and for D.8/D.10/D.11 escalation surfaces. If the harness requires a match pattern to arm a reader, it matches any non-empty line, never a JSON field.
 8. **Ledger-only rows are cheap by contract.** A transition that dispatches to a ledger-only row (D.9, D.9a, D.9b, D.9c, D.9d) must add no tool calls beyond the ledger append and no prose.
