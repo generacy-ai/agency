@@ -84,8 +84,11 @@ export type GateId = string;
 export type GateKey = string;
 
 /**
- * The 8-value gate-type enum — mirrors the cloud `cockpitGateTypeEnum` and the
- * cluster `GateTypeSchema` EXACTLY (order preserved). This is the `:<gateType>:`
+ * The 9-value gate-type enum — mirrors the cloud `cockpitGateTypeEnum` and the
+ * cluster `GateTypeSchema` (`remediation-limit` lands cluster-side via
+ * generacy-ai/generacy#1163; the plugin adds it ahead of that so D.13 gate
+ * verbs type-check — this PR may merge independently, gated at runtime by the
+ * `MIN_GENERACY_VERSION=0.2.0` pre-flight probe). This is the `:<gateType>:`
  * slot of the gateKey and is REQUIRED cloud-side. Net-new to the plugin: every
  * gate-open site must set it per the auto.md § UI-mode gate mapping table.
  *
@@ -99,6 +102,7 @@ export type GateKey = string;
  *   - G.5 phase-queue confirmation            → "phase-queue"  (issueRef slot = epicRef)
  *   - G.6 filing gate (synthetic)             → "filing"
  *   - G.7 scope-drained (synthetic)           → "scope-drained"
+ *   - G.9 remediation-limit gate              → "remediation-limit"
  *   - G.4e invalid-cursor escalation          → EXCLUDED from the wire (local
  *                                               AskUserQuestion only; no gateType).
  */
@@ -110,7 +114,8 @@ export type GateType =
   | "escalation"
   | "phase-queue"
   | "filing"
-  | "scope-drained";
+  | "scope-drained"
+  | "remediation-limit";
 
 /**
  * The gateType-specific generation DISCRIMINATOR the plugin passes to
@@ -127,6 +132,13 @@ export type GateType =
  *   - phase-queue          : `P<nextPhaseNumber>`
  *   - filing               : draft hash over {title, body, labels}
  *   - scope-drained        : `<drainCounter>` (Nth drain for the tracking ref)
+ *   - remediation-limit    : PR head SHA (durable). The remediation counter is a
+ *                            DATA GAP the parent loop does not yet compute, so the
+ *                            discriminator is derived from PR head SHA only today;
+ *                            the remaining-findings-hash form is NOT used. The
+ *                            non-idempotent re-ask across restart/takeover is an
+ *                            accepted follow-up shared with the other gapped
+ *                            gateTypes.
  *
  * A number is accepted for the naturally-numeric cases (phase number) and
  * String()-coerced by the MCP tool for a stable key.
@@ -149,7 +161,8 @@ export type DispatchClass =
   | "D.8"    // phase-complete (G.5) → gateType "phase-queue"
   | "D.10"   // unrecognized (G.4c) → gateType "escalation"
   | "D.11"   // waiting-for:merge-conflicts / blocked:stuck-merge-conflicts (G.4d) → gateType "escalation"
-  | "D.12";  // gate-answer (completion class for arriving answers)
+  | "D.12"   // gate-answer (completion class for arriving answers)
+  | "D.13";  // waiting-for:remediation-limit (G.9) → gateType "remediation-limit"
 
 /**
  * SHAPE 1 — gate-open (cluster → cloud, up-path) INPUT to `cockpit_gate_open`.
