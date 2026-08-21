@@ -57,11 +57,11 @@ Result: the issue strands under `auto` on any flag-off engine, **regardless of v
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | Replace the `MIN_GENERACY_VERSION = 0.2.0` version-literal guard (`auto.md:226`) with **capability detection** of the engine's post-validate implementation-review model. | P0 | e.g. probe whether the `implementation-review` gate co-occurs with `completed:validate`; or key on flags; or a version that actually ships #1120 once released. |
-| FR-002 | For pre-relocation / flag-off engines, provide a **working legacy path** (advance-on-approve) **or** fail closed with an actionable diagnostic that names the required engine flags (`reviewPhaseEnabled`, `ciMergeGateEnabled`). | P0 | No silent strand. Must not admit-and-strand. |
+| FR-001 | Replace the `MIN_GENERACY_VERSION = 0.2.0` version-literal guard (`auto.md:226`) with **hybrid detection** (Q1=D): an advisory pre-flight capability/version probe for fast-fail, plus a **runtime gate-placement fallback** that is authoritative — observe whether the `implementation-review` gate co-occurs with `completed:validate`. | P0 | Runtime co-occurrence is the authoritative signal; pre-flight is advisory only because no engine surface exposes the gate model (Q3) and version cannot distinguish compatible engines. |
+| FR-002 | For pre-relocation / flag-off engines, do **both** (Q2=C): route **detectable** flag-off engines to a **working legacy path** (advance-on-approve, re-adding the `cockpit_advance(gate="implementation-review")` logic #500 removed); **fail closed** only when neither model can be detected, with an actionable diagnostic naming the required engine flags (`reviewPhaseEnabled`, `ciMergeGateEnabled`). | P0 | No silent strand. Must not admit-and-strand. Fail-closed only when neither post-validate nor legacy model is detectable. |
 | FR-003 | Admit #1120-bearing engines whose version strings sort below the old literal (preview `0.0.0-preview-*`, source `0.1.1`). | P0 | Detection must not depend on the broken version comparison. |
 | FR-004 | Preserve the existing hard-fail idiom for the fail-closed branch: exit non-zero, no ledger directory, no ledger line, no loop — byte-mirroring the Monitor / doorbell / version pre-flight fails. | P0 | Consistency with `auto.md:208-244`. |
-| FR-005 | Update pin test `500-1` to freeze the corrected mechanism and its contract; re-pin, do not weaken (per CLAUDE.md playbook-pin rule). | P0 | `playbook-verification.test.ts:5887`. |
+| FR-005 | Update pin test `500-1` to freeze **both** the corrected detection mechanism **and** the exact fail-closed diagnostic wording, byte-mirroring the existing Monitor/doorbell/version pre-flight pins (Q4=A); re-pin, do not weaken (per CLAUDE.md playbook-pin rule). | P0 | `playbook-verification.test.ts:5887`. Loose assert would drop the load-bearing flag-name contract. |
 | FR-006 | Preserve the correct-direction inertness for new-engine + old-`auto` skew (already inert by construction; no new guard needed for that direction). | P2 | `auto.md:244`. |
 
 ## Success Criteria
@@ -76,7 +76,7 @@ Result: the issue strands under `auto` on any flag-off engine, **regardless of v
 ## Assumptions
 
 - The #1120 changesets remain unreleased on `develop`; npm stable stays at `0.10.2` until #1120 ships, so a version literal cannot distinguish compatible from incompatible engines at spec time.
-- The engine exposes an observable capability signal (gate placement relative to `completed:validate`, and/or the `reviewPhaseEnabled` / `ciMergeGateEnabled` flag state) that pre-flight can probe.
+- **No dedicated pre-flight capability surface exists** (Q3=C): `generacy cockpit --help` exposes only watch/doorbell/status/advance/context/merge/queue/resume/scope/mcp — none report the review/merge-gate model or the `reviewPhaseEnabled` / `ciMergeGateEnabled` flag state. Adding such a surface is cross-repo and out of scope. Detection therefore relies on the authoritative **runtime** signal: whether the `implementation-review` gate co-occurs with `completed:validate` (observable only once the phase fires), with the pre-flight probe advisory-only.
 - Engine defaults `reviewPhaseEnabled = false` and `ciMergeGateEnabled = false` (`generacy worker/config.ts:143,151`) are the common deployed state.
 
 ## Out of Scope
