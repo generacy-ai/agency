@@ -889,7 +889,7 @@ function boundPresent(body: string): boolean {
   return false;
 }
 
-const EXPECTED_GATES = ["G.1", "G.2", "G.3", "G.4a", "G.4b", "G.4c", "G.4d", "G.5"] as const;
+const EXPECTED_GATES = ["G.1", "G.2", "G.3", "G.4b", "G.4c", "G.4d", "G.5", "G.8", "G.9"] as const;
 
 function auditContract(filePath: string): AuditReport {
   const content = readFileSync(filePath, "utf-8");
@@ -2543,7 +2543,7 @@ describe("437 — auto.md enriched-line dispatch drops per-event cockpit_status 
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const headers = [
       "D.5 — `completed:validate` (checks green) → merge without gate",
-      "D.6 — `completed:validate` (red) / merge red → bounded fixer subagent",
+      "D.6 — `completed:validate` (red) / merge red → ledger-only (engine-owned remediate)",
     ];
     for (const header of headers) {
       const block = extractSubheadingBlock(autoMd, header);
@@ -2957,13 +2957,13 @@ describe("449 UI-mode gates", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     // Top-level section heading is pinned; row-count assertion in 449-8 depends
     // on this section being present.
-    expect(autoMd).toMatch(/^## UI-mode gate mapping \(G\.1–G\.7\)$/m);
+    expect(autoMd).toMatch(/^## UI-mode gate mapping \(G\.1–G\.9\)$/m);
   });
 
-  it("449-8 UI-mode gate mapping table has EXACTLY 10 body rows in the pinned order (G.4e absent)", () => {
+  it("449-8 UI-mode gate mapping table has EXACTLY 11 body rows in the pinned order (G.4a and G.4e absent)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     // Locate the UI-mode section body (from its heading to the next ## H2).
-    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.7)");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.9)");
     expect(sectionStart, "UI-mode gate mapping section must exist").toBeGreaterThan(-1);
     const rest = autoMd.slice(sectionStart + 1);
     const nextH2 = rest.indexOf("\n## ", 1);
@@ -2986,11 +2986,11 @@ describe("449 UI-mode gates", () => {
       if (!line.startsWith("| ")) break;
       bodyRows.push(line);
     }
-    // Exact row count is 10 per Q1=C.
-    expect(bodyRows.length, "mapping table row count must be exactly 10 (G.1..G.7)").toBe(10);
+    // Exact row count is 11 (G.4a dropped — D.6 is now ledger-only; G.8/G.9 added).
+    expect(bodyRows.length, "mapping table row count must be exactly 11 (G.1..G.9)").toBe(11);
 
     // Rows begin with the pinned gate identifiers in order.
-    const expectedGates = ["G.1", "G.2", "G.3", "G.4a", "G.4b", "G.4c", "G.4d", "G.5", "G.6", "G.7"];
+    const expectedGates = ["G.1", "G.2", "G.3", "G.4b", "G.4c", "G.4d", "G.5", "G.6", "G.7", "G.8", "G.9"];
     const actualGates = bodyRows.map((row) => {
       const cellMatch = /^\| ([^|]+?) \|/.exec(row);
       return cellMatch ? cellMatch[1]!.trim() : "";
@@ -3005,7 +3005,7 @@ describe("449 UI-mode gates", () => {
 
   it("449-9 G.4(e) exclusion note is present in the UI-mode gate mapping section", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
-    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.7)");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.9)");
     const rest = autoMd.slice(sectionStart + 1);
     const nextH2 = rest.indexOf("\n## ", 1);
     const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
@@ -3015,7 +3015,7 @@ describe("449 UI-mode gates", () => {
 
   it("449-10 G.7 row declares `required-if` free-text affordance for `add-more-work` (Q4=A)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
-    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.7)");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.9)");
     const rest = autoMd.slice(sectionStart + 1);
     const nextH2 = rest.indexOf("\n## ", 1);
     const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
@@ -3027,7 +3027,7 @@ describe("449 UI-mode gates", () => {
 
   it("449-11 G.2 row declares `optional` free-text affordance for reviewer comment", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
-    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.7)");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.9)");
     const rest = autoMd.slice(sectionStart + 1);
     const nextH2 = rest.indexOf("\n## ", 1);
     const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
@@ -3632,10 +3632,9 @@ describe("457 sweep-time gate reuse", () => {
     );
   });
 
-  it("457-9b § D.6 and § D.10 (escalation rows without a Step 0) are explicitly bound by the drift guard", () => {
+  it("457-9b § D.10 (escalation row without a Step 0) is explicitly bound by the drift guard", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     for (const header of [
-      "D.6 — `completed:validate` (red) / merge red → bounded fixer subagent",
       "D.10 — Unrecognized / ambiguous state → escalation gate (Skip / Stop only)",
     ]) {
       const block = extractSubheadingBlock(autoMd, header);
@@ -3648,6 +3647,14 @@ describe("457 sweep-time gate reuse", () => {
       );
       expect(block).toContain("generacy-ai/generacy#1046");
     }
+    // D.6 is now ledger-only (engine owns remediate); it is no longer an
+    // escalation row and MUST NOT carry the escalation-gateType note.
+    const d6 = extractSubheadingBlock(
+      autoMd,
+      "D.6 — `completed:validate` (red) / merge red → ledger-only (engine-owned remediate)",
+    );
+    expect(d6).not.toContain("**Escalation-gateType note (UI mode).**");
+    expect(d6).not.toContain("`gateType: 'escalation'`");
   });
 
   it("457-14 D.2 Step 0 names gateType = 'artifact-review' verbatim (per #458 review comment 6 — spec-review/clarification-review/plan-review/tasks-review are NOT in the frozen enum)", () => {
@@ -3797,7 +3804,7 @@ describe("457 sweep-time gate reuse", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     // Locate the discriminator subsection. Search for the H4 heading and
     // return everything up to the next H3 or H2 (H4 is a child of the H2
-    // `## UI-mode gate mapping (G.1–G.7)`; the next H3 sibling terminates it).
+    // `## UI-mode gate mapping (G.1–G.9)`; the next H3 sibling terminates it).
     const marker = "\n#### Generation discriminator (UI mode)\n";
     const sectionStart = autoMd.indexOf(marker);
     expect(sectionStart, "generation-discriminator subsection must exist").toBeGreaterThan(-1);
@@ -4037,8 +4044,9 @@ describe("457 sweep-time gate reuse", () => {
     for (const gt of ONE_TO_ONE) {
       expect(driftBranchMaySupersede(gt), `${gt} maps 1:1 to a dispatch row`).toBe(true);
     }
-    // The four rows the escalation enum value collides across.
-    expect([...ESCALATION_DISPATCH_ROWS]).toEqual(["D.6", "D.7", "D.10", "D.11"]);
+    // The three rows the escalation enum value collides across (D.6 is now
+    // ledger-only engine-owned remediate — no longer an escalation row).
+    expect([...ESCALATION_DISPATCH_ROWS]).toEqual(["D.7", "D.10", "D.11"]);
   });
 
   // ── F4: the real four-class error taxonomy — no class means "absent" ──
@@ -5051,7 +5059,7 @@ describe("469 runId threading", () => {
     );
   });
 
-  it("469-25 enumerated live-path `cockpit_gate_open` `runId` threading across every drafting D.n (D.1, D.2, D.3, D.4, D.6 G.4a, D.7 G.4b, D.8 G.5, D.10 G.4c, D.11 G.4d) — FR-016 / Batch 2 Q7 (sampling one call site is INSUFFICIENT)", () => {
+  it("469-25 enumerated live-path `cockpit_gate_open` `runId` threading across every drafting D.n (D.1, D.2, D.3, D.4, D.7 G.4b, D.8 G.5, D.10 G.4c, D.11 G.4d, D.13 remediation-limit) — FR-016 / Batch 2 Q7 (sampling one call site is INSUFFICIENT)", () => {
     // Enumerated by design (FR-016 / R11): every drafting D.n row must be
     // named in the § UI-mode gate mapping header note so a future edit that
     // adds a new drafting row cannot slip past the runId invariant.
@@ -5072,11 +5080,11 @@ describe("469 runId threading", () => {
       "D.2 artifact-review",
       "D.3 implementation-review",
       "D.4 manual-validation",
-      "D.6 G.4a escalation",
       "D.7 G.4b escalation",
       "D.8 G.5 phase-queue",
       "D.10 G.4c escalation",
       "D.11 G.4d escalation",
+      "D.13 remediation-limit",
     ]) {
       expect(
         note,
@@ -5107,8 +5115,9 @@ describe("469 runId threading", () => {
     );
     // The explicit-literal template line is pinned verbatim.
     expect(autoMd).toContain(`runId: "<runId-literal>"`);
-    // The enumeration names every gate-verb-issuing subagent (D.1, D.2, D.3,
-    // D.4, D.7, D.11 drafting/analyzer/diagnosis subagents).
+    // The enumeration names every gate-verb-issuing subagent (D.1, D.2,
+    // D.4, D.7, D.11 drafting/analyzer/diagnosis subagents). D.3 is no longer
+    // a subagent-spawning row — it is the no-subagent final-approval gate.
     const templateStart = autoMd.indexOf(
       "**Subagent dispatch prompt template addition",
     );
@@ -5120,7 +5129,6 @@ describe("469 runId threading", () => {
     for (const enumeration of [
       "D.1 clarification-drafter",
       "D.2 review-verdict analyzer",
-      "D.3 review-verdict analyzer",
       "D.4 manual-validation summarizer",
       "D.7 diagnosis subagent",
       "D.11 merge-conflicts diagnosis subagent",
@@ -5346,7 +5354,7 @@ describe("471 startup-sweep adoption", () => {
     expect(adoptionNormalized).toMatch(/runId: row\.runId/);
   });
 
-  it("471-5 § Adoption pass declares the FR-013 generation-drift branch verbatim (ack `superseded` targeting row's `runId`; four drift-enabled gateTypes; deferred draft)", () => {
+  it("471-5 § Adoption pass declares the FR-013 generation-drift branch verbatim (ack `superseded` targeting row's `runId`; five drift-enabled gateTypes; deferred draft)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const adoption = extractAdoptionPassBlock(autoMd);
     const adoptionNormalized = adoption.replace(/\s+/g, " ");
@@ -5355,9 +5363,10 @@ describe("471 startup-sweep adoption", () => {
       /Generation-drift branch \(per FR-013/,
     );
     expect(adoptionNormalized).toMatch(/contracts\/adoption-drift\.md/);
-    // Four drift-enabled gateTypes named verbatim.
+    // Five drift-enabled gateTypes named verbatim (remediation-limit is 1:1 →
+    // D.13, so its drift branch is enabled alongside the four originals).
     expect(adoptionNormalized).toMatch(
-      /row\.gateType ∈ \{clarification, artifact-review, implementation-review, manual-validation\}/,
+      /row\.gateType ∈ \{clarification, artifact-review, implementation-review, manual-validation, remediation-limit\}/,
     );
     // The ack call literal contains gateId: row.gateId, outcome:
     // 'superseded', and runId: row.runId (targeting the row's originating
@@ -5716,12 +5725,12 @@ describe("471 startup-sweep adoption", () => {
     );
   });
 
-  it("471-19 § Pre-draft check — shared rules 'Consequence' paragraph AGREES with the D.7 / D.11 row prose on the list call (the paragraph must NOT claim the list call is skipped for D.7 / D.11 — since #471, those two rows DO issue `cockpit_gate_list` on `absent` to reach the same-generation adoption branch; only D.6 / D.10, which have no Step 0, genuinely skip it) — this is the round-2 assertion shape that would have caught the shared-rule/row-prose contradiction reviewers flagged", () => {
+  it("471-19 § Pre-draft check — shared rules 'Consequence' paragraph AGREES with the D.7 / D.11 row prose on the list call (the paragraph must NOT claim the list call is skipped for D.7 / D.11 — since #471, those two rows DO issue `cockpit_gate_list` on `absent` to reach the same-generation adoption branch; only D.10, which has no Step 0, genuinely skips it) — this is the round-2 assertion shape that would have caught the shared-rule/row-prose contradiction reviewers flagged", () => {
     // Round-1 (#471 round 1) caught the D.11-only scoping of the drift-branch
     // guard leaving the D.7 mirror hazard live; that was fixed by broadening
-    // the guard to all four escalation rows. Round-2 (#471 round 2) caught
+    // the guard to all escalation rows. Round-2 (#471 round 2) caught
     // that the same "Consequence" paragraph — which had said "the plugin
-    // skips the list call and the drift branch" for all four rows — was
+    // skips the list call and the drift branch" for all rows — was
     // never updated when D.7 / D.11 gained a same-generation adoption branch
     // that REQUIRES the list call. The general rule and the specific rows
     // contradicted each other, and an executor following the general rule
@@ -5729,11 +5738,11 @@ describe("471 startup-sweep adoption", () => {
     // round-1 duplicate-gate hazard on exactly the two escalation rows.
     //
     // The pin: the shared "Consequence" paragraph must (a) still disable
-    // the drift branch for all four rows, (b) name D.7 / D.11 as the two
-    // rows that DO issue the list call for adoption, and (c) name D.6 /
-    // D.10 as the two rows without a Step 0 that genuinely skip it. A grep
-    // for "skips the list call" as an unqualified assertion applied to all
-    // four rows is a defect this pin fails on.
+    // the drift branch for all three escalation rows, (b) name D.7 / D.11 as
+    // the two rows that DO issue the list call for adoption, and (c) name
+    // D.10 as the escalation row without a Step 0 that genuinely skips it. A
+    // grep for "skips the list call" as an unqualified assertion applied to
+    // all escalation rows is a defect this pin fails on.
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const shared = extractSubheadingBlock(
       autoMd,
@@ -5741,13 +5750,14 @@ describe("471 startup-sweep adoption", () => {
     );
     const sharedNormalized = shared.replace(/\s+/g, " ");
 
-    // (a) The drift branch stays disabled for all four rows — the anti-
-    // hazard property preserved from round 1.
+    // (a) The drift branch stays disabled for all three escalation rows — the
+    // anti-hazard property preserved from round 1 (D.6 is no longer an
+    // escalation row since #500; it is ledger-only engine-owned remediate).
     expect(sharedNormalized).toMatch(
-      /drift branch is DISABLED for `gateType: 'escalation'` \(D\.6, D\.7, D\.10, D\.11\)/,
+      /drift branch is DISABLED for `gateType: 'escalation'` \(D\.7, D\.10, D\.11\)/,
     );
     expect(sharedNormalized).toMatch(
-      /in D\.6, D\.7, D\.10, and D\.11 the \*\*drift branch never fires\*\*/,
+      /in D\.7, D\.10, and D\.11 the \*\*drift branch never fires\*\*/,
     );
 
     // (b) The list call is NOT unqualifiedly skipped for D.7 / D.11 — the
@@ -5763,24 +5773,24 @@ describe("471 startup-sweep adoption", () => {
     expect(sharedNormalized).toMatch(/same-generation adoption branch/);
     expect(sharedNormalized).toMatch(/per #471 \/ SC-006/);
 
-    // (c) D.6 / D.10 are named as the two rows WITHOUT a Step 0 that
-    // genuinely issue no list call — this is what keeps the paragraph
+    // (c) D.10 is named as the only escalation row WITHOUT a Step 0 that
+    // genuinely issues no list call — this is what keeps the paragraph
     // internally consistent with `:588` (which lists the rows without a
-    // pre-draft check).
+    // pre-draft check). D.6 is no longer an escalation row since #500.
     expect(
       sharedNormalized,
-      "shared-rules 'Consequence' paragraph must name D.6 / D.10 as the two rows without a Step 0 for which the original 'skip the list call' sentence stays true",
-    ).toMatch(/D\.6 and D\.10 have no Step 0/);
+      "shared-rules 'Consequence' paragraph must name D.10 as the escalation row without a Step 0 for which the original 'skip the list call' sentence stays true",
+    ).toMatch(/D\.10 has no Step 0/);
 
     // NEGATIVE PIN — the pre-round-2 wording is forbidden: the paragraph
-    // must NOT claim that D.6, D.7, D.10, and D.11 (all four together)
-    // skip the list call. That is the exact defect this pin exists to
-    // catch — a general rule that contradicts the specific rows.
+    // must NOT claim that D.7, D.10, and D.11 (all three together) skip the
+    // list call. That is the exact defect this pin exists to catch — a
+    // general rule that contradicts the specific rows.
     expect(
       sharedNormalized,
-      "shared-rules 'Consequence' paragraph MUST NOT assert that all four escalation rows skip the list call on `absent` — since #471, D.7 and D.11 DO issue the list call to reach the same-generation adoption branch. If this pin fails, do NOT weaken it — re-verify that the D.7 (`:871`) and D.11 (`:988`) row prose issue `cockpit_gate_list` on `absent` and rewrite the shared paragraph to name D.7 / D.11 as the exception.",
+      "shared-rules 'Consequence' paragraph MUST NOT assert that all escalation rows skip the list call on `absent` — since #471, D.7 and D.11 DO issue the list call to reach the same-generation adoption branch. If this pin fails, do NOT weaken it — re-verify that the D.7 (`:871`) and D.11 (`:988`) row prose issue `cockpit_gate_list` on `absent` and rewrite the shared paragraph to name D.7 / D.11 as the exception.",
     ).not.toMatch(
-      /in D\.6, D\.7, D\.10, and D\.11,? on a `\{ status: 'absent' \}` return the plugin skips the list call/,
+      /in D\.7, D\.10, and D\.11,? on a `\{ status: 'absent' \}` return the plugin skips the list call/,
     );
 
     // Cross-check the row prose: D.7 and D.11 Step 0 `absent` sub-branches
@@ -5853,6 +5863,182 @@ describe("471 startup-sweep adoption", () => {
         ).toBe(true);
       }
     }
+  });
+});
+
+// -----------------------------------------------------------------------------
+// 500 — slim `cockpit:auto` to gates / queue / clarify / merge
+//
+// Epic generacy-ai/generacy#1120 moved implementation review→remediate
+// server-side: the engine now owns the review→remediate loop for
+// implementation PRs. `auto` stops driving review rounds. The post-validate
+// `waiting-for:implementation-review` gate becomes a final human approval
+// (G.8 → merge / hold / reject); a new `waiting-for:remediation-limit` gate
+// (D.13 / G.9) surfaces when the engine hits its retry cap; D.6 red-validate
+// becomes a ledger-only no-op (no cluster-side fixer). A `generacy --version`
+// pre-flight probe guards against running new-`auto` against an old engine.
+//
+// Re-pin, never weaken (CLAUDE.md § "Cockpit playbook pins"): every removed
+// contract carries a positive pin on its replacement + a negative pin asserting
+// the old phrasing is gone.
+// -----------------------------------------------------------------------------
+
+describe("500 slim auto to gates/queue/clarify/merge", () => {
+  it("500-1 § step 1 pre-flight declares the `generacy --version` skew guard (MIN_GENERACY_VERSION = 0.2.0) with the below-minimum hard-fail — no ledger dir, no loop", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // The probe + literal are present verbatim.
+    expect(autoMd).toContain("`generacy --version`");
+    expect(autoMd).toContain("`MIN_GENERACY_VERSION` = `0.2.0`");
+    // The below-minimum operator error is verbatim.
+    expect(autoMd).toContain(
+      "generacy is older than the minimum this /cockpit:auto requires (need >= 0.2.0).",
+    );
+    // The unparseable/missing branch fails closed with a DISTINCT diagnostic.
+    expect(autoMd).toContain(
+      "Could not parse `generacy --version` output",
+    );
+    // Hard-fail guarantee: below-minimum writes no ledger dir / no ledger line /
+    // no loop — the same idiom as the doorbell-absence hard-fail.
+    const versionGuardStart = autoMd.indexOf("probe the engine version for skew");
+    expect(versionGuardStart, "version skew guard prose must exist").toBeGreaterThan(-1);
+    const guard = autoMd.slice(versionGuardStart, versionGuardStart + 3000);
+    expect(guard).toContain("Do **NOT** create the ledger directory.");
+    expect(guard).toContain("Do **NOT** start the loop.");
+    // Positioned after the doorbell-surface probe and before command -v
+    // generacy's downstream gh auth status.
+    expect(guard).toContain(
+      "It runs AFTER the doorbell-surface probe and BEFORE `command -v generacy`",
+    );
+  });
+
+  it("500-2 D.3 opens the final-approval gate G.8 (approve/hold/reject); approve → merge, hold/reject → no-op — and no longer spawns a reviewer or runs the request-changes guardrail", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const d3 = extractSubheadingBlock(autoMd, "D.3 — `waiting-for:implementation-review`");
+    // Positive: final-approval gate G.8 with the three options.
+    expect(d3).toContain("§ Gate contract G.8");
+    expect(d3).toContain("`approve` / `hold` / `reject`");
+    // approve → cockpit merge path; hold/reject → no-op (label stays, re-fires).
+    expect(d3).toContain("`approve` → cockpit merge path");
+    expect(d3).toMatch(/`hold` \/ `reject` → do nothing/);
+    // Negative: no reviewer subagent is spawned (the removal is stated verbatim),
+    // and NO reviewer spawn invocation survives.
+    expect(d3).toContain("no `cockpit-reviewer` subagent is spawned");
+    expect(d3).not.toMatch(/subagent_type:\s*["'`]cockpit-reviewer/);
+    // Negative: the artifact request-changes verdict vocabulary is gone from D.3.
+    expect(d3).not.toContain("request-changes");
+  });
+
+  it("500-3 D.6 is a ledger-only no-op — red validate re-fires as an engine gate; no cockpit-fixer, no G.4a escalation from D.6", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const d6 = extractSubheadingBlock(
+      autoMd,
+      "D.6 — `completed:validate` (red) / merge red → ledger-only (engine-owned remediate)",
+    );
+    // Positive: ledger-only no-op; engine owns the remediate loop.
+    expect(d6).toContain("Ledger line only");
+    expect(d6).toContain("engine-owned remediate");
+    expect(d6).toContain(
+      "`<issue-ref> · completed:validate:red · (no-op) · engine-owned remediate`",
+    );
+    // Negative: no cluster-side fixer, no escalation gate from D.6.
+    expect(d6).toContain("does not** spawn a `cockpit-fixer`");
+    expect(d6).not.toContain("**Escalation-gateType note (UI mode).**");
+    expect(d6).not.toMatch(/bounded fixer/);
+  });
+
+  it("500-4 G.2 trigger is D.2/artifact-only — the '(artifact and implementation)' scope and D.3 routing are removed", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const g2 = extractSubheadingBlock(autoMd, "G.2 — Review verdict gate (artifact)");
+    // Positive: trigger is D.2 only.
+    expect(g2).toContain("**Trigger**: D.2 (`waiting-for:<artifact>-review`) only.");
+    // Negative: the shared artifact+implementation scope is gone; D.3 no longer
+    // routes through G.2 (stated as a redirect to G.8).
+    expect(g2).not.toContain("(artifact and implementation)");
+    expect(g2).toContain("no longer routes through G.2");
+  });
+
+  it("500-5 D.13 + G.9 present `resume remediation`/`stop`; resume → cockpit_advance(gate=remediation-limit); stop → exit clean, no label writes; findings from gate body, no subagent", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const d13 = extractSubheadingBlock(autoMd, "D.13 — `waiting-for:remediation-limit`");
+    const g9 = extractSubheadingBlock(autoMd, "G.9 — Remediation-limit gate");
+    // Options in order.
+    expect(d13).toContain("`resume remediation` / `stop`");
+    // resume → cockpit_advance with the remediation-limit gate (NOT cockpit_resume).
+    expect(d13).toContain(
+      '`cockpit_advance(issue=<issue-ref>, gate="remediation-limit")`',
+    );
+    expect(d13).toContain("`cockpit_resume` is the WRONG verb");
+    // stop → clean exit, no label writes.
+    expect(d13).toMatch(/`stop` → exit auto cleanly/);
+    expect(d13).toContain("**No label writes**");
+    // Findings from the gate body; no subagent.
+    expect(d13).toContain("no subagent is spawned");
+    // G.9 gate contract mirrors it.
+    expect(g9).toContain("`resume remediation` / `stop`");
+    expect(g9).toContain("parsed from the **gate body**");
+  });
+
+  it("500-6 G.8 renders findings from the gate body and spawns no reviewer subagent / runs no request-changes guardrail", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const g8 = extractSubheadingBlock(
+      autoMd,
+      "G.8 — Implementation-review final-approval gate",
+    );
+    // Positive: findings parsed from the gate body; approve/hold/reject options.
+    expect(g8).toContain("parsed from the **gate body**");
+    expect(g8).toContain("`approve` / `hold` / `reject`");
+    // Negative: no reviewer subagent and no request-changes guardrail.
+    expect(g8).toContain("no `cockpit-reviewer` subagent is spawned");
+    expect(g8).toContain(
+      "No `cockpit-reviewer` subagent and no request-changes guardrail run here.",
+    );
+  });
+
+  it("500-7 the UI-mode gate-mapping table has G.8 + G.9 rows and no G.4a row; the generation-discriminator table has a remediation-limit row", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.9)");
+    expect(sectionStart, "UI-mode gate mapping section must exist").toBeGreaterThan(-1);
+    const rest = autoMd.slice(sectionStart + 1);
+    const nextH2 = rest.indexOf("\n## ", 1);
+    const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+    // G.8 and G.9 mapping rows are present.
+    expect(section).toMatch(/^\| G\.8 \|/m);
+    expect(section).toMatch(/^\| G\.9 \|/m);
+    // G.4a is gone from the mapping table.
+    expect(section).not.toMatch(/^\| G\.4a \|/m);
+    // The generation-discriminator table carries a remediation-limit row.
+    expect(section).toMatch(/^\| `remediation-limit` \|/m);
+  });
+
+  it("500-8 the escalation enum narrative names three rows (D.7/D.10/D.11), not four — D.6 no longer shares the escalation gateType", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // The generation-discriminator DATA-GAP note names three dispatch rows.
+    expect(autoMd).toContain("three dispatch rows (D.7 / D.10 / D.11)");
+    // The drift-branch guard recoverability table names the same three.
+    expect(autoMd).toContain("**NO — three rows share one `gateType`**");
+    // Negative: the pre-#500 four-row narratives (including D.6) are gone.
+    expect(autoMd).not.toContain("four dispatch rows (D.6/D.7/D.10/D.11)");
+    expect(autoMd).not.toContain("four rows share one `gateType`");
+  });
+
+  it("500-9 `waiting-for:remediation-limit` is a recognised dispatch row (D.13) — it never falls through to D.10 unknown-state escalation", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // Dispatch table has a D.13 row for waiting-for:remediation-limit.
+    const dispatchStart = autoMd.indexOf("\n## Dispatch\n");
+    expect(dispatchStart, "§ Dispatch heading must exist").toBeGreaterThan(-1);
+    const rest = autoMd.slice(dispatchStart);
+    const nextH3 = rest.indexOf("\n### ");
+    const dispatchSection = nextH3 === -1 ? rest : rest.slice(0, nextH3);
+    const d13Row = dispatchSection
+      .split("\n")
+      .find((line) => /^\| D\.13 \|/.test(line));
+    expect(d13Row, "dispatch table must contain a D.13 row").toBeDefined();
+    expect(d13Row!).toContain("waiting-for:remediation-limit");
+    // The D.13 trigger states the recognised-row invariant against D.10.
+    const d13 = extractSubheadingBlock(autoMd, "D.13 — `waiting-for:remediation-limit`");
+    expect(d13).toContain(
+      "MUST be recognized so a remediation-limit label never falls through to D.10",
+    );
   });
 });
 

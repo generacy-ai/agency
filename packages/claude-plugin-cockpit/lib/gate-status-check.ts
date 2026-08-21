@@ -179,8 +179,8 @@ export const DRIFT_GUARD_UNRESOLVABLE_GATE_TYPES: ReadonlySet<GateType> = new Se
   "escalation",
 ]);
 
-/** The four dispatch rows that share `gateType: 'escalation'`. */
-export const ESCALATION_DISPATCH_ROWS = ["D.6", "D.7", "D.10", "D.11"] as const;
+/** The three dispatch rows that share `gateType: 'escalation'`. */
+export const ESCALATION_DISPATCH_ROWS = ["D.7", "D.10", "D.11"] as const;
 
 /**
  * The generation-drift branch's dispatch-identity precondition. `false` means
