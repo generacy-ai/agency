@@ -5875,50 +5875,80 @@ describe("471 startup-sweep adoption", () => {
 // `waiting-for:implementation-review` gate becomes a final human approval
 // (G.8 → merge / hold / reject); a new `waiting-for:remediation-limit` gate
 // (D.13 / G.9) surfaces when the engine hits its retry cap; D.6 red-validate
-// becomes a ledger-only no-op (no cluster-side fixer). A `generacy --version`
-// pre-flight probe guards against running new-`auto` against an old engine.
+// becomes a ledger-only no-op (no cluster-side fixer). The `generacy --version`
+// pre-flight probe is now an **advisory** echo only (agency#502): engine
+// compatibility is decided by runtime gate-placement detection at D.3 (does
+// `waiting-for:implementation-review` co-occur with `completed:validate`?), which
+// routes `approve` to `cockpit_merge` (post-validate) or
+// `cockpit_advance(gate="implementation-review")` (legacy), and fails closed with
+// an actionable flag-naming diagnostic when neither model is servable.
 //
 // Re-pin, never weaken (CLAUDE.md § "Cockpit playbook pins"): every removed
 // contract carries a positive pin on its replacement + a negative pin asserting
 // the old phrasing is gone.
 // -----------------------------------------------------------------------------
 
+// The exact fail-closed diagnostic bytes (agency#502, FR-005 / Q4=A). Frozen
+// verbatim so the load-bearing flag-name contract (`reviewPhaseEnabled` /
+// `ciMergeGateEnabled`) cannot silently rot.
+const FAIL_CLOSED_DIAGNOSTIC =
+  "/cockpit:auto cannot determine this generacy engine's implementation-review gate model. " +
+  "The engine raised `waiting-for:implementation-review` without `completed:validate` " +
+  "(so not the post-validate #1120 model) and rejected `cockpit_advance(issue, gate=\"implementation-review\")` " +
+  "(so not the legacy pre-relocation model). This usually means the engine's " +
+  "`reviewPhaseEnabled` and `ciMergeGateEnabled` flags are both off and the build predates #1120's gate move. " +
+  "Enable `reviewPhaseEnabled` / `ciMergeGateEnabled` on the cluster's generacy build, " +
+  "upgrade to a build that ships generacy#1120, or drive the epic manually with " +
+  "/cockpit:watch, /cockpit:status, and /cockpit:advance.";
+
 describe("500 slim auto to gates/queue/clarify/merge", () => {
-  it("500-1 § step 1 pre-flight declares the `generacy --version` skew guard (MIN_GENERACY_VERSION = 0.2.0) with the below-minimum hard-fail — no ledger dir, no loop", () => {
+  it("500-1 the inverted version-literal gate is gone; § step 1 keeps only an advisory `generacy --version` echo, and D.3 decides compatibility by runtime gate-placement detection with an exact flag-naming fail-closed diagnostic", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
-    // The probe + literal are present verbatim.
-    expect(autoMd).toContain("`generacy --version`");
-    expect(autoMd).toContain("`MIN_GENERACY_VERSION` = `0.2.0`");
-    // The below-minimum operator error is verbatim.
-    expect(autoMd).toContain(
+
+    // --- Negative pins: the inverted version-literal gate is fully removed. ---
+    expect(autoMd).not.toContain("MIN_GENERACY_VERSION");
+    expect(autoMd).not.toContain("0.2.0");
+    expect(autoMd).not.toContain(
       "generacy is older than the minimum this /cockpit:auto requires (need >= 0.2.0).",
     );
-    // The unparseable/missing branch fails closed with a DISTINCT diagnostic.
-    expect(autoMd).toContain(
-      "Could not parse `generacy --version` output",
+    expect(autoMd).not.toContain("Could not parse `generacy --version` output");
+
+    // --- Positive: the version probe survives as an advisory-only echo. ---
+    expect(autoMd).toContain("`generacy --version`");
+    expect(autoMd).toContain("This echo is **informational only**");
+
+    // --- Positive: runtime gate-placement detection is the authoritative signal. ---
+    const d3 = extractSubheadingBlock(autoMd, "D.3 — `waiting-for:implementation-review`");
+    expect(d3).toContain(
+      "`completed:validate` **co-occurs** with `waiting-for:implementation-review`",
     );
-    // Hard-fail guarantee: below-minimum writes no ledger dir / no ledger line /
-    // no loop — the same idiom as the doorbell-absence hard-fail.
-    const versionGuardStart = autoMd.indexOf("probe the engine version for skew");
-    expect(versionGuardStart, "version skew guard prose must exist").toBeGreaterThan(-1);
-    const guard = autoMd.slice(versionGuardStart, versionGuardStart + 3000);
-    expect(guard).toContain("Do **NOT** create the ledger directory.");
-    expect(guard).toContain("Do **NOT** start the loop.");
-    // Positioned after the doorbell-surface probe and before command -v
-    // generacy's downstream gh auth status.
-    expect(guard).toContain(
-      "It runs AFTER the doorbell-surface probe and BEFORE `command -v generacy`",
+    // Two routing verbs, one per detected model.
+    expect(d3).toContain("`cockpit_merge(issue=<issue-ref>)`");
+    expect(d3).toContain(
+      '`cockpit_advance(issue=<issue-ref>, gate="implementation-review")`',
     );
+
+    // --- Positive: the exact fail-closed diagnostic bytes + both flag names. ---
+    expect(d3).toContain(FAIL_CLOSED_DIAGNOSTIC);
+    expect(d3).toContain("reviewPhaseEnabled");
+    expect(d3).toContain("ciMergeGateEnabled");
+    // Fail-closed idiom: exit non-zero, halt the loop, terminal ledger line.
+    expect(d3).toContain("exit the run **non-zero** and **halt the loop**");
+    expect(d3).toContain("`fail-closed: <detail>`");
   });
 
-  it("500-2 D.3 opens the final-approval gate G.8 (approve/hold/reject); approve → merge, hold/reject → no-op — and no longer spawns a reviewer or runs the request-changes guardrail", () => {
+  it("500-2 D.3 opens the final-approval gate G.8 (approve/hold/reject); approve branches on the detected model (post-validate → merge, legacy → advance), hold/reject → no-op — and no longer spawns a reviewer or runs the request-changes guardrail", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const d3 = extractSubheadingBlock(autoMd, "D.3 — `waiting-for:implementation-review`");
     // Positive: final-approval gate G.8 with the three options.
     expect(d3).toContain("§ Gate contract G.8");
     expect(d3).toContain("`approve` / `hold` / `reject`");
-    // approve → cockpit merge path; hold/reject → no-op (label stays, re-fires).
-    expect(d3).toContain("`approve` → cockpit merge path");
+    // approve branches on the § D.3 step 4 detected model: post-validate → merge,
+    // legacy → advance; hold/reject → no-op (label stays, re-fires) in every model.
+    expect(d3).toContain("**post-validate** model → cockpit merge path");
+    expect(d3).toContain(
+      '**legacy** model → `cockpit_advance(issue=<issue-ref>, gate="implementation-review")`',
+    );
     expect(d3).toMatch(/`hold` \/ `reject` → do nothing/);
     // Negative: no reviewer subagent is spawned (the removal is stated verbatim),
     // and NO reviewer spawn invocation survives.
@@ -5978,7 +6008,7 @@ describe("500 slim auto to gates/queue/clarify/merge", () => {
     expect(g9).toContain("parsed from the **gate body**");
   });
 
-  it("500-6 G.8 renders findings from the gate body and spawns no reviewer subagent / runs no request-changes guardrail", () => {
+  it("500-6 G.8 renders findings from the gate body, branches approve on the detected model (post-validate → merge, legacy → advance, undetectable → fail closed), and spawns no reviewer subagent / runs no request-changes guardrail", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const g8 = extractSubheadingBlock(
       autoMd,
@@ -5987,6 +6017,14 @@ describe("500 slim auto to gates/queue/clarify/merge", () => {
     // Positive: findings parsed from the gate body; approve/hold/reject options.
     expect(g8).toContain("parsed from the **gate body**");
     expect(g8).toContain("`approve` / `hold` / `reject`");
+    // Positive: approve branches on the § D.3 step 4 detected model.
+    expect(g8).toContain(
+      "`approve`, **post-validate** model (`completed:validate` co-occurs) → route into the **cockpit merge path**",
+    );
+    expect(g8).toContain(
+      '`approve`, **legacy** model (`completed:validate` absent) → `cockpit_advance(issue=<issue-ref>, gate="implementation-review")`',
+    );
+    expect(g8).toContain("**undetectable**");
     // Negative: no reviewer subagent and no request-changes guardrail.
     expect(g8).toContain("no `cockpit-reviewer` subagent is spawned");
     expect(g8).toContain(
@@ -6008,6 +6046,13 @@ describe("500 slim auto to gates/queue/clarify/merge", () => {
     expect(section).not.toMatch(/^\| G\.4a \|/m);
     // The generation-discriminator table carries a remediation-limit row.
     expect(section).toMatch(/^\| `remediation-limit` \|/m);
+    // The G.8 row's terse approve outcome reflects both model branches.
+    const g8Row = section.split("\n").find((line) => line.startsWith("| G.8 |"));
+    expect(g8Row, "G.8 mapping row must exist").toBeDefined();
+    expect(g8Row!).toContain("post-validate → cockpit merge path");
+    expect(g8Row!).toContain(
+      'legacy → `cockpit_advance(issue=<ref>, gate="implementation-review")`',
+    );
   });
 
   it("500-8 the escalation enum narrative names three rows (D.7/D.10/D.11), not four — D.6 no longer shares the escalation gateType", () => {
