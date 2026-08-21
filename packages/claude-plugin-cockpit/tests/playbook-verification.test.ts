@@ -6067,8 +6067,13 @@ describe("500 slim auto to gates/queue/clarify/merge", () => {
     expect(section).toMatch(/^\| G\.9 \|/m);
     // G.4a is gone from the mapping table.
     expect(section).not.toMatch(/^\| G\.4a \|/m);
-    // The generation-discriminator table carries a remediation-limit row.
-    expect(section).toMatch(/^\| `remediation-limit` \|/m);
+    // The generation-discriminator table carries a remediation-limit row pinned
+    // to the reconciled discriminator (#503 T006 dropped the rejected
+    // `(or remediation counter + remaining-findings hash)` parenthetical).
+    expect(section).toMatch(
+      /^\| `remediation-limit` \| PR head SHA \+ remediation counter \|/m,
+    );
+    expect(section).not.toContain("remaining-findings hash");
     // The G.8 row's terse approve outcome reflects both model branches.
     const g8Row = section.split("\n").find((line) => line.startsWith("| G.8 |"));
     expect(g8Row, "G.8 mapping row must exist").toBeDefined();
