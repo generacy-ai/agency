@@ -493,7 +493,7 @@ Any other outcome — parse failure, non-object result, missing `to`, missing `l
 
 | `checks` value | Action |
 |----------------|--------|
-| `"green"` | D.5 branch: `cockpit_merge(issue=<issue-ref>)` (unchanged from pre-#437) |
+| `"green"` | D.5 branch: evaluate the § D.5 step-2 **implementation-review co-presence guard** first — **DEFER** (passive no-op, ledger outcome `deferred: implementation-review pending`; no `cockpit_merge`, no gate, no label) when `waiting-for:implementation-review` co-occurs, because G.8 (D.3's trigger) owns that merge on `approve` (`auto.md:1494`); otherwise `cockpit_merge(issue=<issue-ref>)` |
 | `"red"` | D.6 branch: **ledger-only no-op** — red validate is engine-owned and re-fires as an engine gate (remediation / remediation-limit); no fixer subagent |
 | `"pending"` | **Fall back** to a single authoritative `cockpit_status(issue=<issue-ref>, json=true)` OR `cockpit_merge(issue=<issue-ref>)` (per the D.5 vs. D.6 dispatch); branch on the returned verdict per pre-#437 logic |
 | Absent (field missing OR `null`/`undefined`) | **Fall back** — same as `"pending"` |
