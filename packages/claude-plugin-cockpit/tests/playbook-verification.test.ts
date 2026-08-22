@@ -42,7 +42,7 @@ import {
   type GateQueryErrorClass,
   type AnsweredGateSweepCounter,
 } from "../lib/gate-status-check.js";
-import type { GateId, GateRecord, GateType } from "../lib/gate-wire-types.js";
+import type { DispatchClass, GateId, GateRecord, GateType } from "../lib/gate-wire-types.js";
 import {
   parseTokens,
   dispatchForm,
@@ -2957,13 +2957,13 @@ describe("449 UI-mode gates", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     // Top-level section heading is pinned; row-count assertion in 449-8 depends
     // on this section being present.
-    expect(autoMd).toMatch(/^## UI-mode gate mapping \(G\.1–G\.9\)$/m);
+    expect(autoMd).toMatch(/^## UI-mode gate mapping \(G\.1–G\.10\)$/m);
   });
 
-  it("449-8 UI-mode gate mapping table has EXACTLY 11 body rows in the pinned order (G.4a and G.4e absent)", () => {
+  it("449-8 UI-mode gate mapping table has EXACTLY 12 body rows in the pinned order (G.4a and G.4e absent; G.10 ci appended)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     // Locate the UI-mode section body (from its heading to the next ## H2).
-    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.9)");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.10)");
     expect(sectionStart, "UI-mode gate mapping section must exist").toBeGreaterThan(-1);
     const rest = autoMd.slice(sectionStart + 1);
     const nextH2 = rest.indexOf("\n## ", 1);
@@ -2986,11 +2986,12 @@ describe("449 UI-mode gates", () => {
       if (!line.startsWith("| ")) break;
       bodyRows.push(line);
     }
-    // Exact row count is 11 (G.4a dropped — D.6 is now ledger-only; G.8/G.9 added).
-    expect(bodyRows.length, "mapping table row count must be exactly 11 (G.1..G.9)").toBe(11);
+    // Exact row count is 12 (G.4a dropped — D.6 is now ledger-only; G.8/G.9
+    // added by #500; G.10 `ci` added to mirror the engine's CI merge gate).
+    expect(bodyRows.length, "mapping table row count must be exactly 12 (G.1..G.10)").toBe(12);
 
     // Rows begin with the pinned gate identifiers in order.
-    const expectedGates = ["G.1", "G.2", "G.3", "G.4b", "G.4c", "G.4d", "G.5", "G.6", "G.7", "G.8", "G.9"];
+    const expectedGates = ["G.1", "G.2", "G.3", "G.4b", "G.4c", "G.4d", "G.5", "G.6", "G.7", "G.8", "G.9", "G.10"];
     const actualGates = bodyRows.map((row) => {
       const cellMatch = /^\| ([^|]+?) \|/.exec(row);
       return cellMatch ? cellMatch[1]!.trim() : "";
@@ -3005,7 +3006,7 @@ describe("449 UI-mode gates", () => {
 
   it("449-9 G.4(e) exclusion note is present in the UI-mode gate mapping section", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
-    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.9)");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.10)");
     const rest = autoMd.slice(sectionStart + 1);
     const nextH2 = rest.indexOf("\n## ", 1);
     const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
@@ -3015,7 +3016,7 @@ describe("449 UI-mode gates", () => {
 
   it("449-10 G.7 row declares `required-if` free-text affordance for `add-more-work` (Q4=A)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
-    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.9)");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.10)");
     const rest = autoMd.slice(sectionStart + 1);
     const nextH2 = rest.indexOf("\n## ", 1);
     const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
@@ -3027,7 +3028,7 @@ describe("449 UI-mode gates", () => {
 
   it("449-11 G.2 row declares `optional` free-text affordance for reviewer comment", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
-    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.9)");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.10)");
     const rest = autoMd.slice(sectionStart + 1);
     const nextH2 = rest.indexOf("\n## ", 1);
     const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
@@ -3143,7 +3144,7 @@ describe("449 UI-mode gates", () => {
     expect(ledger).toContain("grep 'source: ui-gate-fallback' <ledger>");
   });
 
-  it("449-18 § step-3 startup sweep declares the Q2=B extended trigger set (5 non-waiting-for triggers)", () => {
+  it("449-18 § step-3 startup sweep declares the Q2=B extended trigger set (5 non-waiting-for triggers + the D.13 remediation-limit / D.14 ci waiting-for rows)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const step3 = extractInstructionsSteps(autoMd).get(3)!;
     // UI-mode callout heading (Q2=B extension).
@@ -3155,6 +3156,12 @@ describe("449 UI-mode gates", () => {
     expect(step3).toContain("completed:validate` with red checks");
     expect(step3).toContain("phase-complete");
     expect(step3).toContain("blocked:stuck-merge-conflicts");
+    // The two engine-pause waiting-for rows are in the UI-mode trigger set —
+    // without them a `--gates=ui` restart never re-opens the remote gate for
+    // an issue parked at remediation-limit / ci (they do not self-re-fire).
+    expect(step3).toContain("`waiting-for:remediation-limit` (D.13 — G.9)");
+    expect(step3).toContain("`waiting-for:ci` (D.14 — G.10; co-occurs with `agent:paused`)");
+    expect(step3).toContain("D.13 and D.14 are persistent engine pauses that do NOT self-re-fire");
     // G.4(e) exclusion is explicit.
     expect(step3).toContain("G.4(e) exclusion");
     // Idempotency and deferred-to-loop behavior are named.
@@ -3804,7 +3811,7 @@ describe("457 sweep-time gate reuse", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     // Locate the discriminator subsection. Search for the H4 heading and
     // return everything up to the next H3 or H2 (H4 is a child of the H2
-    // `## UI-mode gate mapping (G.1–G.9)`; the next H3 sibling terminates it).
+    // `## UI-mode gate mapping (G.1–G.10)`; the next H3 sibling terminates it).
     const marker = "\n#### Generation discriminator (UI mode)\n";
     const sectionStart = autoMd.indexOf(marker);
     expect(sectionStart, "generation-discriminator subsection must exist").toBeGreaterThan(-1);
@@ -3816,7 +3823,8 @@ describe("457 sweep-time gate reuse", () => {
     const nextBoundary = nextBoundaries.length > 0 ? Math.min(...nextBoundaries) : -1;
     const section = nextBoundary === -1 ? rest : rest.slice(0, nextBoundary);
 
-    // The eight-row gateType table body is unchanged — pin the exact discriminators.
+    // The ten-row gateType table body — pin the exact discriminators
+    // (remediation-limit + ci mirror lib/gate-wire-types.ts § GateGeneration: PR head SHA).
     const EXPECTED_ROWS: ReadonlyArray<[string, string]> = [
       [
         "`clarification`",
@@ -3825,6 +3833,8 @@ describe("457 sweep-time gate reuse", () => {
       ["`artifact-review`", "artifact kind + review-branch head SHA"],
       ["`implementation-review`", "PR head SHA"],
       ["`manual-validation`", "PR head SHA"],
+      ["`remediation-limit`", "PR head SHA"],
+      ["`ci`", "PR head SHA"],
       [
         "`escalation`",
         "subtype + triggering label/state + occurrence counter",
@@ -4040,6 +4050,8 @@ describe("457 sweep-time gate reuse", () => {
       "phase-queue",
       "filing",
       "scope-drained",
+      "remediation-limit",
+      "ci",
     ];
     for (const gt of ONE_TO_ONE) {
       expect(driftBranchMaySupersede(gt), `${gt} maps 1:1 to a dispatch row`).toBe(true);
@@ -5059,7 +5071,7 @@ describe("469 runId threading", () => {
     );
   });
 
-  it("469-25 enumerated live-path `cockpit_gate_open` `runId` threading across every drafting D.n (D.1, D.2, D.3, D.4, D.7 G.4b, D.8 G.5, D.10 G.4c, D.11 G.4d, D.13 remediation-limit) — FR-016 / Batch 2 Q7 (sampling one call site is INSUFFICIENT)", () => {
+  it("469-25 enumerated live-path `cockpit_gate_open` `runId` threading across every drafting D.n (D.1, D.2, D.3, D.4, D.7 G.4b, D.8 G.5, D.10 G.4c, D.11 G.4d, D.13 remediation-limit, D.14 ci) — FR-016 / Batch 2 Q7 (sampling one call site is INSUFFICIENT)", () => {
     // Enumerated by design (FR-016 / R11): every drafting D.n row must be
     // named in the § UI-mode gate mapping header note so a future edit that
     // adds a new drafting row cannot slip past the runId invariant.
@@ -5085,6 +5097,7 @@ describe("469 runId threading", () => {
       "D.10 G.4c escalation",
       "D.11 G.4d escalation",
       "D.13 remediation-limit",
+      "D.14 ci",
     ]) {
       expect(
         note,
@@ -5354,7 +5367,7 @@ describe("471 startup-sweep adoption", () => {
     expect(adoptionNormalized).toMatch(/runId: row\.runId/);
   });
 
-  it("471-5 § Adoption pass declares the FR-013 generation-drift branch verbatim (ack `superseded` targeting row's `runId`; five drift-enabled gateTypes; deferred draft)", () => {
+  it("471-5 § Adoption pass declares the FR-013 generation-drift branch verbatim (ack `superseded` targeting row's `runId`; six drift-enabled gateTypes; deferred draft)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const adoption = extractAdoptionPassBlock(autoMd);
     const adoptionNormalized = adoption.replace(/\s+/g, " ");
@@ -5363,10 +5376,11 @@ describe("471 startup-sweep adoption", () => {
       /Generation-drift branch \(per FR-013/,
     );
     expect(adoptionNormalized).toMatch(/contracts\/adoption-drift\.md/);
-    // Five drift-enabled gateTypes named verbatim (remediation-limit is 1:1 →
-    // D.13, so its drift branch is enabled alongside the four originals).
+    // Six drift-enabled gateTypes named verbatim (remediation-limit is 1:1 →
+    // D.13 and ci is 1:1 → D.14, so their drift branches are enabled alongside
+    // the four originals).
     expect(adoptionNormalized).toMatch(
-      /row\.gateType ∈ \{clarification, artifact-review, implementation-review, manual-validation, remediation-limit\}/,
+      /row\.gateType ∈ \{clarification, artifact-review, implementation-review, manual-validation, remediation-limit, ci\}/,
     );
     // The ack call literal contains gateId: row.gateId, outcome:
     // 'superseded', and runId: row.runId (targeting the row's originating
@@ -5987,7 +6001,7 @@ describe("500 slim auto to gates/queue/clarify/merge", () => {
     expect(g2).toContain("no longer routes through G.2");
   });
 
-  it("500-5 D.13 + G.9 present `resume remediation`/`stop`; resume → cockpit_advance(gate=remediation-limit); stop → exit clean, no label writes; findings fetched from the `## Remediation limit reached` issue comment (#504), no subagent", () => {
+  it("500-5 D.13 + G.9 present `resume remediation`/`stop`; resume → cockpit_advance(gate=remediation-limit); stop → exit clean, no label writes; findings fetched from the engine's `<!-- generacy-remediation-limit -->` issue comment (marker-first; heading `includes` fallback; both bullet shapes + placeholder), no subagent", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
     const d13 = extractSubheadingBlock(autoMd, "D.13 — `waiting-for:remediation-limit`");
     const g9 = extractSubheadingBlock(autoMd, "G.9 — Remediation-limit gate");
@@ -6003,24 +6017,52 @@ describe("500 slim auto to gates/queue/clarify/merge", () => {
     expect(d13).toContain("**No label writes**");
     // No subagent.
     expect(d13).toContain("No subagent is spawned");
-    // #504 findings-fetch contract (T020): gh issue view → startsWith the exact
-    // case-sensitive heading → single most-recent by createdAt → em-dash bullet → (none) fallback.
+    // Findings-fetch contract, reconciled against the engine (generacy
+    // phase-loop.ts:56 + the REMEDIATION_LIMIT_MARKER body builder): the engine prepends the hidden HTML
+    // marker as line 1 and the `## Remediation limit reached` heading is line
+    // 2, so the filter keys on `startsWith(marker)`, with an `includes(heading)`
+    // fallback for pre-marker engines → single most-recent by createdAt →
+    // BOTH bullet shapes (with / without `:<line>`) → the engine's
+    // no-findings placeholder bullet renders as `(none)`.
     expect(d13).toContain("gh issue view <issue-ref> --json comments");
     expect(d13).toContain(
-      "`startsWith` the exact, case-sensitive string `## Remediation limit reached`",
+      "`startsWith` the exact, case-sensitive marker `<!-- generacy-remediation-limit -->`",
     );
+    expect(d13).toContain(
+      "`includes` the exact, case-sensitive string `## Remediation limit reached`",
+    );
+    expect(d13).toContain("phase-loop.ts:56");
+    expect(d13).toContain("REMEDIATION_LIMIT_MARKER");
     expect(d13).toContain("single most-recent matching comment by `createdAt`");
     expect(d13).toContain("- <file>:<line> — <title>");
+    expect(d13).toContain("- <file> — <title>");
+    expect(d13).toContain("- _(No open findings were recorded.)_");
     expect(d13).toContain("`(none)` fallback");
-    // Negative: the pre-#504 undefined "gate body" findings source is retired.
+    // Negative: the never-matching `startsWith(heading)` rule (the engine's
+    // comment never starts with the heading) and the stale engine line ref
+    // are gone; so is the pre-#504 "gate body" findings source.
+    expect(d13).not.toContain(
+      "`startsWith` the exact, case-sensitive string `## Remediation limit reached`",
+    );
+    expect(d13).not.toContain("NOT `contains`");
+    expect(d13).not.toContain("phase-loop.ts:1411-1421");
     expect(d13).not.toContain("gate body");
     // G.9 gate contract mirrors the same fetch/selection/bullet/(none) contract.
     expect(g9).toContain("`resume remediation` / `stop`");
     expect(g9).toContain(
+      "`startsWith` the exact, case-sensitive marker `<!-- generacy-remediation-limit -->`",
+    );
+    expect(g9).toContain(
+      "`includes` the exact, case-sensitive string `## Remediation limit reached`",
+    );
+    expect(g9).toContain("REMEDIATION_LIMIT_MARKER");
+    expect(g9).toContain("- <file>:<line> — <title>");
+    expect(g9).toContain("- <file> — <title>");
+    expect(g9).toContain("- _(No open findings were recorded.)_");
+    expect(g9).toContain("render `(none)` when no comment matches");
+    expect(g9).not.toContain(
       "`startsWith` the exact, case-sensitive string `## Remediation limit reached`",
     );
-    expect(g9).toContain("- <file>:<line> — <title>");
-    expect(g9).toContain("render `(none)` when no comment matches");
     expect(g9).not.toContain("gate body");
   });
 
@@ -6055,24 +6097,27 @@ describe("500 slim auto to gates/queue/clarify/merge", () => {
     );
   });
 
-  it("500-7 the UI-mode gate-mapping table has G.8 + G.9 rows and no G.4a row; the generation-discriminator table has a remediation-limit row", () => {
+  it("500-7 the UI-mode gate-mapping table has G.8 + G.9 + G.10 rows and no G.4a row; the generation-discriminator table has remediation-limit and ci rows pinned to `PR head SHA` (mirrors lib/gate-wire-types.ts)", () => {
     const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
-    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.9)");
+    const sectionStart = autoMd.indexOf("\n## UI-mode gate mapping (G.1–G.10)");
     expect(sectionStart, "UI-mode gate mapping section must exist").toBeGreaterThan(-1);
     const rest = autoMd.slice(sectionStart + 1);
     const nextH2 = rest.indexOf("\n## ", 1);
     const section = nextH2 === -1 ? rest : rest.slice(0, nextH2);
-    // G.8 and G.9 mapping rows are present.
+    // G.8, G.9 and G.10 mapping rows are present.
     expect(section).toMatch(/^\| G\.8 \|/m);
     expect(section).toMatch(/^\| G\.9 \|/m);
+    expect(section).toMatch(/^\| G\.10 \|/m);
     // G.4a is gone from the mapping table.
     expect(section).not.toMatch(/^\| G\.4a \|/m);
-    // The generation-discriminator table carries a remediation-limit row pinned
-    // to the reconciled discriminator (#503 T006 dropped the rejected
-    // `(or remediation counter + remaining-findings hash)` parenthetical).
-    expect(section).toMatch(
-      /^\| `remediation-limit` \| PR head SHA \+ remediation counter \|/m,
-    );
+    // The generation-discriminator table carries remediation-limit + ci rows
+    // pinned to `PR head SHA` — the SAME value lib/gate-wire-types.ts
+    // § GateGeneration declares. The earlier `+ remediation counter` form
+    // contradicted the library (the loop never computes a counter) and is gone,
+    // as is the rejected remaining-findings-hash form (#503 T006).
+    expect(section).toMatch(/^\| `remediation-limit` \| PR head SHA \|$/m);
+    expect(section).toMatch(/^\| `ci` \| PR head SHA \|$/m);
+    expect(section).not.toContain("PR head SHA + remediation counter");
     expect(section).not.toContain("remaining-findings hash");
     // The G.8 row's terse approve outcome reflects both model branches.
     const g8Row = section.split("\n").find((line) => line.startsWith("| G.8 |"));
@@ -6112,6 +6157,26 @@ describe("500 slim auto to gates/queue/clarify/merge", () => {
     expect(d13).toContain(
       "MUST be recognized so a remediation-limit label never falls through to D.10",
     );
+    // D.14 `waiting-for:ci` is likewise a recognised row — before it existed
+    // the engine's CI merge-gate pause fell to D.10 (Skip / Stop only), with
+    // no way to answer `completed:ci`.
+    const d14Row = dispatchSection
+      .split("\n")
+      .find((line) => /^\| D\.14 \|/.test(line));
+    expect(d14Row, "dispatch table must contain a D.14 row").toBeDefined();
+    expect(d14Row!).toContain("waiting-for:ci");
+    const d14 = extractSubheadingBlock(autoMd, "D.14 — `waiting-for:ci`");
+    expect(d14).toContain(
+      "MUST be recognized so a ci label never falls through to D.10",
+    );
+    // D.10's exclusion enumeration names both engine-pause rows.
+    const d10 = extractSubheadingBlock(
+      autoMd,
+      "D.10 — Unrecognized / ambiguous state → escalation gate (Skip / Stop only)",
+    );
+    expect(d10).toContain("(D.1–D.9c, D.11, D.13, or D.14)");
+    expect(d10).toContain("`waiting-for:ci` matches D.14");
+    expect(d10).toContain("dedicated gate (D.11, D.13, D.14)");
   });
 
   it("504-1 D.5 guards a co-present `waiting-for:implementation-review`: green-path defer (no merge), passive no-op deferral token, fail-safe re-query; the deferral prose does not trip the 437-5 defer-on-pending regex", () => {
@@ -6143,6 +6208,169 @@ describe("500 slim auto to gates/queue/clarify/merge", () => {
     expect(d5).toContain("`deferred: implementation-review pending`");
     // Negative (437-5 invariant): the deferral prose must NOT match the defer-on-pending regex.
     expect(d5).not.toMatch(/defer\s+(this\s+wake|on\s+pending)/i);
+  });
+});
+
+
+// -----------------------------------------------------------------------------
+// engine-contract — cross-repo reconciliation against generacy HEAD b61e2180
+//
+// The engine's CI merge gate (`ciMergeGateEnabled`; phase-loop.ts
+// `pauseForCiReadiness`) parks an issue at `waiting-for:ci` + `agent:paused`
+// when CI is red / times out / the head SHA is unresolvable, and the operator
+// answer is `completed:ci` (phase-resolver.ts: `ci` → re-arm at `validate`).
+// auto.md had no row for it — it fell to D.10 (Skip / Stop), stranding the
+// issue. D.14 / G.10 add the row; `lib/gate-wire-types.ts` mirrors generacy's
+// `GateTypeSchema` (`remediation-limit` + `ci`) exactly.
+//
+// Re-pin, never weaken (CLAUDE.md § "Cockpit playbook pins").
+// -----------------------------------------------------------------------------
+
+describe("engine-contract D.14 / G.10 ci gate + gate-wire-types mirror", () => {
+  it("engine-contract-1 D.14 `waiting-for:ci` presents `resume (re-check CI)`/`stop`; resume → cockpit_advance(gate=\"ci\") (completed:ci; engine re-arms at validate); stop → exit clean, no label writes; verdict fetched from the engine's pause comment (marker-first, heading fallback), no subagent", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const d14 = extractSubheadingBlock(autoMd, "D.14 — `waiting-for:ci`");
+    // Trigger shape: co-occurs with agent:paused; completed:validate absent;
+    // engine provenance named.
+    expect(d14).toContain("co-occurs with `agent:paused`; `completed:validate` is ABSENT");
+    expect(d14).toContain("`ciMergeGateEnabled`");
+    expect(d14).toContain("`pauseForCiReadiness`");
+    expect(d14).toContain("Verbatim event string: `waiting-for:ci`");
+    // Step 0 reuses D.13's sub-steps with gateType = ci / dispatchClass D.14.
+    expect(d14).toMatch(/Skip Step 0 entirely under `ResolvedGateMode === "local"`/);
+    expect(d14).toContain("`gateType = ci`");
+    expect(d14).toContain("`dispatchClass: 'D.14'`");
+    // Verdict fetch: marker-first, `## CI merge readiness paused` fallback,
+    // most-recent by createdAt, verdict line rendered verbatim, (unknown) fallback.
+    expect(d14).toContain("gh issue view <issue-ref> --json comments");
+    expect(d14).toContain(
+      "`startsWith` the exact, case-sensitive hidden marker `<!-- generacy-ci-pause -->`",
+    );
+    expect(d14).toContain(
+      "`includes` the exact, case-sensitive string `## CI merge readiness paused`",
+    );
+    expect(d14).toContain("single most-recent matching comment by `createdAt`");
+    expect(d14).toContain("`CI verdict: <verdict> (source: <check-runs|actions-runs|none>)`");
+    expect(d14).toContain("render `verdict: (unknown)`");
+    expect(d14).toContain("No subagent is spawned");
+    // Options in order + header.
+    expect(d14).toContain("`resume (re-check CI)` / `stop`");
+    expect(d14).toContain("header `CI?` (≤ 12 chars)");
+    // resume → cockpit_advance(gate="ci"), never cockpit_resume; engine re-arms at validate.
+    expect(d14).toContain('`cockpit_advance(issue=<issue-ref>, gate="ci")`');
+    expect(d14).toContain("applies `completed:ci` server-side");
+    expect(d14).toContain("the engine re-arms at `validate`");
+    expect(d14).toContain("`cockpit_resume` is the WRONG verb");
+    // auto never touches CI itself (invariant §1).
+    expect(d14).toContain("`auto` does NOT inspect, re-run, or fix CI itself");
+    // stop → clean exit, no label writes.
+    expect(d14).toMatch(/`stop` → exit auto cleanly/);
+    expect(d14).toContain("**No label writes**");
+    // Ledger line + outcome vocabulary.
+    expect(d14).toContain("`<issue-ref> · waiting-for:ci · ci-gate · <outcome>`");
+    expect(d14).toContain("`resumed (advanced)` / `advance failed: <desc>` / `stop (exit)`");
+  });
+
+  it("engine-contract-2 G.10 CI merge-readiness gate contract mirrors D.14 (question, header, two options, post-gate verbs)", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const g10 = extractSubheadingBlock(autoMd, "G.10 — CI merge-readiness gate");
+    expect(g10).toContain("**Trigger**: D.14 (`waiting-for:ci`)");
+    expect(g10).toContain("`<!-- generacy-ci-pause -->`");
+    expect(g10).toContain("`## CI merge readiness paused`");
+    expect(g10).toContain("CI verdict: <verdict> (source: <check-runs|actions-runs|none>)");
+    expect(g10).toContain("render `verdict: (unknown)` when no comment matches");
+    expect(g10).toContain("question `Re-check CI on <issue-ref>?` · header `CI?` (≤ 12 chars) · `multiSelect: false`");
+    expect(g10).toContain("`resume (re-check CI)` / `stop`");
+    expect(g10).toContain('`cockpit_advance(issue=<issue-ref>, gate="ci")`');
+    expect(g10).toContain("`cockpit_resume` is the WRONG verb");
+    expect(g10).toMatch(/`stop` → exit auto cleanly/);
+    expect(g10).toContain("**No subagent**");
+  });
+
+  it("engine-contract-3 `waiting-for:ci` is wired at every enumeration site: E3 table, dispatch table, sweep class list, UI-mode extended trigger set, D.12 interactions, runId note, enriched-line marker rule, ledger vocabulary, recoverability table, G.10 mapping row", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // E3 enriched-line source table.
+    expect(autoMd).toMatch(/^\| D\.14 \| `waiting-for:ci` \| \*\*enriched line\*\* \| fallback \|$/m);
+    // Startup sweep synthetic-event class list.
+    expect(autoMd).toContain(
+      "one of D.1–D.9, D.13 (`waiting-for:remediation-limit`), or D.14 (`waiting-for:ci`) as a synthetic event",
+    );
+    // D.12 interactions + runId enumerated note + enriched-line marker rule.
+    expect(autoMd).toContain("**Interactions**: D.1–D.4, D.7, D.10, D.11, D.13, D.14 —");
+    expect(autoMd).toContain("D.13 remediation-limit, D.14 ci) passes the run's pre-flight-derived `runId`");
+    expect(autoMd).toContain("D.9c, D.9d, D.13, and D.14 append `· source: enriched-line`");
+    // Ledger action/outcome vocabulary row.
+    expect(autoMd).toMatch(
+      /^\| D\.14 ci \| `ci-gate` \| `resumed \(advanced\)`, `advance failed: <description>`, `stop \(exit\)` \|$/m,
+    );
+    // Pre-draft recoverability table: ci is 1:1 → D.14; eight Step 0 blocks.
+    expect(autoMd).toMatch(/^\| `ci` \| D\.14 \(G\.10\) \| yes — `gateType` ⇒ row \|$/m);
+    expect(autoMd).toContain("Six of the frozen enum values map 1:1 onto a single Step-0 row");
+    expect(autoMd).toContain("eight Step 0 blocks (D.1, D.2, D.3, D.4, D.7, D.11, D.13, D.14)");
+    expect(autoMd).not.toContain("seven Step 0 blocks");
+    expect(autoMd).not.toContain("The six Step 0 blocks");
+    // G.10 mapping row: optionIds, downstream verb, ledger action verb.
+    const g10Row = autoMd.split("\n").find((line) => line.startsWith("| G.10 |"));
+    expect(g10Row, "G.10 mapping row must exist").toBeDefined();
+    expect(g10Row!).toContain("`waiting-for:ci`");
+    expect(g10Row!).toContain("`resume-recheck-ci` → `resume (re-check CI)`; `stop` → `stop`");
+    expect(g10Row!).toContain('`cockpit_advance(issue=<ref>, gate="ci")`');
+    expect(g10Row!).toContain("`{ kind: \"none\" }`");
+    expect(g10Row!).toMatch(/\| `ci-gate` \|$/);
+    // The UI-mode section + Dispatch intro now span G.1–G.10.
+    expect(autoMd).toContain("every gate contract G.1–G.10 that maps to the wire record");
+    expect(autoMd).toContain("every gate contract G.1–G.10 that maps to a per-issue wire record");
+    expect(autoMd).not.toContain("G.1–G.9");
+  });
+
+  it("engine-contract-4 lib/gate-wire-types.ts mirrors generacy's 10-value GateTypeSchema (… remediation-limit, ci), adds DispatchClass D.14, pins remediation-limit + ci generation = PR head SHA, and no longer cites the removed MIN_GENERACY_VERSION probe", () => {
+    const src = readFileSync(
+      resolve(__dirname, "..", "lib", "gate-wire-types.ts"),
+      "utf-8",
+    );
+    // GateType union — exact member list in generacy's enum order.
+    const gateTypeDecl = src.slice(
+      src.indexOf("export type GateType ="),
+      src.indexOf("/**", src.indexOf("export type GateType =")),
+    );
+    const members = [...gateTypeDecl.matchAll(/\| "([^"]+)"/g)].map((m) => m[1]);
+    expect(members).toEqual([
+      "clarification",
+      "artifact-review",
+      "implementation-review",
+      "manual-validation",
+      "escalation",
+      "phase-queue",
+      "filing",
+      "scope-drained",
+      "remediation-limit",
+      "ci",
+    ]);
+    expect(src).toContain("The 10-value gate-type enum");
+    expect(src).not.toContain("9-value gate-type enum");
+    // Capability detection replaces the removed version-literal probe.
+    expect(src).not.toContain("MIN_GENERACY_VERSION");
+    expect(src).not.toContain("0.2.0");
+    expect(src).toContain("capability detection");
+    expect(src).toContain("`cockpit_gate_list`");
+    // G.n → gateType mapping comment names G.10.
+    expect(src).toContain('G.10 CI merge-readiness gate            → "ci"');
+    // Generation discriminator comment: both rows are PR head SHA.
+    expect(src).toMatch(/- remediation-limit\s+: PR head SHA \(durable\)/);
+    expect(src).toMatch(/- ci\s+: PR head SHA \(durable\)/);
+    // DispatchClass union carries D.14.
+    const dispatchDecl = src.slice(
+      src.indexOf("export type DispatchClass ="),
+      src.indexOf("/**", src.indexOf("export type DispatchClass =")),
+    );
+    expect(dispatchDecl).toContain('| "D.13"');
+    expect(dispatchDecl).toContain('| "D.14";');
+    expect(dispatchDecl).toContain('waiting-for:ci (G.10) → gateType "ci"');
+    // The type-level pin: "ci" and "D.14" are assignable (compile-time).
+    const ciGate: GateType = "ci";
+    const d14: DispatchClass = "D.14";
+    expect(ciGate).toBe("ci");
+    expect(d14).toBe("D.14");
   });
 });
 
