@@ -84,10 +84,20 @@ export type GateId = string;
 export type GateKey = string;
 
 /**
- * The 8-value gate-type enum — mirrors the cloud `cockpitGateTypeEnum` and the
- * cluster `GateTypeSchema` EXACTLY (order preserved). This is the `:<gateType>:`
- * slot of the gateKey and is REQUIRED cloud-side. Net-new to the plugin: every
- * gate-open site must set it per the auto.md § UI-mode gate mapping table.
+ * The 10-value gate-type enum — mirrors the cloud `cockpitGateTypeEnum` and the
+ * cluster `GateTypeSchema` EXACTLY (generacy
+ * `packages/generacy/src/cli/commands/cockpit/mcp/gates/schemas.ts`, which
+ * carries both `remediation-limit` (generacy#1120) and `ci` (generacy#1133)).
+ * There is no version-literal gate: engine compatibility is decided at runtime
+ * by capability detection — the § step-1 `--gates=auto` three-part check (tool
+ * binding + cluster cloud-activation + the read-only `cockpit_gate_list`
+ * pre-flight probe) and, for the implementation-review model, D.3's
+ * gate-placement detection (does `waiting-for:implementation-review` co-occur
+ * with `completed:validate`?). An engine that does not raise a given gate
+ * simply never emits its `waiting-for:*` label, so the extra enum values are
+ * inert against older engines. This is the `:<gateType>:` slot of the gateKey
+ * and is REQUIRED cloud-side. Net-new to the plugin: every gate-open site must
+ * set it per the auto.md § UI-mode gate mapping table.
  *
  * Mapping from the local G.n dispatch classes (see mapping table for the full
  * generation discriminator per class):
@@ -99,6 +109,8 @@ export type GateKey = string;
  *   - G.5 phase-queue confirmation            → "phase-queue"  (issueRef slot = epicRef)
  *   - G.6 filing gate (synthetic)             → "filing"
  *   - G.7 scope-drained (synthetic)           → "scope-drained"
+ *   - G.9 remediation-limit gate              → "remediation-limit"
+ *   - G.10 CI merge-readiness gate            → "ci"
  *   - G.4e invalid-cursor escalation          → EXCLUDED from the wire (local
  *                                               AskUserQuestion only; no gateType).
  */
@@ -110,7 +122,9 @@ export type GateType =
   | "escalation"
   | "phase-queue"
   | "filing"
-  | "scope-drained";
+  | "scope-drained"
+  | "remediation-limit"
+  | "ci";
 
 /**
  * The gateType-specific generation DISCRIMINATOR the plugin passes to
@@ -127,6 +141,17 @@ export type GateType =
  *   - phase-queue          : `P<nextPhaseNumber>`
  *   - filing               : draft hash over {title, body, labels}
  *   - scope-drained        : `<drainCounter>` (Nth drain for the tracking ref)
+ *   - remediation-limit    : PR head SHA (durable). The remediation counter is a
+ *                            DATA GAP the parent loop does not yet compute, so the
+ *                            discriminator is derived from PR head SHA only today;
+ *                            the remaining-findings-hash form is NOT used. The
+ *                            non-idempotent re-ask across restart/takeover is an
+ *                            accepted follow-up shared with the other gapped
+ *                            gateTypes. auto.md's generation-discriminator
+ *                            table pins the same `PR head SHA` value.
+ *   - ci                   : PR head SHA (durable) — the engine's CI merge gate
+ *                            keys its verdict on the PR head commit, so a new
+ *                            push mints a new gate; same DATA GAP as above.
  *
  * A number is accepted for the naturally-numeric cases (phase number) and
  * String()-coerced by the MCP tool for a stable key.
@@ -149,7 +174,9 @@ export type DispatchClass =
   | "D.8"    // phase-complete (G.5) → gateType "phase-queue"
   | "D.10"   // unrecognized (G.4c) → gateType "escalation"
   | "D.11"   // waiting-for:merge-conflicts / blocked:stuck-merge-conflicts (G.4d) → gateType "escalation"
-  | "D.12";  // gate-answer (completion class for arriving answers)
+  | "D.12"   // gate-answer (completion class for arriving answers)
+  | "D.13"   // waiting-for:remediation-limit (G.9) → gateType "remediation-limit"
+  | "D.14";  // waiting-for:ci (G.10) → gateType "ci"
 
 /**
  * SHAPE 1 — gate-open (cluster → cloud, up-path) INPUT to `cockpit_gate_open`.

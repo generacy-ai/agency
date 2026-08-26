@@ -1,6 +1,6 @@
 {
   "name": "@generacy-ai/claude-plugin-cockpit",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Claude Code plugin providing /cockpit:* commands for running Generacy speckit epics (watch, status, queue, clarify, review, merge)",
   "type": "module",
   "keywords": [
