@@ -101,7 +101,7 @@ Generate a comprehensive implementation plan from the feature specification.
    - `data-model.md` - Core entities, interfaces, validation rules
    - `contracts/` - API schemas (OpenAPI, JSON Schema) if applicable
    - `quickstart.md` - Installation, usage examples, troubleshooting
-3. Updates agent context files (CLAUDE.md, etc.)
+3. Writes the tech stack summary to `specs/<feature>/stack.md` (never touches repo-root agent-context files)
 
 **Prerequisites:** Requires `spec.md` to exist.
 
@@ -282,7 +282,7 @@ Each command orchestrates one or more MCP tools from the `@generacy-ai/agency-pl
 |---------|-----------|
 | `/speckit:specify` | `create_feature` |
 | `/speckit:clarify` | `check_prereqs`, `manage_clarifications` |
-| `/speckit:plan` | `get_paths`, `check_prereqs`, `update_agent` |
+| `/speckit:plan` | `get_paths`, `check_prereqs` |
 | `/speckit:tasks` | `check_prereqs`, `preflight_check` (speckit) |
 | `/speckit:taskstoissues` | `check_prereqs`, `tasks_to_issues` |
 | `/speckit:implement` | `check_prereqs`, `merge_from_base`, `update_phase_labels` (speckit) |
