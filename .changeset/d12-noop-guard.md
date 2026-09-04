@@ -1,0 +1,5 @@
+---
+"@generacy-ai/claude-plugin-cockpit": patch
+---
+
+Guard D.12 `gate-answer` step 1 against foreign-run / out-of-scope deliveries. The repo-scoped doorbell replays `gate-answer` history, so a `/cockpit:auto` run routinely receives answers belonging to other runs and epics; followed literally, the old "no record → `superseded`" rule let one run supersede another run's live gate. Step 1 now classifies a no-record delivery before acking (FR-001/FR-003/FR-006): a runId-shaped gateKey segment that mismatches the run's `runId` is a logged foreign-run no-op, an out-of-scope issue ref is a logged out-of-scope no-op, and only a same-run/legacy in-scope delivery keeps the byte-preserved `superseded (no record)` ack. No-ops issue no `cockpit_gate_ack` and no downstream dispatch, and write exactly one ledger row per delivery (replays not deduped, FR-004). `gateKey` parsing (FR-002) and the D.12 payload-shape doc (FR-005) are documented shape-based, and the `519-*` pin block freezes the new contract (FR-007).
