@@ -41,8 +41,9 @@ or issue,
 answers land on the gate I actually answered.
 
 **Acceptance Criteria**:
-- [ ] A `gate-answer` whose `gateKey` `runId` segment ≠ this run's `runId` is a logged no-op — no `cockpit_gate_ack` is issued.
-- [ ] A `gate-answer` whose `gateKey` issue is outside this run's in-scope set is a logged no-op — no `cockpit_gate_ack` is issued.
+- [ ] A `gate-answer` whose `gateKey` `runId` segment ≠ this run's `runId` **and has no `openGates` record** is a logged no-op — no `cockpit_gate_ack` is issued.
+- [ ] A `gate-answer` whose `gateKey` issue is outside this run's in-scope set **and has no `openGates` record** is a logged no-op — no `cockpit_gate_ack` is issued.
+- [ ] A `gate-answer` with a matching `openGates` record — current-run **or adopted** (originating `runId` differs) — processes through D.12 steps 2–6 unchanged; the guard never pre-empts the record lookup.
 - [ ] A same-run, in-scope `gate-answer` with no `openGates` record still acks `superseded (no record)` (genuine startup race / duplicate delivery).
 
 ### US2: The no-op case is auditable
@@ -53,8 +54,11 @@ answers land on the gate I actually answered.
 nothing / lost the event."
 
 **Acceptance Criteria**:
-- [ ] Each no-op writes exactly one ledger row naming the owning run: `foreign-run delivery — not acked (owner run: <runId>)`.
-- [ ] The ledger vocabulary matches the shape the model already improvised in production, verbatim.
+- [ ] Each foreign-run no-op writes exactly one ledger row per delivery naming the owning run: `foreign-run delivery — not acked (owner run: <runId>)`.
+- [ ] Each out-of-scope no-op writes exactly one ledger row per delivery naming the issue: `out-of-scope delivery — not acked (issue: <issue-ref>)`.
+- [ ] The foreign-run vocabulary matches the shape the model already improvised in production, verbatim; runId-mismatch is evaluated before out-of-scope.
+- [ ] The no-op row follows the four-column ledger shape: `<gateKey-issue-ref> · — · gate-answer · <outcome> · source: ui-gate`.
+- [ ] Replayed deliveries of the same foreign answer each write a row (no session-local dedup).
 
 ### US3: The guard cannot be silently edited away
 
@@ -70,28 +74,32 @@ instead of regressing silently.
 
 | ID | Requirement | Priority | Notes |
 |----|-------------|----------|-------|
-| FR-001 | D.12 step 1 MUST distinguish *no record, mine* (same run, in scope → ack `superseded (no record)`) from *not mine* (foreign run or out-of-scope issue → logged no-op, no ack, no downstream dispatch). | P1 | Core behaviour change. |
-| FR-002 | The guard MUST derive "mine" from the `gateKey`'s `runId` segment (segment 4) compared against the run's pre-flight-derived `runId`, and "in scope" from the `gateKey`'s issue ref against the run's in-scope set. | P1 | Depends on FR-005 payload-shape documentation. |
+| FR-001 | D.12 step 1 MUST distinguish *no record, mine* (same run, in scope → ack `superseded (no record)`) from *not mine* (foreign run or out-of-scope issue → logged no-op, no ack, no downstream dispatch). The guard applies ONLY inside the no-record branch: when `openGates[event.gateId]` exists (current-run or adopted), steps 2–6 run unchanged. | P1 | Core behaviour change. Per Q1: guard never pre-empts the record lookup — adoption (#471) answer path is preserved. |
+| FR-002 | The guard MUST derive "mine" from the `gateKey`'s trailing `runId` segment compared against the run's pre-flight-derived `runId`, and "in scope" from the `gateKey`'s issue ref against the run's in-scope set. When the `gateKey` carries no `runId` segment (legacy pre-runId key), the guard MUST skip the runId comparison and apply only the in-scope check; a legacy-shaped in-scope key with no record falls through to the existing `superseded (no record)` ack. RunId-mismatch is evaluated before out-of-scope. | P1 | Depends on FR-005 payload-shape documentation. Per Q2: segment detection MUST NOT be positional — `generation` may contain colons; test the trailing colon-free segment against the runId shape and parse the issue ref as the prefix before the first `:`. |
 | FR-003 | The no-op case MUST NOT call `cockpit_gate_ack` (neither `superseded` nor any other outcome) and MUST NOT invoke any downstream handler or dispatch. | P1 | This is the defect being fixed. |
-| FR-004 | The no-op case MUST write exactly one ledger row using the verbatim vocabulary `foreign-run delivery — not acked (owner run: <runId>)`, where `<runId>` is the owning run read from the `gateKey` segment. | P1 | Matches the improvised production shape; preserves Invariant #8 one-line-per-dispatch. |
-| FR-005 | The D.12 **Payload shape** section MUST document `gateKey` as a 4-segment composite key: `<owner>/<repo>#<issue>:<gateType>:<generation>:<runId>`, since the guard parses the `runId` segment. | P1 | Current text documents 3 segments; the trailing `runId` segment must be described. |
+| FR-004 | The no-op case MUST write exactly one ledger row per delivery (no dedup across replays) in the four-column shape `<gateKey-issue-ref> · — · gate-answer · <outcome> · source: ui-gate`. `<outcome>` is the verbatim vocabulary `foreign-run delivery — not acked (owner run: <runId>)` for the runId-mismatch trigger, and `out-of-scope delivery — not acked (issue: <issue-ref>)` for the in-scope-set miss. | P1 | Per Q3/Q4/Q5: two pinned variants, deterministic-from-payload row shape (Ledger Rules 2 and 4), strict Invariant #8 one-line-per-dispatch. |
+| FR-005 | The D.12 **Payload shape** section MUST document `gateKey` as the composite key `<owner>/<repo>#<issue>:<gateType>:<generation>[:<runId>]`, since the guard parses the trailing `runId` segment. The doc MUST note the segment is absent for gates opened under `runIdEnabled === false` and that detection is shape-based, not positional. | P1 | Current text documents 3 segments; the trailing `runId` segment must be described. Per Q2. |
 | FR-006 | The same-run / in-scope no-record path MUST retain the existing `superseded (no record)` ack and its ledger row unchanged. | P1 | Preserves the genuine startup-race / duplicate-delivery behaviour. |
-| FR-007 | A test in the playbook-verification suite MUST pin (a) the two-way D.12 step 1 branch and (b) the verbatim no-op ledger vocabulary. | P1 | Per CLAUDE.md playbook-pin contract: re-pin to the new contract, never weaken. |
+| FR-007 | A test in the playbook-verification suite MUST pin (a) the two-way D.12 step 1 branch and (b) both verbatim no-op ledger vocabularies (foreign-run and out-of-scope variants). | P1 | Per CLAUDE.md playbook-pin contract: re-pin to the new contract, never weaken. |
 
 ## Success Criteria
 
 | ID | Metric | Target | Measurement |
 |----|--------|--------|-------------|
 | SC-001 | Foreign/out-of-scope `gate-answer` events that reach a session are acked. | 0 | Ledger inspection: no `superseded (no record)` row for a `gateKey` whose issue is out of scope or whose `runId` ≠ this run. |
-| SC-002 | Foreign/out-of-scope `gate-answer` events are recorded. | 1 ledger row each | Ledger inspection: one `foreign-run delivery — not acked (owner run: <runId>)` row per ignored event. |
+| SC-002 | Foreign/out-of-scope `gate-answer` events are recorded. | 1 ledger row per delivery | Ledger inspection: one `foreign-run delivery — not acked (owner run: <runId>)` or `out-of-scope delivery — not acked (issue: <issue-ref>)` row per ignored delivery. |
 | SC-003 | Concurrent-run live gates survive a sibling run's replayed history. | 100% survive | No live gate belonging to run B is `superseded` by run A. |
 | SC-004 | The guard is regression-protected. | Pass | `pnpm test` in `packages/claude-plugin-cockpit` fails if the guard branch or ledger vocabulary is removed. |
 
 ## Assumptions
 
-- The `gateKey` down-path payload carries a 4th `runId` segment; the guard reads
-  `runId` from that segment, not from the flat payload (which carries no
-  `generation` and no standalone `runId` field per the frozen Shape 3).
+- The `gateKey` down-path payload carries a trailing `runId` segment when the
+  originating run had `runIdEnabled === true`; the guard reads `runId` from that
+  segment, not from the flat payload (which carries no `generation` and no
+  standalone `runId` field per the frozen Shape 3). Legacy keys (no runId
+  segment) are handled per FR-002. Because `generation` may itself contain
+  colons, segment detection is shape-based (trailing colon-free segment matched
+  against the runId shape), never positional.
 - The run's in-scope issue set is available to D.12 at event-handling time (the
   loop already tracks scope for dispatch routing).
 - `runId` was derived exactly once at pre-flight (compute-once invariant) and is
