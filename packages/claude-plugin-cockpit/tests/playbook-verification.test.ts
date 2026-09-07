@@ -6374,6 +6374,156 @@ describe("engine-contract D.14 / G.10 ci gate + gate-wire-types mirror", () => {
   });
 });
 
+describe("519 — D.12 step 1 foreign-run / out-of-scope gate-answer no-op guard", () => {
+  // Contract: specs/519-symptom-when-gate-answer/contracts/d12-noop-guard.md.
+  // The repo-scoped doorbell replays gate-answer history, so a run receives
+  // answers belonging to other runs/epics. The no-op guard lives ONLY in D.12
+  // step 1's no-record branch: runId-mismatch → foreign-run no-op, out-of-scope
+  // issue ref → out-of-scope no-op, otherwise the byte-preserved superseded ack.
+
+  it("519-1 (C1) step 1 splits into a record-present bypass + a no-record classify branch; the guard never pre-empts a record match", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    const norm = block.replace(/\s+/g, " ");
+    // Record PRESENT → steps 2–6 unchanged; guard never pre-empts the lookup.
+    expect(norm).toMatch(
+      /\*\*Record PRESENT\*\* \(a current-run entry OR an adopted entry per § step 3 § Adoption pass above\) → proceed to steps 2–6 unchanged/,
+    );
+    expect(norm).toMatch(
+      /lives ONLY inside the no-record branch and NEVER pre-empts a record match/,
+    );
+    // Record ABSENT → classify before acking.
+    expect(norm).toMatch(/\*\*Record ABSENT\*\* → classify the delivery before acking/);
+  });
+
+  it("519-2 (C2) gateKey parse rules: issue ref before first colon, shape-based (not positional) trailing runId segment, absent under runIdEnabled === false", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    const norm = block.replace(/\s+/g, " ");
+    // Issue ref = prefix before the FIRST colon.
+    expect(norm).toMatch(/the \*\*issue ref\*\* is the prefix before the FIRST `:`/);
+    // runId segment = TRAILING colon-free segment matching the runId shape.
+    expect(norm).toMatch(
+      /the \*\*runId segment\*\*, when present, is the TRAILING colon-free segment matching the runId shape `<tracking-ref-slug>-<timestamp>`/,
+    );
+    // Detection is shape-based, NOT positional — generation may contain colons.
+    expect(norm).toMatch(/Detection is \*\*shape-based, NOT positional\*\*/);
+    expect(norm).toMatch(/`generation` may itself contain colons/);
+    // No runId segment (runIdEnabled === false) → skip the runId comparison.
+    expect(norm).toMatch(
+      /A gateKey with no runId-shaped trailing segment \(a gate opened under `runIdEnabled === false`\) has NO runId segment → skip the runId comparison and apply only the in-scope check/,
+    );
+  });
+
+  it("519-3 (C2) classification order is fixed: foreign-run (runId mismatch) evaluated BEFORE out-of-scope", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    const norm = block.replace(/\s+/g, " ");
+    // The fixed-order instruction names runId-mismatch before out-of-scope.
+    expect(norm).toMatch(
+      /Evaluate the three branches in this FIXED order \(runId-mismatch is checked BEFORE out-of-scope\)/,
+    );
+    // Textual order: foreign-run branch text appears before out-of-scope text.
+    const foreignIdx = norm.indexOf("**Foreign-run check (evaluated FIRST)**");
+    const outIdx = norm.indexOf("**Out-of-scope check**");
+    expect(foreignIdx, "foreign-run branch must be present").toBeGreaterThan(-1);
+    expect(outIdx, "out-of-scope branch must be present").toBeGreaterThan(-1);
+    expect(foreignIdx).toBeLessThan(outIdx);
+  });
+
+  it("519-4 (C4) the two no-op ledger vocabularies are pinned verbatim in the D.12 step-1 branches", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    expect(block).toContain(
+      "foreign-run delivery — not acked (owner run: <runId>)",
+    );
+    expect(block).toContain(
+      "out-of-scope delivery — not acked (issue: <issue-ref>)",
+    );
+    // Four-column no-op row shape with the em-dash transition placeholder.
+    expect(block).toContain(
+      "<gateKey-issue-ref> · — · gate-answer · foreign-run delivery — not acked (owner run: <runId>) · source: ui-gate",
+    );
+    expect(block).toContain(
+      "<gateKey-issue-ref> · — · gate-answer · out-of-scope delivery — not acked (issue: <issue-ref>) · source: ui-gate",
+    );
+  });
+
+  it("519-5 (C3) no-op branches issue NO cockpit_gate_ack and NO downstream dispatch, one ledger row per delivery, replays NOT deduped", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    // Isolate the no-record region: from "Record ABSENT" to the fall-through
+    // ack (branch c). The two no-op branches live entirely inside it.
+    const absentIdx = block.indexOf("**Record ABSENT**");
+    const fallThroughIdx = block.indexOf(
+      `cockpit_gate_ack(gateId, outcome: "superseded", detail: "no matching open record`,
+    );
+    expect(absentIdx, "no-record region start must be present").toBeGreaterThan(-1);
+    expect(fallThroughIdx, "fall-through ack must be present").toBeGreaterThan(absentIdx);
+    const noOpRegion = block.slice(absentIdx, fallThroughIdx);
+    // Negative pin: the no-op branches (a) and (b) invoke NO cockpit_gate_ack
+    // CALL. The prose may state "Issue NO `cockpit_gate_ack`" (the negation),
+    // but there must be no actual `cockpit_gate_ack(` invocation in the region.
+    expect(
+      noOpRegion,
+      "D.12 step-1 no-op branches MUST NOT invoke a cockpit_gate_ack( call",
+    ).not.toContain("cockpit_gate_ack(");
+    const noOpNorm = noOpRegion.replace(/\s+/g, " ");
+    // Both branches state NO ack and NO downstream.
+    expect(noOpNorm).toMatch(
+      /Issue NO `cockpit_gate_ack` \(no outcome of any kind\) and invoke NO downstream handler or dispatch/,
+    );
+    // Replays are NOT deduped — no session-local seen-set.
+    expect(noOpNorm).toMatch(
+      /replays are NOT deduped — no session-local seen-set, no per-`gateId` or per-wake collapsing/,
+    );
+    expect(noOpNorm).toMatch(/Write exactly ONE ledger row per delivery/);
+  });
+
+  it("519-6 (C5) D.12 Payload shape documents gateKey as the composite with optional trailing [:<runId>], shape-based detection", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    const block = extractSubheadingBlock(autoMd, "D.12 — `gate-answer`");
+    const norm = block.replace(/\s+/g, " ");
+    // The payload shape documents the composite key with optional runId.
+    expect(block).toContain(
+      "`<owner>/<repo>#<issue>:<gateType>:<generation>[:<runId>]`",
+    );
+    // The trailing segment is present/absent per runIdEnabled.
+    expect(norm).toMatch(
+      /The trailing `:<runId>` segment is present when the gate was opened under `runIdEnabled === true` and ABSENT under `runIdEnabled === false`/,
+    );
+    // Shape-based, not positional detection is documented in the payload shape.
+    expect(norm).toMatch(/segment detection is \*\*shape-based, not positional\*\*/);
+    // The no-op issue-ref slot reads the gateKey-parsed prefix, distinct from
+    // openGates[event.gateId].issueRef used by every other D.12 row.
+    expect(norm).toMatch(
+      /their ledger `<issue-ref>` slot is the \*\*gateKey-parsed prefix\*\* \(before the first `:`\)/,
+    );
+  });
+
+  it("519-7 (C4/V-L3) both no-op vocabularies are registered in the § Action + outcome vocabulary table and the § Ledger Rule 2 UI-specific outcome enumeration", () => {
+    const autoMd = readFileSync(AUTO_MD_PATH, "utf-8");
+    // § Action + outcome vocabulary table rows (grep-recipe stability).
+    expect(autoMd).toMatch(
+      /^\| D\.12 gate-answer \(foreign-run no-op[^|]*\) \| `gate-answer` \(transition slot is `—`\) \| `foreign-run delivery — not acked \(owner run: <runId>\) · source: ui-gate` \|$/m,
+    );
+    expect(autoMd).toMatch(
+      /^\| D\.12 gate-answer \(out-of-scope no-op[^|]*\) \| `gate-answer` \(transition slot is `—`\) \| `out-of-scope delivery — not acked \(issue: <issue-ref>\) · source: ui-gate` \|$/m,
+    );
+    // § Ledger Rule 2 exception paragraph enumerates both no-op outcomes.
+    const ledgerStart = autoMd.indexOf("\n## Ledger\n");
+    expect(ledgerStart, "§ Ledger heading must exist").toBeGreaterThan(-1);
+    const rest = autoMd.slice(ledgerStart);
+    const nextH2 = rest.indexOf("\n## ", 1);
+    const ledger = nextH2 === -1 ? rest : rest.slice(0, nextH2);
+    expect(ledger).toContain(
+      "**Exception — step-1 no-record no-op rows.**",
+    );
+    expect(ledger).toContain("foreign-run delivery — not acked (owner run: <runId>)");
+    expect(ledger).toContain("out-of-scope delivery — not acked (issue: <issue-ref>)");
+  });
+});
+
 // Silence TS unused-import warning if only used for type narrowing.
 const _typeGuardAddExisting = (a: AddExistingIntent) => a.ref;
 const _typeGuardFileNew = (a: FileNewIntent) => a.topic;
